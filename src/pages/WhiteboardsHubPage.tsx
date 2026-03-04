@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Plus, Search, MoreVertical, Clock } from 'lucide-react'
@@ -115,13 +115,16 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   }, [boards, searchQuery, activeTab])
 
   // Generate gradient color from board name
-  const getBoardGradient = (name: string): string => {
+  const getBoardGradient = (name: string): { from: string; to: string } => {
     let hash = 0
     for (let i = 0; i < name.length; i++) {
       hash = name.charCodeAt(i) + ((hash << 5) - hash)
     }
     const hue = Math.abs(hash) % 360
-    return `hsl(${hue}, 70%, 60%)`
+    return {
+      from: `hsl(${hue}, 70%, 25%)`,
+      to: `hsl(${(hue + 40) % 360}, 60%, 15%)`
+    }
   }
 
   // Get initials from board name
@@ -149,7 +152,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   }
 
   // Whiteboard Card Component
-  const WhiteboardCard = ({ board, index }: { board: any; index: number }) => {
+  const WhiteboardCard = ({ board, index, isPlaceholder = false }: { board: any; index: number; isPlaceholder?: boolean }) => {
     const gradient = getBoardGradient(board.name || 'Whiteboard')
     const initials = getBoardInitials(board.name || 'Whiteboard')
     const members = membersByBoard[board.id] || []
@@ -157,65 +160,75 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={{ opacity: isPlaceholder ? 0.6 : 1, y: 0 }}
         transition={{ 
           duration: 0.3, 
           delay: prefersReducedMotion ? 0 : index * 0.05,
           ease: [0.22, 1, 0.36, 1]
         }}
         whileHover={{ 
-          y: -4,
-          boxShadow: '0 20px 40px -12px rgba(0, 0, 0, 0.4)',
+          y: -2,
+          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.6)',
+          borderColor: '#444',
           transition: { duration: 0.2 }
         }}
-        onClick={() => navigate(`/whiteboards/${board.id}`)}
-        className="relative bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl cursor-pointer overflow-hidden transition-all duration-200 hover:border-[#444] hover:scale-[1.02]"
+        onClick={() => !isPlaceholder && navigate(`/whiteboards/${board.id}`)}
+        className={`relative bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl overflow-hidden transition-all duration-200 ${
+          isPlaceholder ? 'cursor-default' : 'cursor-pointer'
+        }`}
         style={{
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)',
+          border: '1px solid #2a2a2a'
         }}
       >
         {/* Thumbnail Area */}
         <div 
           className="h-40 relative overflow-hidden"
           style={{
-            background: `linear-gradient(135deg, ${gradient}dd, ${gradient}99)`,
+            background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
           }}
         >
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white text-3xl font-bold drop-shadow-lg">
+            <span className="text-white text-2xl font-light drop-shadow-lg">
               {initials}
             </span>
           </div>
           
           {/* Context Menu */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              // TODO: Implement context menu
-            }}
-            className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/20 hover:bg-black/40 transition-colors"
-          >
-            <MoreVertical className="w-4 h-4 text-white" />
-          </button>
+          {!isPlaceholder && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                // TODO: Implement context menu
+              }}
+              className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/20 hover:bg-black/40 transition-colors"
+            >
+              <MoreVertical className="w-4 h-4 text-white" />
+            </button>
+          )}
         </div>
         
         {/* Content Area */}
-        <div className="p-4">
-          {/* Title */}
-          <h3 className="font-medium text-white text-sm mb-2 truncate">
-            {board.name || 'Whiteboard'}
-          </h3>
-          
-          {/* Timestamp */}
-          <div className="flex items-center gap-1 text-[#666] text-xs mb-3">
-            <Clock className="w-3 h-3" />
-            <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
+        <div className="p-4 border-t border-[#222]">
+          <div className="flex items-center justify-between">
+            {/* Title */}
+            <h3 className="font-medium text-white text-sm truncate flex-1">
+              {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
+            </h3>
+            
+            {/* Timestamp */}
+            {!isPlaceholder && (
+              <div className="flex items-center gap-1 text-[#666] text-xs ml-3 flex-shrink-0">
+                <Clock className="w-3 h-3" />
+                <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
+              </div>
+            )}
           </div>
           
           {/* Collaborators */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mt-3">
             <div className="flex items-center -space-x-2">
-              {members.slice(0, 3).map((member, idx) => (
+              {!isPlaceholder && members.slice(0, 3).map((member, idx) => (
                 <div
                   key={member.user_id}
                   className="relative"
@@ -228,7 +241,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                   />
                 </div>
               ))}
-              {members.length > 3 && (
+              {!isPlaceholder && members.length > 3 && (
                 <div 
                   className="w-8 h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
                   style={{ zIndex: 0 }}
@@ -236,7 +249,12 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                   +{members.length - 3}
                 </div>
               )}
-              {members.length === 0 && (
+              {isPlaceholder && (
+                <div className="text-xs text-[#666]">
+                  No collaborators
+                </div>
+              )}
+              {!isPlaceholder && members.length === 0 && (
                 <div className="text-xs text-[#666]">
                   No collaborators
                 </div>
@@ -247,6 +265,24 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       </motion.div>
     )
   }
+
+  // Generate placeholder boards for better visual layout
+  const placeholderBoards = useMemo(() => {
+    const placeholders = []
+    const placeholderNames = ['Design System', 'User Flow', 'Architecture', 'Marketing Ideas']
+    
+    for (let i = 0; i < 4; i++) {
+      placeholders.push({
+        id: `placeholder-${i}`,
+        name: placeholderNames[i],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        isPlaceholder: true
+      })
+    }
+    
+    return placeholders
+  }, [])
 
   async function handleCreate() {
     setCreateError(null)
@@ -323,20 +359,20 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('all')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1 text-sm font-medium transition-all rounded-md ${
                 activeTab === 'all'
-                  ? 'bg-[#1A1A1A] text-white'
-                  : 'text-[#666] hover:text-white hover:bg-[#1A1A1A]'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
               }`}
             >
               All
             </button>
             <button
               onClick={() => setActiveTab('recent')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1 text-sm font-medium transition-all rounded-md ${
                 activeTab === 'recent'
-                  ? 'bg-[#1A1A1A] text-white'
-                  : 'text-[#666] hover:text-white hover:bg-[#1A1A1A]'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
               }`}
             >
               Recent
@@ -388,6 +424,15 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {filteredBoards.map((board, index) => (
                 <WhiteboardCard key={board.id} board={board} index={index} />
+              ))}
+              {/* Add placeholder cards if we have fewer than 4 real boards */}
+              {filteredBoards.length < 4 && placeholderBoards.slice(0, 4 - filteredBoards.length).map((placeholder, index) => (
+                <WhiteboardCard 
+                  key={placeholder.id} 
+                  board={placeholder} 
+                  index={filteredBoards.length + index} 
+                  isPlaceholder={true}
+                />
               ))}
             </div>
           )}
