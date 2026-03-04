@@ -9,6 +9,7 @@ import Avatar from '../components/Avatar'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
+import { normalizeHistoryEvents } from '../realtime/whiteboardReplay'
 
 function useDesktopLayout(): boolean {
   const [isDesktop, setIsDesktop] = useState(() => {
@@ -279,18 +280,34 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     const [error, setError] = useState(false)
     const [hasLoaded, setHasLoaded] = useState(false)
     const containerRef = useRef<HTMLDivElement>(null)
+    const emptySnapshotAttemptsRef = useRef(0)
+    const MAX_EMPTY_SNAPSHOT_ATTEMPTS = 6
 
     useEffect(() => {
+      let cancelled = false
+      let loadTimeout: ReturnType<typeof setTimeout> | null = null
+      // Debug: effect mounted for this thumbnail
+      // eslint-disable-next-line no-console
+      console.log('[WB-THUMB] effect mount', { boardId })
+
       const loadThumbnail = async () => {
-        if (!canvasRef.current || hasLoaded) return
+        if (!canvasRef.current || hasLoaded || cancelled) return
         
         try {
-          setIsLoading(true)
-          setError(false)
+          if (!cancelled) {
+            setIsLoading(true)
+            setError(false)
+          }
           
           // Get auth token
           const { data: { session } } = await supabase.auth.getSession()
+          // Debug: session fetched
+          // eslint-disable-next-line no-console
+          console.log('[WB-THUMB] session', { boardId, hasSession: Boolean(session?.access_token), session: session ? { expires_at: session.expires_at } : null })
+          if (cancelled) return
           if (!session?.access_token) {
+            // eslint-disable-next-line no-console
+            console.warn('[WB-THUMB] no auth token available', { boardId, session })
             throw new Error('No auth token')
           }
 
@@ -299,11 +316,30 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
             boardId,
             token: session.access_token
           })
+          // Debug: surface raw snapshot to help diagnose empty-thumbnail issues
+          // (temporary log; remove after investigation)
+          // eslint-disable-next-line no-console
+          console.log('[WB-THUMB] fetched snapshot', { boardId, snapshot })
+          // Log events length if present
+          // eslint-disable-next-line no-console
+          console.log('[WB-THUMB] snapshot.events', { boardId, eventsLength: Array.isArray(snapshot?.events) ? snapshot.events.length : null })
+          if (cancelled) return
 
           // Draw thumbnail on canvas
           const canvas = canvasRef.current
+          if (!canvas) {
+            if (!cancelled) setIsLoading(false)
+            return
+          }
+
           const ctx = canvas.getContext('2d')
-          if (!ctx) return
+          if (!ctx) {
+            if (!cancelled) {
+              setError(true)
+              setIsLoading(false)
+            }
+            return
+          }
 
           // Set canvas size
           canvas.width = 320
@@ -313,75 +349,124 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           ctx.fillStyle = '#ffffff'
           ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-          // Draw whiteboard strokes
-          if (snapshot.events && snapshot.events.length > 0) {
-            const scale = 0.1 // Scale down for thumbnail
-            
-            // Find bounds of drawn content
-            let minX = Infinity, minY = Infinity
-            let maxX = -Infinity, maxY = -Infinity
-            
-            snapshot.events.forEach((event: any) => {
-              if (event.type === 'stroke:start' || event.type === 'stroke:move') {
-                minX = Math.min(minX, event.x)
-                minY = Math.min(minY, event.y)
-                maxX = Math.max(maxX, event.x)
-                maxY = Math.max(maxY, event.y)
-              }
-            })
-            
-            // Calculate content bounds with padding
-            const padding = 20
-            const contentWidth = maxX - minX + padding * 2
-            const contentHeight = maxY - minY + padding * 2
-            const centerX = (minX + maxX) / 2
-            const centerY = (minY + maxY) / 2
-            
-            // Calculate scale to fit content in canvas
-            const scaleX = canvas.width / contentWidth
-            const scaleY = canvas.height / contentHeight
-            const finalScale = Math.min(scaleX, scaleY) * scale
-            
-            // Center the drawing
-            const offsetX = (canvas.width / 2) - (centerX * finalScale)
-            const offsetY = (canvas.height / 2) - (centerY * finalScale)
-            
-            // Draw strokes with proper scaling and centering
-            snapshot.events.forEach((event: any) => {
-              if (event.type === 'stroke:start' || event.type === 'stroke:move') {
-                ctx.strokeStyle = event.color || '#000000'
-                ctx.lineWidth = (event.width || 2) * finalScale
-                ctx.lineCap = 'round'
-                ctx.lineJoin = 'round'
-                
-                const x = event.x * finalScale + offsetX
-                const y = event.y * finalScale + offsetY
-                
-                if (event.type === 'stroke:start') {
-                  ctx.beginPath()
-                  ctx.moveTo(x, y)
-                } else if (event.type === 'stroke:move') {
-                  ctx.lineTo(x, y)
-                  ctx.stroke()
+          // Draw whiteboard strokes.
+          // Snapshot coordinates are normalized (0..1), so replay directly using
+          // the same stroke-state behavior as the primary whiteboard canvas.
+          const events = Array.isArray(snapshot.events) ? normalizeHistoryEvents(snapshot.events as any) : []
+          const drawableEvents = events.filter(
+            (event) =>
+              (event.type === 'stroke:start' || event.type === 'stroke:move' || event.type === 'stroke:end')
+              && Number.isFinite(event.x)
+              && Number.isFinite(event.y),
+          )
+          // Debug: show normalized / drawable counts
+          // eslint-disable-next-line no-console
+          console.log('[WB-THUMB] events counts', { boardId, normalized: events.length, drawable: drawableEvents.length })
+
+          if (drawableEvents.length > 0) {
+            emptySnapshotAttemptsRef.current = 0
+            const usesNormalizedCoords = drawableEvents.every(
+              (event) => event.x >= -0.01 && event.x <= 1.01 && event.y >= -0.01 && event.y <= 1.01,
+            )
+            // eslint-disable-next-line no-console
+            console.log('[WB-THUMB] usesNormalizedCoords', { boardId, usesNormalizedCoords })
+
+            let minX = 0
+            let maxX = 1
+            let minY = 0
+            let maxY = 1
+
+            if (!usesNormalizedCoords) {
+              minX = Math.min(...drawableEvents.map((event) => event.x))
+              maxX = Math.max(...drawableEvents.map((event) => event.x))
+              minY = Math.min(...drawableEvents.map((event) => event.y))
+              maxY = Math.max(...drawableEvents.map((event) => event.y))
+            }
+
+            const padding = 10
+            const spanX = Math.max(0.0001, maxX - minX)
+            const spanY = Math.max(0.0001, maxY - minY)
+            const scaleX = (canvas.width - padding * 2) / spanX
+            const scaleY = (canvas.height - padding * 2) / spanY
+            const absoluteScale = Math.min(scaleX, scaleY)
+
+            const toCanvasPoint = (x: number, y: number): { x: number; y: number } => {
+              if (usesNormalizedCoords) {
+                return {
+                  x: x * canvas.width,
+                  y: y * canvas.height,
                 }
               }
-            })
-            
-            // Draw outline showing thumbnail area
-            ctx.strokeStyle = '#3b82f6'
-            ctx.lineWidth = 2
-            ctx.setLineDash([5, 5])
-            const outlineX = offsetX + (minX * finalScale) - padding * finalScale
-            const outlineY = offsetY + (minY * finalScale) - padding * finalScale
-            const outlineWidth = contentWidth * finalScale
-            const outlineHeight = contentHeight * finalScale
-            ctx.strokeRect(outlineX, outlineY, outlineWidth, outlineHeight)
-            ctx.setLineDash([])
-          }
 
-          setIsLoading(false)
-          setHasLoaded(true)
+              return {
+                x: padding + (x - minX) * absoluteScale,
+                y: padding + (y - minY) * absoluteScale,
+              }
+            }
+
+            const activeStrokes = new Map<string, { x: number; y: number; color: string; width: number }>()
+
+            for (const event of drawableEvents) {
+              const strokeKey = event.strokeId || '__thumbnail_stroke__'
+              const color = event.color || '#000000'
+              const baseWidth = event.width || 2
+              const width = usesNormalizedCoords ? baseWidth : Math.max(1, Math.min(8, baseWidth * absoluteScale))
+              const point = toCanvasPoint(event.x, event.y)
+
+              ctx.lineCap = 'round'
+              ctx.lineJoin = 'round'
+
+              if (event.type === 'stroke:start') {
+                activeStrokes.set(strokeKey, { x: event.x, y: event.y, color, width })
+                ctx.strokeStyle = color
+                ctx.lineWidth = width
+                ctx.beginPath()
+                ctx.moveTo(point.x, point.y)
+                ctx.lineTo(point.x, point.y)
+                ctx.stroke()
+                continue
+              }
+
+              const previous = activeStrokes.get(strokeKey) || { x: event.x, y: event.y, color, width }
+              const previousPoint = toCanvasPoint(previous.x, previous.y)
+              ctx.strokeStyle = previous.color
+              ctx.lineWidth = previous.width
+              ctx.beginPath()
+              ctx.moveTo(previousPoint.x, previousPoint.y)
+              ctx.lineTo(point.x, point.y)
+              ctx.stroke()
+              activeStrokes.set(strokeKey, { x: event.x, y: event.y, color: previous.color, width: previous.width })
+
+              if (event.type === 'stroke:end') {
+                activeStrokes.delete(strokeKey)
+              }
+            }
+            if (!cancelled) {
+              setIsLoading(false)
+              setHasLoaded(true)
+            }
+            return
+          } else if (!cancelled) {
+            emptySnapshotAttemptsRef.current += 1
+            // eslint-disable-next-line no-console
+            console.log('[WB-THUMB] empty snapshot - attempt', { boardId, attempt: emptySnapshotAttemptsRef.current })
+            const shouldRetry = emptySnapshotAttemptsRef.current < MAX_EMPTY_SNAPSHOT_ATTEMPTS
+            if (shouldRetry) {
+              if (loadTimeout) {
+                clearTimeout(loadTimeout)
+              }
+              loadTimeout = setTimeout(() => {
+                void loadThumbnail()
+              }, 400)
+              return
+            }
+            setError(true)
+            setIsLoading(false)
+            setHasLoaded(true)
+            return
+          }
         } catch (err) {
+          if (cancelled) return
           console.warn('Failed to load whiteboard thumbnail:', err)
           setError(true)
           setIsLoading(false)
@@ -395,8 +480,15 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting && !hasLoaded) {
+              // eslint-disable-next-line no-console
+              console.log('[WB-THUMB] observer triggered', { boardId, isIntersecting: entry.isIntersecting })
               // Add small delay to prevent overwhelming the browser
-              setTimeout(loadThumbnail, Math.random() * 200)
+              if (loadTimeout) {
+                clearTimeout(loadTimeout)
+              }
+              loadTimeout = setTimeout(() => {
+                void loadThumbnail()
+              }, Math.random() * 200)
             }
           })
         },
@@ -406,6 +498,11 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       observer.observe(containerRef.current)
       
       return () => {
+        cancelled = true
+        if (loadTimeout) {
+          clearTimeout(loadTimeout)
+          loadTimeout = null
+        }
         observer.disconnect()
       }
     }, [boardId, hasLoaded])
