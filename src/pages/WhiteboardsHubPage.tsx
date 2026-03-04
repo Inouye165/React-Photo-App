@@ -276,10 +276,12 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState(false)
+    const [hasLoaded, setHasLoaded] = useState(false)
+    const containerRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
       const loadThumbnail = async () => {
-        if (!canvasRef.current) return
+        if (!canvasRef.current || hasLoaded) return
         
         try {
           setIsLoading(true)
@@ -333,6 +335,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           }
 
           setIsLoading(false)
+          setHasLoaded(true)
         } catch (err) {
           console.warn('Failed to load whiteboard thumbnail:', err)
           setError(true)
@@ -340,8 +343,27 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         }
       }
 
-      loadThumbnail()
-    }, [boardId])
+      // Only load when thumbnail is visible
+      if (!containerRef.current) return
+      
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting && !hasLoaded) {
+              // Add small delay to prevent overwhelming the browser
+              setTimeout(loadThumbnail, Math.random() * 200)
+            }
+          })
+        },
+        { threshold: 0.1 }
+      )
+      
+      observer.observe(containerRef.current)
+      
+      return () => {
+        observer.disconnect()
+      }
+    }, [boardId, hasLoaded])
 
     const gradient = getBoardGradient(boardName)
 
@@ -364,11 +386,15 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     }
 
     return (
-      <div className="h-40 relative overflow-hidden bg-white">
+      <div ref={containerRef} className="h-40 relative overflow-hidden bg-white">
         <canvas
           ref={canvasRef}
           className="w-full h-full object-contain"
-          style={{ imageRendering: 'crisp-edges' }}
+          style={{ 
+            imageRendering: 'crisp-edges' as any
+          }}
+          width={320}
+          height={200}
         />
       </div>
     )
