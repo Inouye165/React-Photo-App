@@ -386,7 +386,7 @@ const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-white">
       {renderBrandPanel()}
-      <div className="w-full md:w-1/2 p-8 md:p-12 lg:p-24 flex flex-col items-center justify-center bg-white">
+      <div className="w-full md:w-1/2 p-4 sm:p-6 md:p-12 lg:p-24 flex flex-col items-center justify-start md:justify-center overflow-y-auto max-h-[100dvh] bg-white">
         {urlError && (
           <div className="w-full max-w-md mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm animate-fade-in">
             {urlError}

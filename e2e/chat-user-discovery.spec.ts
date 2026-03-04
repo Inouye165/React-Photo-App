@@ -9,7 +9,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page 
   })
 
   const corsHeaders = {
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+    'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -93,7 +93,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page 
   })
 
   // --- Supabase mocks (chat uses Supabase client directly) ---
-  // The Playwright config sets VITE_SUPABASE_URL to http://127.0.0.1:5173/__supabase
+  // The Playwright config sets VITE_SUPABASE_URL to http://127.0.0.1:4173/__supabase
 
   const targetUser = {
     id: '22222222-2222-4222-8222-222222222222',
@@ -242,7 +242,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page 
     return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify({}) })
   })
 
-  await page.goto('http://127.0.0.1:5173/chat', { waitUntil: 'networkidle' })
+  await page.goto('/chat', { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)
 
   await expect(page.getByTestId('chat-page')).toBeVisible({ timeout: 10000 })

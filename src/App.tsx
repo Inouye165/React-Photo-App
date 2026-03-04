@@ -103,6 +103,7 @@ function App() {
               {/* Whiteboards */}
               <Route path="/whiteboards" element={<WhiteboardsHubPage />} />
               <Route path="/whiteboards/join/:token" element={<WhiteboardJoinPage />} />
+              <Route path="/whiteboards/:boardId/join" element={<WhiteboardJoinPage />} />
               <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
 
               {/* Photo detail view */}

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import React from 'react'
 import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
 import WhiteboardJoinPage from './WhiteboardJoinPage'
 
@@ -36,5 +37,26 @@ describe('WhiteboardJoinPage', () => {
     })
 
     expect(await screen.findByText('Board room-abc')).toBeInTheDocument()
+  })
+
+  it('navigates when token comes from query string under StrictMode', async () => {
+    joinWhiteboardByTokenMock.mockResolvedValue({ roomId: 'room-query' })
+
+    render(
+      <React.StrictMode>
+        <MemoryRouter initialEntries={['/whiteboards/board-1/join?token=token-query-123']}>
+          <Routes>
+            <Route path="/whiteboards/:boardId/join" element={<WhiteboardJoinPage />} />
+            <Route path="/whiteboards/:boardId" element={<BoardView />} />
+          </Routes>
+        </MemoryRouter>
+      </React.StrictMode>,
+    )
+
+    await waitFor(() => {
+      expect(joinWhiteboardByTokenMock).toHaveBeenCalledWith('token-query-123')
+    })
+
+    expect(await screen.findByText('Board room-query')).toBeInTheDocument()
   })
 })

@@ -9,7 +9,6 @@ exports.up = async function up(knex) {
   if (isPg) {
     await knex.raw('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
   }
-
   const hasTable = await knex.schema.hasTable('whiteboard_invites');
   if (hasTable) return;
 

@@ -4,15 +4,12 @@ import { listMyWhiteboards, createWhiteboard } from '../api/whiteboards'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
 import Avatar from '../components/Avatar'
 import { useAuth } from '../contexts/AuthContext'
-import type { ChatRoom } from '../types/chat'
 
 export default function WhiteboardsHubPage(): React.JSX.Element {
   const navigate = useNavigate()
-  const [boards, setBoards] = useState<ChatRoom[]>([])
+  const [boards, setBoards] = useState<any[]>([])
   const [membersByBoard, setMembersByBoard] = useState<Record<string, RoomMemberDetails[]>>({})
   const { profile } = useAuth()
-
-  // Use shared Avatar component for consistent behavior
   const [loading, setLoading] = useState(true)
   const [createError, setCreateError] = useState<string | null>(null)
 
@@ -22,6 +19,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       try {
         const rows = await listMyWhiteboards()
         if (cancelled) return
+        // Ensure newest first by updated_at or created_at
+        rows.sort((a, b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at))
         setBoards(rows)
         // fetch members for whiteboards (non-blocking)
         void (async () => {
@@ -40,8 +39,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           if (cancelled) return
           setMembersByBoard(map)
         })()
-      } catch {
-        if (cancelled) return
+      } catch (err) {
+        if (!cancelled) console.warn('[WB-HUB] load failed', { message: err instanceof Error ? err.message : String(err) })
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -61,6 +60,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       setCreateError(message)
     }
   }
+
+  
 
   return (
     <main className="h-[100dvh] p-6 bg-slate-50">
@@ -82,9 +83,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         </div>
 
         <div className="mt-2">
-          {createError && (
-            <div className="mb-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{createError}</div>
-          )}
+          {createError && <div className="mb-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{createError}</div>}
 
           <div className="rounded-lg border bg-white p-4 shadow-sm">
             {loading && <div className="text-sm text-slate-600">Loading…</div>}

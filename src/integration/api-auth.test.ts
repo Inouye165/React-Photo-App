@@ -123,15 +123,15 @@ describe('Integration: API auth errors trigger UI banner', () => {
       new Promise(resolve => setTimeout(() => resolve(false), 200))
     ]);
 
-    // Verify event was dispatched
-    expect(eventFired).toBe(true);
-    expect(eventDetail).toBeDefined();
-    expect(eventDetail.status).toBe(403);
+    // 403 is an authorization failure (not necessarily an expired session).
+    // We should NOT dispatch session-expired for 403, and the banner should remain unchanged.
+    expect(eventFired).toBe(false);
+    expect(eventDetail).toBeNull();
 
-    // Verify banner was updated
+    // Verify banner was NOT updated
     const banner = useStore.getState().banner;
-    expect(banner.message).toMatch(/Session expired/i);
-    expect(banner.severity).toBe('error');
+    expect(banner.message).toBe('');
+    expect(banner.severity).toBe('info');
 
     // Verify API call returned gracefully
     expect(result).toBeUndefined();

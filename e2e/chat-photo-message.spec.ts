@@ -15,7 +15,7 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
   })
 
   const corsHeaders = {
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+    'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -149,14 +149,14 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
     }
 
     if (method === 'GET') {
-      const message = {
+            const message = {
         id: 'msg-1',
         room_id: room.id,
         sender_id: '22222222-2222-4222-8222-222222222222',
         content: '',
         photo_id: '101',
         created_at: new Date().toISOString(),
-      }
+            }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -193,12 +193,11 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
     })
   })
 
-  await page.goto(`http://127.0.0.1:5173/chat/${room.id}`, { waitUntil: 'networkidle' })
+  await page.goto(`/chat/${room.id}`, { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)
 
   await expect(page.getByTestId('chat-page')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByTestId('chat-messages').first()).toBeVisible({ timeout: 10_000 })
-
   // A photo bubble should render an image element after AuthenticatedImage loads
   await expect(page.locator('img[alt="Shared photo"]').first()).toBeVisible({ timeout: 10_000 })
 })
