@@ -5,20 +5,12 @@ import { ArrowLeft, Link, Users, Copy } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
-import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
+import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
-
-function getInitials(value: string): string {
-  const cleaned = value.trim()
-  if (!cleaned) return 'U'
-  const parts = cleaned.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-  return cleaned.slice(0, 2).toUpperCase()
-}
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -45,7 +37,7 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
 export default function WhiteboardSessionPage(): React.JSX.Element {
   const { boardId } = useParams()
   const navigate = useNavigate()
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const [boardName, setBoardName] = useState<string>('Whiteboard')
   const [members, setMembers] = useState<RoomMemberSummary[]>([])
@@ -239,10 +231,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [boardId, isOwner])
 
-  const accountLabel = profile?.username || user?.email?.split('@')[0] || 'User'
-  const accountInitials = getInitials(accountLabel)
-  const isAuthenticated = Boolean(user)
-
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
 
   if (accessState === 'checking') {
@@ -265,11 +253,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               </button>
               <h1 className="text-xl font-semibold font-display">Checking Access</h1>
             </div>
-            <ChessHeaderAccountIndicator
-              isAuthenticated={isAuthenticated}
-              displayName={accountLabel}
-              initials={accountInitials}
-              onSignIn={() => navigate('/login')}
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
             />
           </div>
           <div className="flex-1 flex items-center justify-center">
@@ -302,11 +290,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               </button>
               <h1 className="text-xl font-semibold font-display">Access Denied</h1>
             </div>
-            <ChessHeaderAccountIndicator
-              isAuthenticated={isAuthenticated}
-              displayName={accountLabel}
-              initials={accountInitials}
-              onSignIn={() => navigate('/login')}
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
             />
           </div>
           <div className="flex-1 flex items-center justify-center">
@@ -386,11 +374,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <Copy className="w-4 h-4" />
               <span className="text-sm font-medium">Copy link</span>
             </button>
-            <ChessHeaderAccountIndicator
-              isAuthenticated={isAuthenticated}
-              displayName={accountLabel}
-              initials={accountInitials}
-              onSignIn={() => navigate('/login')}
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
             />
           </div>
         </div>
