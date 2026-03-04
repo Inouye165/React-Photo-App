@@ -265,7 +265,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                   <h3 className="font-medium text-white text-sm truncate">
                     {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
                   </h3>
-                  <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-[0.4] transition-opacity" />
                 </div>
               )}
             </div>
@@ -681,10 +681,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     // attach and the loader can draw into a real canvas. While loading or on
     // error, overlay the gradient + initials so the visual fallback remains.
     return (
-      <div ref={containerRef} className="h-40 relative overflow-hidden bg-white">
+      <div ref={containerRef} className="h-40 relative overflow-hidden bg-[#111111] flex items-center justify-center">
         <canvas
           ref={canvasRef}
-          className="w-full h-full object-contain"
+          className="max-w-full max-h-full object-contain"
           style={{ 
             imageRendering: 'crisp-edges' as any
           }}
@@ -828,7 +828,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         <div 
           className="absolute bottom-0 left-0 right-0 h-96 pointer-events-none"
           style={{
-            background: 'radial-gradient(ellipse at 50% 100%, #1a1400 0%, transparent 60%)'
+            background: 'radial-gradient(ellipse 80% 40% at 50% 95%, rgba(245, 158, 11, 0.04) 0%, transparent 70%)'
           }}
         />
         
