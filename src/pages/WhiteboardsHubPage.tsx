@@ -368,24 +368,9 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
 
     const gradient = getBoardGradient(boardName)
 
-    if (error || isLoading) {
-      // Fallback to gradient with initials
-      return (
-        <div 
-          className="h-40 relative overflow-hidden"
-          style={{
-            background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
-          }}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white text-2xl font-light drop-shadow-lg">
-              {getBoardInitials(boardName)}
-            </span>
-          </div>
-        </div>
-      )
-    }
-
+    // Always render the canvas/container so the IntersectionObserver can
+    // attach and the loader can draw into a real canvas. While loading or on
+    // error, overlay the gradient + initials so the visual fallback remains.
     return (
       <div ref={containerRef} className="h-40 relative overflow-hidden bg-white">
         <canvas
@@ -397,6 +382,20 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           width={320}
           height={200}
         />
+
+        {(error || isLoading) && (
+          <div 
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
+            }}
+          >
+            <div className="absolute inset-0" />
+            <span className="text-white text-2xl font-light drop-shadow-lg relative">
+              {getBoardInitials(boardName)}
+            </span>
+          </div>
+        )}
       </div>
     )
   }
