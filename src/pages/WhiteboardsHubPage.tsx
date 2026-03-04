@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Plus, Search, MoreVertical, Clock } from 'lucide-react'
 import { listMyWhiteboards, createWhiteboard } from '../api/whiteboards'
+import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
 import Avatar from '../components/Avatar'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../supabaseClient'
 
 function useDesktopLayout(): boolean {
   const [isDesktop, setIsDesktop] = useState(() => {
@@ -182,20 +184,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         }}
       >
         {/* Thumbnail Area */}
-        <div 
-          className="h-40 relative overflow-hidden"
-          style={{
-            background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
-          }}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white text-2xl font-light drop-shadow-lg">
-              {initials}
-            </span>
-          </div>
-          
-          {/* Context Menu */}
-          {!isPlaceholder && (
+        {!isPlaceholder ? (
+          <div className="relative">
+            <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Whiteboard'} />
+            {/* Context Menu */}
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -205,8 +197,21 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
             >
               <MoreVertical className="w-4 h-4 text-white" />
             </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div 
+            className="h-40 relative overflow-hidden"
+            style={{
+              background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
+            }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-white text-2xl font-light drop-shadow-lg">
+                {initials}
+              </span>
+            </div>
+          </div>
+        )}
         
         {/* Content Area */}
         <div className="p-4 border-t border-[#222]">
@@ -266,7 +271,108 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     )
   }
 
-  // Generate placeholder boards for better visual layout
+  // Whiteboard Thumbnail Component
+  const WhiteboardThumbnail = ({ boardId, boardName }: { boardId: string; boardName: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState(false)
+
+    useEffect(() => {
+      const loadThumbnail = async () => {
+        if (!canvasRef.current) return
+        
+        try {
+          setIsLoading(true)
+          setError(false)
+          
+          // Get auth token
+          const { data: { session } } = await supabase.auth.getSession()
+          if (!session?.access_token) {
+            throw new Error('No auth token')
+          }
+
+          // Fetch whiteboard snapshot
+          const snapshot = await fetchWhiteboardSnapshot({
+            boardId,
+            token: session.access_token
+          })
+
+          // Draw thumbnail on canvas
+          const canvas = canvasRef.current
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return
+
+          // Set canvas size
+          canvas.width = 320
+          canvas.height = 200
+
+          // Clear canvas with background
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+          // Draw whiteboard strokes
+          if (snapshot.events && snapshot.events.length > 0) {
+            const scale = 0.1 // Scale down for thumbnail
+            
+            snapshot.events.forEach((event: any) => {
+              if (event.type === 'stroke:start' || event.type === 'stroke:move') {
+                ctx.strokeStyle = event.color || '#000000'
+                ctx.lineWidth = (event.width || 2) * scale
+                ctx.lineCap = 'round'
+                ctx.lineJoin = 'round'
+                
+                if (event.type === 'stroke:start') {
+                  ctx.beginPath()
+                  ctx.moveTo(event.x * scale, event.y * scale)
+                } else if (event.type === 'stroke:move') {
+                  ctx.lineTo(event.x * scale, event.y * scale)
+                  ctx.stroke()
+                }
+              }
+            })
+          }
+
+          setIsLoading(false)
+        } catch (err) {
+          console.warn('Failed to load whiteboard thumbnail:', err)
+          setError(true)
+          setIsLoading(false)
+        }
+      }
+
+      loadThumbnail()
+    }, [boardId])
+
+    const gradient = getBoardGradient(boardName)
+
+    if (error || isLoading) {
+      // Fallback to gradient with initials
+      return (
+        <div 
+          className="h-40 relative overflow-hidden"
+          style={{
+            background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})`,
+          }}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-white text-2xl font-light drop-shadow-lg">
+              {getBoardInitials(boardName)}
+            </span>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="h-40 relative overflow-hidden bg-white">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full object-contain"
+          style={{ imageRendering: 'crisp-edges' }}
+        />
+      </div>
+    )
+  }
   const placeholderBoards = useMemo(() => {
     const placeholders = []
     const placeholderNames = ['Design System', 'User Flow', 'Architecture', 'Marketing Ideas']
