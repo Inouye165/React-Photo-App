@@ -1,13 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { motion, useReducedMotion } from 'framer-motion'
+import { ArrowLeft, Link, Users, Copy } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
+import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
+
+function getInitials(value: string): string {
+  const cleaned = value.trim()
+  if (!cleaned) return 'U'
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return cleaned.slice(0, 2).toUpperCase()
+}
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -34,7 +45,7 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
 export default function WhiteboardSessionPage(): React.JSX.Element {
   const { boardId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const [boardName, setBoardName] = useState<string>('Whiteboard')
   const [members, setMembers] = useState<RoomMemberSummary[]>([])
@@ -45,6 +56,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
   const inviteDeniedLoggedRef = useRef(false)
+  const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
 
@@ -52,20 +64,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     if (realtimeStatus === 'connected') {
       return {
         label: 'Connected',
-        className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+        className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
       }
     }
 
     if (realtimeStatus === 'offline') {
       return {
         label: 'Offline',
-        className: 'border-slate-300 bg-slate-100 text-slate-600',
+        className: 'border-chess-muted/30 bg-chess-surfaceSoft text-chess-muted',
       }
     }
 
     return {
       label: 'Connecting…',
-      className: 'border-amber-200 bg-amber-50 text-amber-700',
+      className: 'border-chess-accent/30 bg-chess-accent/10 text-chess-accentSoft',
     }
   }, [realtimeStatus])
 
@@ -227,55 +239,138 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [boardId, isOwner])
 
+  const accountLabel = profile?.username || user?.email?.split('@')[0] || 'User'
+  const accountInitials = getInitials(accountLabel)
+  const isAuthenticated = Boolean(user)
+
+  const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
+
   if (accessState === 'checking') {
     return (
-      <div className="h-[100dvh] w-full bg-white p-4">
-        <div className="mx-auto max-w-3xl">
-          <button onClick={() => navigate('/whiteboards')} className="rounded border px-2 py-1">Back</button>
-          <div className="mt-4 text-slate-700">Checking whiteboard access…</div>
+      <motion.div 
+        className={pageClassName}
+        initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/whiteboards')}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-sm font-medium">Back</span>
+              </button>
+              <h1 className="text-xl font-semibold font-display">Checking Access</h1>
+            </div>
+            <ChessHeaderAccountIndicator
+              isAuthenticated={isAuthenticated}
+              displayName={accountLabel}
+              initials={accountInitials}
+              onSignIn={() => navigate('/login')}
+            />
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="text-chess-muted mb-2">Checking whiteboard access…</div>
+            </div>
+          </div>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
   if (accessState === 'denied') {
     return (
-      <div className="h-[100dvh] w-full bg-white p-4">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="text-lg font-semibold">No access</h2>
-          <p className="mt-2 text-slate-700">You don’t have access to this whiteboard yet.</p>
-          <button onClick={() => navigate('/whiteboards')} className="mt-4 rounded border px-3 py-2">Back to Whiteboards</button>
+      <motion.div 
+        className={pageClassName}
+        initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
+        animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => navigate('/whiteboards')}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-sm font-medium">Back</span>
+              </button>
+              <h1 className="text-xl font-semibold font-display">Access Denied</h1>
+            </div>
+            <ChessHeaderAccountIndicator
+              isAuthenticated={isAuthenticated}
+              displayName={accountLabel}
+              initials={accountInitials}
+              onSignIn={() => navigate('/login')}
+            />
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center max-w-md">
+              <Users className="w-12 h-12 mx-auto mb-4 text-chess-muted/50" />
+              <h2 className="text-lg font-medium mb-2">No Access</h2>
+              <p className="text-chess-muted mb-6">You don't have access to this whiteboard.</p>
+              <button 
+                onClick={() => navigate('/whiteboards')} 
+                className="px-4 py-2 rounded-lg bg-chess-accent hover:bg-chess-accentSoft transition-colors text-white font-medium"
+              >
+                Back to Whiteboards
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </motion.div>
     )
   }
 
   return (
-    <div className="h-[100dvh] w-full bg-white">
-      <div className="flex items-center gap-3 border-b p-3">
-        <button onClick={() => navigate('/whiteboards')} className="rounded border px-2 py-1">Back</button>
-        <h2 className="text-lg font-semibold">{boardName}</h2>
-        <div className="ml-auto">
-          <div className="flex items-center gap-2">
+    <motion.div 
+      className={pageClassName}
+      initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
+      animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="flex flex-col h-full">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/whiteboards')}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm font-medium">Back</span>
+            </button>
+            <h1 className="text-xl font-semibold font-display truncate">{boardName}</h1>
+          </div>
+          <div className="flex items-center gap-3">
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${realtimeIndicator.className}`}>
               {realtimeIndicator.label}
             </span>
             <button
               onClick={handleOpenInvite}
-              className="rounded border px-2 py-1"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
               aria-label="Invite"
             >
-              Invite
+              <Users className="w-4 h-4" />
+              <span className="text-sm font-medium">Invite</span>
             </button>
             {isOwner && (
               <button
                 onClick={() => {
                   void handleCreateJoinLink()
                 }}
-                className="rounded border px-2 py-1"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
                 disabled={isCreatingJoinLink}
               >
-                {isCreatingJoinLink ? 'Creating…' : 'Create join link'}
+                <Link className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  {isCreatingJoinLink ? 'Creating…' : 'Create join link'}
+                </span>
               </button>
             )}
             <button
@@ -286,44 +381,53 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   // ignore
                 }
               }}
-              className="rounded border px-2 py-1"
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
             >
-              Copy board link
+              <Copy className="w-4 h-4" />
+              <span className="text-sm font-medium">Copy link</span>
             </button>
+            <ChessHeaderAccountIndicator
+              isAuthenticated={isAuthenticated}
+              displayName={accountLabel}
+              initials={accountInitials}
+              onSignIn={() => navigate('/login')}
+            />
           </div>
         </div>
-      </div>
 
-      {inviteNotice && (
-        <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {inviteNotice}
+        {/* Notices */}
+        {inviteNotice && (
+          <div className="border-b border-chess-accent/30 bg-chess-accent/10 px-4 py-3 text-sm text-chess-accentSoft">
+            {inviteNotice}
+          </div>
+        )}
+
+        {joinLinkNotice && (
+          <div
+            className={`border-b px-4 py-3 text-sm ${
+              joinLinkNotice.tone === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/30 bg-red-500/10 text-red-300'
+            }`}
+          >
+            {joinLinkNotice.message}
+          </div>
+        )}
+
+        {/* Whiteboard Content */}
+        <div className="flex-1 overflow-hidden">
+          <WhiteboardPad
+            boardId={boardId}
+            className="h-full"
+            onRealtimeStatusChange={(status) => {
+              setRealtimeStatus(status)
+            }}
+            onAccessDenied={() => {
+              setAccessState('denied')
+              setRealtimeStatus('offline')
+            }}
+          />
         </div>
-      )}
-
-      {joinLinkNotice && (
-        <div
-          className={`border-b px-3 py-2 text-sm ${
-            joinLinkNotice.tone === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-rose-200 bg-rose-50 text-rose-800'
-          }`}
-        >
-          {joinLinkNotice.message}
-        </div>
-      )}
-
-      <div className="h-[calc(100dvh-56px)]">
-        <WhiteboardPad
-          boardId={boardId}
-          className="h-full"
-          onRealtimeStatusChange={(status) => {
-            setRealtimeStatus(status)
-          }}
-          onAccessDenied={() => {
-            setAccessState('denied')
-            setRealtimeStatus('offline')
-          }}
-        />
       </div>
 
       <RoomMembersModal
@@ -337,6 +441,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         onSearchUsers={handleSearchUsers}
         onInviteMember={handleInviteMember}
       />
-    </div>
+    </motion.div>
   )
 }
