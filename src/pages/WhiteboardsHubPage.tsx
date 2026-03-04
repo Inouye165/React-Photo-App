@@ -243,6 +243,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                     src={member.avatar_url || (profile?.id === member.user_id ? profile?.avatar_url : undefined)}
                     username={member.username || null}
                     size={32}
+                    loading="eager"
                   />
                 </div>
               ))}
