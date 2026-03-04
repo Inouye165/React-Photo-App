@@ -317,22 +317,66 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           if (snapshot.events && snapshot.events.length > 0) {
             const scale = 0.1 // Scale down for thumbnail
             
+            // Find bounds of drawn content
+            let minX = Infinity, minY = Infinity
+            let maxX = -Infinity, maxY = -Infinity
+            
+            snapshot.events.forEach((event: any) => {
+              if (event.type === 'stroke:start' || event.type === 'stroke:move') {
+                minX = Math.min(minX, event.x)
+                minY = Math.min(minY, event.y)
+                maxX = Math.max(maxX, event.x)
+                maxY = Math.max(maxY, event.y)
+              }
+            })
+            
+            // Calculate content bounds with padding
+            const padding = 20
+            const contentWidth = maxX - minX + padding * 2
+            const contentHeight = maxY - minY + padding * 2
+            const centerX = (minX + maxX) / 2
+            const centerY = (minY + maxY) / 2
+            
+            // Calculate scale to fit content in canvas
+            const scaleX = canvas.width / contentWidth
+            const scaleY = canvas.height / contentHeight
+            const finalScale = Math.min(scaleX, scaleY) * scale
+            
+            // Center the drawing
+            const offsetX = (canvas.width / 2) - (centerX * finalScale)
+            const offsetY = (canvas.height / 2) - (centerY * finalScale)
+            
+            // Draw strokes with proper scaling and centering
             snapshot.events.forEach((event: any) => {
               if (event.type === 'stroke:start' || event.type === 'stroke:move') {
                 ctx.strokeStyle = event.color || '#000000'
-                ctx.lineWidth = (event.width || 2) * scale
+                ctx.lineWidth = (event.width || 2) * finalScale
                 ctx.lineCap = 'round'
                 ctx.lineJoin = 'round'
                 
+                const x = event.x * finalScale + offsetX
+                const y = event.y * finalScale + offsetY
+                
                 if (event.type === 'stroke:start') {
                   ctx.beginPath()
-                  ctx.moveTo(event.x * scale, event.y * scale)
+                  ctx.moveTo(x, y)
                 } else if (event.type === 'stroke:move') {
-                  ctx.lineTo(event.x * scale, event.y * scale)
+                  ctx.lineTo(x, y)
                   ctx.stroke()
                 }
               }
             })
+            
+            // Draw outline showing thumbnail area
+            ctx.strokeStyle = '#3b82f6'
+            ctx.lineWidth = 2
+            ctx.setLineDash([5, 5])
+            const outlineX = offsetX + (minX * finalScale) - padding * finalScale
+            const outlineY = offsetY + (minY * finalScale) - padding * finalScale
+            const outlineWidth = contentWidth * finalScale
+            const outlineHeight = contentHeight * finalScale
+            ctx.strokeRect(outlineX, outlineY, outlineWidth, outlineHeight)
+            ctx.setLineDash([])
           }
 
           setIsLoading(false)
