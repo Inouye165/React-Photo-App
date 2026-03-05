@@ -1,22 +1,22 @@
 ﻿{
     "logs":  {
-                 "api":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\api-20260304-133251.log",
-                 "worker":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\worker-20260304-133251.log",
-                 "frontend":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\frontend-20260304-133251.log"
+                 "api":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\api-20260304-174538.log",
+                 "worker":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\worker-20260304-174538.log",
+                 "frontend":  "C:\\Users\\inouy\\photo-app\\logs\\local-runtime\\frontend-20260304-174538.log"
              },
     "repoRoot":  "C:\\Users\\inouy\\photo-app",
-    "startedAt":  "2026-03-04T13:32:51.5986067-08:00",
+    "startedAt":  "2026-03-04T17:45:38.3928820-08:00",
     "terminals":  [
                       {
-                          "pid":  27140,
+                          "pid":  36852,
                           "title":  "Lumina API"
                       },
                       {
-                          "pid":  40164,
+                          "pid":  33728,
                           "title":  "Lumina Worker"
                       },
                       {
-                          "pid":  35224,
+                          "pid":  25660,
                           "title":  "Lumina Frontend"
                       }
                   ]
