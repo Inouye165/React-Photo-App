@@ -184,13 +184,26 @@ export async function updateWhiteboardTitle(boardId: string, title: string): Pro
     throw new Error('Whiteboard name cannot be empty')
   }
 
-  const { error } = await supabase
-    .from('rooms')
-    .update({ name: trimmedTitle })
-    .eq('id', boardId)
+  try {
+    await request<void>({ 
+      path: `/api/whiteboards/${boardId}`, 
+      method: 'PUT',
+      body: { name: trimmedTitle }
+    })
+  } catch (err) {
+    // Fallback for local dev: try Supabase direct update
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ name: trimmedTitle })
+        .eq('id', boardId)
 
-  if (error) {
-    throw new Error(error.message || 'Unable to rename whiteboard')
+      if (error) {
+        throw new Error(error.message || 'Unable to rename whiteboard')
+      }
+    } catch (e) {
+      throw err
+    }
   }
 }
 

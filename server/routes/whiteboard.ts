@@ -870,6 +870,38 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
     }
   });
 
+  // PUT: update whiteboard name (owner only)
+  router.put('/:boardId', validateRequest({ params: BoardIdParamsSchema }), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      console.log('[WB-HTTP] PUT /api/whiteboards/:boardId called', { path: req.path, user: req.user && typeof req.user.id === 'string' ? req.user.id : null });
+      const userId = req.user?.id ? String(req.user.id) : null;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const boardId = req.validated?.params?.boardId;
+      if (!boardId) return res.status(400).json({ success: false, error: 'Invalid request' });
+
+      const { name } = req.body || {};
+      if (!name || typeof name !== 'string') return res.status(400).json({ success: false, error: 'Name is required' });
+      
+      const trimmedName = name.trim();
+      if (!trimmedName) return res.status(400).json({ success: false, error: 'Name cannot be empty' });
+      if (trimmedName.length > 100) return res.status(400).json({ success: false, error: 'Name too long' });
+
+      const owner = await isBoardOwner(db, boardId, userId);
+      if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
+
+      await db('rooms').where({ id: boardId }).update({ 
+        name: trimmedName,
+        updated_at: new Date().toISOString()
+      });
+
+      return res.status(200).json({ success: true, name: trimmedName });
+    } catch (err) {
+      console.error('[WB-HTTP] update failed', { error: err });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
   // DELETE: delete a whiteboard (owner only)
   router.delete('/:boardId', validateRequest({ params: BoardIdParamsSchema }), async (req: AuthenticatedRequest, res: Response) => {
     try {
