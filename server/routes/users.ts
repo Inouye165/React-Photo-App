@@ -207,7 +207,9 @@ function createUsersRouter({ db }) {
               .select('id')
               .where({ id: existing.id })
               .first();
-            staleDeletedAccount = !authRow;
+            if (!authRow) {
+              staleDeletedAccount = true;
+            }
             staleCheckCompleted = true;
           } catch {
             // Some DB roles may not have access to auth schema; preserve conflict behavior.

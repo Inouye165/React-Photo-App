@@ -217,7 +217,7 @@ async function loadImage(blob: Blob): Promise<HTMLImageElement | ImageBitmap> {
     img.onerror = () => {
       clearTimeout(timeout);
       URL.revokeObjectURL(url);
-      console.warn(`[loadImage] Image element failed: type=${blob.type}, size=${blob.size}`);
+      console.warn(`[loadImage] Image element failed: type=${blob.type?.replace(/[<>]/g, '') || 'unknown'}, size=${blob.size}`);
       reject(new Error('Failed to decode image'));
     };
 

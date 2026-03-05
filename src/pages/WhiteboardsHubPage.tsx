@@ -417,10 +417,8 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
       if (!canvasRef.current || hasLoaded || cancelled) return
 
       try {
-        if (!cancelled) {
-          setIsLoading(true)
-          setError(false)
-        }
+        setIsLoading(true)
+        setError(false)
 
         const { data: { session } } = await supabase.auth.getSession()
         // eslint-disable-next-line no-console
@@ -441,7 +439,7 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
 
         const canvas = canvasRef.current
         if (!canvas) {
-          if (!cancelled) setIsLoading(false)
+          setIsLoading(false)
           return
         }
 

@@ -2059,7 +2059,6 @@ function ChessStoryModal({
 
       const narration = narrationResult.narration
       const text = narration.text
-      if (cancelled || narrationTokenRef.current !== narrationToken) return
       setActiveNarrationSource(narration.source)
 
       if (!text) {
