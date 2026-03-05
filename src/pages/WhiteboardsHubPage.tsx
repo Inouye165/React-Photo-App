@@ -207,17 +207,26 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   // Whiteboard Card Component
   const WhiteboardCard = ({ board, index, isPlaceholder = false }: { board: any; index: number; isPlaceholder?: boolean }) => {
     const inputRef = useRef<HTMLInputElement | null>(null)
+    const wasEditingRef = useRef(false)
+    
     useEffect(() => {
-      if (editingBoardId === board.id) {
-        // focus when entering edit mode only
-        try {
-          inputRef.current?.focus()
-          const len = inputRef.current?.value.length ?? 0
-          inputRef.current?.setSelectionRange(len, len)
-        } catch {
-          // ignore
-        }
+      const isCurrentlyEditing = editingBoardId === board.id
+      const wasEditing = wasEditingRef.current
+      
+      if (isCurrentlyEditing && !wasEditing) {
+        // Only focus when first entering edit mode
+        setTimeout(() => {
+          try {
+            inputRef.current?.focus()
+            const len = inputRef.current?.value.length ?? 0
+            inputRef.current?.setSelectionRange(len, len)
+          } catch {
+            // ignore
+          }
+        }, 0)
       }
+      
+      wasEditingRef.current = isCurrentlyEditing
     }, [editingBoardId, board.id])
     const gradient = getBoardGradient(board.name || 'Whiteboard')
     const initials = getBoardInitials(board.name || 'Whiteboard')
