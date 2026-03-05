@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3 } from 'lucide-react'
-import { listMyWhiteboards, createWhiteboard } from '../api/whiteboards'
+import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle } from '../api/whiteboards'
 import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
 import Avatar from '../components/Avatar'
@@ -163,10 +163,40 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   }
 
   const handleTitleSave = async (boardId: string) => {
-    // TODO: Implement API call to update board name
-    console.log('Saving new title:', boardId, editingTitle)
-    setEditingBoardId(null)
-    setEditingTitle('')
+    const trimmedTitle = editingTitle.trim()
+    const currentBoard = boards.find((board) => board.id === boardId)
+    const currentTitle = (currentBoard?.name || 'Whiteboard').trim()
+
+    if (!trimmedTitle) {
+      setCreateError('Whiteboard name cannot be empty')
+      return
+    }
+
+    if (trimmedTitle === currentTitle) {
+      setEditingBoardId(null)
+      setEditingTitle('')
+      return
+    }
+
+    try {
+      setCreateError(null)
+      await updateWhiteboardTitle(boardId, trimmedTitle)
+      setBoards((prev) => prev.map((board) => (
+        board.id === boardId
+          ? { ...board, name: trimmedTitle, updated_at: new Date().toISOString() }
+          : board
+      )))
+      setFilteredBoards((prev) => prev.map((board) => (
+        board.id === boardId
+          ? { ...board, name: trimmedTitle, updated_at: new Date().toISOString() }
+          : board
+      )))
+      setEditingBoardId(null)
+      setEditingTitle('')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to rename whiteboard'
+      setCreateError(message)
+    }
   }
 
   const handleTitleCancel = () => {
@@ -176,6 +206,19 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
 
   // Whiteboard Card Component
   const WhiteboardCard = ({ board, index, isPlaceholder = false }: { board: any; index: number; isPlaceholder?: boolean }) => {
+    const inputRef = useRef<HTMLInputElement | null>(null)
+    useEffect(() => {
+      if (editingBoardId === board.id) {
+        // focus when entering edit mode only
+        try {
+          inputRef.current?.focus()
+          const len = inputRef.current?.value.length ?? 0
+          inputRef.current?.setSelectionRange(len, len)
+        } catch {
+          // ignore
+        }
+      }
+    }, [editingBoardId, board.id])
     const gradient = getBoardGradient(board.name || 'Whiteboard')
     const initials = getBoardInitials(board.name || 'Whiteboard')
     const members = membersByBoard[board.id] || []
@@ -204,6 +247,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           border: '1px solid #252525'
         }}
       >
+        
         {/* Thumbnail Area */}
         {!isPlaceholder ? (
           <div className="relative">
@@ -242,8 +286,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
             {/* Title */}
             {editingBoardId === board.id ? (
               <input
+                ref={inputRef}
                 type="text"
                 value={editingTitle}
+                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => setEditingTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -254,17 +300,16 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                 }}
                 onBlur={() => handleTitleSave(board.id)}
                 className="flex-1 text-sm font-medium text-white bg-transparent border-b border-[#444] outline-none"
-                autoFocus
               />
             ) : (
               <div 
                 className="flex items-center gap-2 flex-1 cursor-text group"
-                onClick={() => handleTitleEdit(board.id, board.name || 'Whiteboard')}
+                onClick={(e) => { e.stopPropagation(); handleTitleEdit(board.id, board.name || 'Whiteboard') }}
               >
                 <h3 className="font-medium text-white text-sm truncate">
                   {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
                 </h3>
-                <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-[0.4] transition-opacity" />
+                <Edit3 className="w-3 h-3 text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
             )}
             

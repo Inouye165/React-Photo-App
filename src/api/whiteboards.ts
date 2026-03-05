@@ -176,6 +176,24 @@ export async function createWhiteboard(title?: string): Promise<ChatRoom> {
   return room as ChatRoom
 }
 
+export async function updateWhiteboardTitle(boardId: string, title: string): Promise<void> {
+  if (!boardId) throw new Error('Missing board id')
+
+  const trimmedTitle = title.trim()
+  if (!trimmedTitle) {
+    throw new Error('Whiteboard name cannot be empty')
+  }
+
+  const { error } = await supabase
+    .from('rooms')
+    .update({ name: trimmedTitle })
+    .eq('id', boardId)
+
+  if (error) {
+    throw new Error(error.message || 'Unable to rename whiteboard')
+  }
+}
+
 export async function ensureWhiteboardMembership(boardId: string): Promise<EnsureWhiteboardMembershipResult> {
   let userId = ''
   try {
