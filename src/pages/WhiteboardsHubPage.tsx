@@ -472,7 +472,20 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
         )
         const excalidrawElements = Array.isArray(snapshot.excalidrawElements) ? snapshot.excalidrawElements : []
         // eslint-disable-next-line no-console
-        console.log('[WB-THUMB] events counts', { boardId, normalized: events.length, drawable: drawableEvents.length, excalidraw: excalidrawElements.length })
+        console.log('[WB-THUMB] events counts', {
+          boardId,
+          normalized: events.length,
+          drawable: drawableEvents.length,
+          excalidraw: excalidrawElements.length,
+        })
+        // Helpful debug for text rendering issues
+        // eslint-disable-next-line no-console
+        if (excalidrawElements.length > 0) {
+          console.log('[WB-THUMB] excalidraw sample', {
+            boardId,
+            sample: excalidrawElements.slice(0, 5),
+          })
+        }
 
         if (drawableEvents.length > 0) {
           emptySnapshotAttemptsRef.current = 0
@@ -659,8 +672,38 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
                 ctx.fill()
               }
               ctx.stroke()
+            } else if (el.type === 'text' || typeof (el as any).text === 'string') {
+              const anyEl = el as any
+              const rawText = typeof anyEl.text === 'string' ? anyEl.text : ''
+              const trimmed = rawText.trim()
+              if (trimmed) {
+                const tl = toCanvas(el.x, el.y)
+                const w = el.width * scale
+                const h = el.height * scale
+                const baseFontSize =
+                  typeof anyEl.fontSize === 'number' && Number.isFinite(anyEl.fontSize)
+                    ? anyEl.fontSize
+                    : h
+                const fontSize = Math.max(8, Math.min(48, baseFontSize * scale * 0.6))
+                const fontFamily =
+                  typeof anyEl.fontFamily === 'string' && anyEl.fontFamily.trim().length > 0
+                    ? anyEl.fontFamily
+                    : 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+                ctx.font = `${fontSize}px ${fontFamily}`
+                ctx.textAlign = 'center'
+                ctx.textBaseline = 'middle'
+                ctx.fillStyle = anyEl.textColor || color
+                const cx = tl.x + w / 2
+                const cy = tl.y + h / 2
+                const text = trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed
+                if (typeof ctx.fillText === 'function') {
+                  ctx.fillText(text, cx, cy)
+                } else if (typeof ctx.strokeText === 'function') {
+                  ctx.strokeText(text, cx, cy)
+                }
+              }
             }
-            // Skip text and image elements for thumbnail
+            // Skip image elements for thumbnail
           }
 
           ctx.globalAlpha = 1

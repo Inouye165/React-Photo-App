@@ -384,6 +384,11 @@ type ExcalidrawSnapshotElement = {
   points?: number[][];
   isDeleted?: boolean;
   customData?: Record<string, unknown>;
+  // Text-related fields
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  textColor?: string;
 };
 
 function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array {
@@ -426,7 +431,7 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         if (typeof el.x !== 'number' || typeof el.y !== 'number') return false;
         return true;
       })
-      .map((el: any): ExcalidrawSnapshotElement => ({
+        .map((el: any): ExcalidrawSnapshotElement => ({
         id: String(el.id || ''),
         type: el.type,
         x: el.x,
@@ -442,6 +447,12 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         points: Array.isArray(el.points) ? el.points : undefined,
         isDeleted: false,
         customData: typeof el.customData === 'object' && el.customData ? el.customData : undefined,
+        // Capture text and font fields explicitly so thumbnails can render textual elements
+        text: typeof el.text === 'string' ? el.text : undefined,
+        fontSize: typeof el.fontSize === 'number' ? el.fontSize : undefined,
+        fontFamily: typeof el.fontFamily === 'string' ? el.fontFamily : undefined,
+        // Prefer strokeColor for text color if available
+        textColor: typeof el.strokeColor === 'string' ? el.strokeColor : undefined,
       }));
   } catch (err) {
     console.warn('[WB-HTTP] fetchExcalidrawElements error', { boardId, error: err instanceof Error ? err.message : String(err) });
