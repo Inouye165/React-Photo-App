@@ -447,7 +447,7 @@ export default function PhotoCard({
                 >
                   <Pencil size={12} className="xs:size-14" />
                   <span className="hidden xs:inline">Edit</span>
-                  <span className="xs:hidden">Edit</span>
+                  <span className="xs:hidden sr-only">Edit photo</span>
                 </button>
               )}
 
@@ -461,7 +461,7 @@ export default function PhotoCard({
                 >
                   <Sparkles size={12} className="xs:size-14" />
                   <span className="hidden xs:inline">Analyze</span>
-                  <span className="xs:hidden">AI</span>
+                  <span className="xs:hidden sr-only">Analyze photo</span>
                 </button>
               )}
 
@@ -478,7 +478,7 @@ export default function PhotoCard({
                   data-testid="photo-card-return-btn"
                 >
                   <span className="hidden xs:inline">Return</span>
-                  <span className="xs:hidden">Back</span>
+                  <span className="xs:hidden sr-only">Return photo to queue</span>
                 </button>
               )}
 
