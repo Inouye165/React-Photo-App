@@ -176,6 +176,37 @@ export async function createWhiteboard(title?: string): Promise<ChatRoom> {
   return room as ChatRoom
 }
 
+export async function updateWhiteboardTitle(boardId: string, title: string): Promise<void> {
+  if (!boardId) throw new Error('Missing board id')
+
+  const trimmedTitle = title.trim()
+  if (!trimmedTitle) {
+    throw new Error('Whiteboard name cannot be empty')
+  }
+
+  try {
+    await request<void>({ 
+      path: `/api/whiteboards/${boardId}`, 
+      method: 'PUT',
+      body: { name: trimmedTitle }
+    })
+  } catch (err) {
+    // Fallback for local dev: try Supabase direct update
+    try {
+      const { error } = await supabase
+        .from('rooms')
+        .update({ name: trimmedTitle })
+        .eq('id', boardId)
+
+      if (error) {
+        throw new Error(error.message || 'Unable to rename whiteboard')
+      }
+    } catch (e) {
+      throw err
+    }
+  }
+}
+
 export async function ensureWhiteboardMembership(boardId: string): Promise<EnsureWhiteboardMembershipResult> {
   let userId = ''
   try {
