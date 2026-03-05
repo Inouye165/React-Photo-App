@@ -1198,7 +1198,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       />
 
       <div className="relative z-10 flex h-full min-h-screen flex-col">
-      {/* Sticky Header */}
+      {/* Sticky Header (UI shell) */}
       <div className="sticky top-0 z-10 bg-[#0D0D0D]/80 backdrop-blur-lg border-b border-[#2A2A2A]">
         <div className="flex items-center justify-between px-6 py-4">
           {/* Left: Title */}
