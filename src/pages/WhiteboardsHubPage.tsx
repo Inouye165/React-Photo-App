@@ -955,7 +955,7 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
       )}
 
       {/* Content Area */}
-      <div className="p-4 border-t border-[#222]">
+      <div className="p-3 xs:p-4 border-t border-[#222]">
         {saveError && <p className="mb-1.5 text-xs text-red-400">{saveError}</p>}
         <div className="flex items-center justify-between">
           {/* Title */}
@@ -980,7 +980,7 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
               }`}
               onClick={isOwner ? handleEdit : undefined}
             >
-              <h3 className="font-medium text-white text-sm truncate">
+              <h3 className="font-medium text-white text-xs xs:text-sm truncate">
                 {board.name || (isPlaceholder ? 'Example Board' : 'Untitled')}
               </h3>
               {isOwner && (
@@ -991,7 +991,7 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
 
           {/* Timestamp */}
           {!isPlaceholder && (
-            <div className="flex items-center gap-1 text-[#666] text-xs ml-3 flex-shrink-0">
+            <div className="flex items-center gap-1 text-[#666] text-xs ml-2 xs:ml-3 flex-shrink-0">
               <Clock className="w-3 h-3" />
               <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
             </div>
@@ -1007,14 +1007,14 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
                   <Avatar
                     src={member.avatar_url || (profileId === member.user_id ? (profileAvatarUrl || undefined) : undefined)}
                     username={member.username || null}
-                    size={32}
+                    size={28}
                     loading="eager"
                   />
                 </div>
               ))}
             {!isPlaceholder && members.length > 3 && (
               <div
-                className="w-8 h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
+                className="w-6 h-6 xs:w-8 xs:h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
                 style={{ zIndex: 0 }}
               >
                 +{members.length - 3}
@@ -1243,7 +1243,66 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       <div className="relative z-10 flex h-full min-h-screen flex-col">
       {/* Sticky Header (UI shell) */}
       <div className="sticky top-0 z-10 bg-[#0D0D0D]/80 backdrop-blur-lg border-b border-[#2A2A2A]">
-        <div className="flex items-center justify-between px-6 py-4">
+        {/* Mobile Header */}
+        <div className="xs:hidden px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => navigate('/')}
+              aria-label="Go home"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Home</span>
+            </button>
+            <h1 className="text-lg font-semibold">Whiteboards</h1>
+            <button 
+              onClick={handleCreate} 
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#F59E0B] hover:bg-[#d97706] transition-colors text-black font-medium text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create</span>
+            </button>
+          </div>
+          
+          {/* Mobile Search */}
+          <div className="relative mb-3">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-[#666]" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg text-white placeholder-[#666] focus:outline-none focus:border-[#444] transition-colors text-sm"
+            />
+          </div>
+          
+          {/* Mobile Tabs */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`flex-1 px-2 py-1.5 text-xs font-medium transition-all rounded-md ${
+                activeTab === 'all'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setActiveTab('recent')}
+              className={`flex-1 px-2 py-1.5 text-xs font-medium transition-all rounded-md ${
+                activeTab === 'recent'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
+              }`}
+            >
+              Recent
+            </button>
+          </div>
+        </div>
+        
+        {/* Desktop Header */}
+        <div className="hidden xs:flex items-center justify-between px-6 py-4">
           {/* Left: Title */}
           <div className="flex items-center gap-4">
             <button
@@ -1289,8 +1348,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           </div>
         </div>
 
-        {/* Tab Filters */}
-        <div className="px-6 pb-3">
+        {/* Desktop Tab Filters */}
+        <div className="hidden xs:block px-6 pb-3">
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('all')}
@@ -1324,10 +1383,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           </div>
         )}
 
-        <div className="p-6">
+        <div className="p-3 xs:p-6">
           {/* Skeleton loading state */}
           {loading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 xs:gap-6">
               {Array.from({ length: 8 }).map((_, i) => (
                 <SkeletonCard key={i} index={i} />
               ))}
@@ -1363,7 +1422,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           {!loading && filteredBoards.length > 0 && (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={boardIds} strategy={rectSortingStrategy}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 xs:gap-6">
                   <AnimatePresence mode="popLayout">
                     {filteredBoards.map((board, index) => (
                       <SortableCardWrapper key={board.id} id={board.id}>

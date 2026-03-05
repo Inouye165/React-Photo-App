@@ -280,7 +280,7 @@ export default function PhotoCard({
       aria-disabled={isUploading || isTransitioning}
     >
       {/* Thumbnail Section */}
-      <div className="relative bg-slate-100 overflow-hidden min-h-[120px]">
+      <div className="relative bg-slate-100 overflow-hidden min-h-[100px] xs:min-h-[120px]">
         {/* Loading Skeleton */}
         {!derivativesFailed && !imageLoaded && !imageError && imageUrl && !isUploading && (
           <div
@@ -402,10 +402,10 @@ export default function PhotoCard({
       </div>
 
       {/* Content Section */}
-      <div className="p-4">
+      <div className="p-3 xs:p-4">
         {/* Title */}
         <h3
-          className="text-base font-semibold text-slate-800 truncate mb-2"
+          className="text-sm xs:text-base font-semibold text-slate-800 truncate mb-1.5 xs:mb-2"
           title={photo.caption || photo.filename}
           data-testid="photo-card-title"
         >
@@ -413,7 +413,7 @@ export default function PhotoCard({
         </h3>
 
         {/* Metadata */}
-        <div className="space-y-1 text-sm text-slate-500 mb-4">
+        <div className="space-y-1 text-xs xs:text-sm text-slate-500 mb-3 xs:mb-4">
           <div className="flex items-center gap-2">
             <Calendar size={14} className="text-slate-400" />
             <span data-testid="photo-card-date">{date}</span>
@@ -441,12 +441,13 @@ export default function PhotoCard({
               {photo.state === 'inprogress' && (
                 <button
                   onClick={handleEdit}
-                  className="flex-1 min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
+                  className="flex-1 min-h-[40px] xs:min-h-[44px] flex items-center justify-center gap-1.5 xs:gap-2 px-2 xs:px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs xs:text-sm font-medium rounded-full transition-colors"
                   aria-label="Edit photo"
                   data-testid="photo-card-edit-btn"
                 >
-                  <Pencil size={14} />
-                  <span>Edit</span>
+                  <Pencil size={12} className="xs:size-14" />
+                  <span className="hidden xs:inline">Edit</span>
+                  <span className="xs:hidden sr-only">Edit photo</span>
                 </button>
               )}
 
@@ -454,12 +455,13 @@ export default function PhotoCard({
               {photo.state === 'working' && (
                 <button
                   onClick={handleApprove}
-                  className="flex-1 min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full transition-colors"
+                  className="flex-1 min-h-[40px] xs:min-h-[44px] flex items-center justify-center gap-1.5 xs:gap-2 px-2 xs:px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs xs:text-sm font-medium rounded-full transition-colors"
                   aria-label="Analyze photo with AI"
                   data-testid="photo-card-approve-btn"
                 >
-                  <Sparkles size={14} />
-                  <span>Analyze</span>
+                  <Sparkles size={12} className="xs:size-14" />
+                  <span className="hidden xs:inline">Analyze</span>
+                  <span className="xs:hidden sr-only">Analyze photo</span>
                 </button>
               )}
 
@@ -471,11 +473,12 @@ export default function PhotoCard({
                     // This triggers the "move to working" action
                     onApprove?.(photo.id);
                   }}
-                  className="min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
+                  className="min-h-[40px] xs:min-h-[44px] flex items-center justify-center gap-1.5 xs:gap-2 px-2 xs:px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs xs:text-sm font-medium rounded-full transition-colors"
                   aria-label="Return photo to queue"
                   data-testid="photo-card-return-btn"
                 >
-                  <span>Return</span>
+                  <span className="hidden xs:inline">Return</span>
+                  <span className="xs:hidden sr-only">Return photo to queue</span>
                 </button>
               )}
 
@@ -483,7 +486,7 @@ export default function PhotoCard({
               <button
                 onClick={handleDelete}
                 disabled={!canWrite}
-                className={`w-11 h-11 flex items-center justify-center rounded-full transition-colors ${
+                className={`w-9 h-9 xs:w-11 xs:h-11 flex items-center justify-center rounded-full transition-colors ${
                   canWrite
                     ? 'bg-red-50 hover:bg-red-100 text-red-600'
                     : 'bg-slate-50 text-slate-300 cursor-not-allowed'
@@ -492,7 +495,7 @@ export default function PhotoCard({
                 title={canWrite ? 'Delete photo' : 'No permission to delete'}
                 data-testid="photo-card-delete-btn"
               >
-                <Trash2 size={16} />
+                <Trash2 size={14} className="xs:size-16" />
               </button>
             </>
           )}
