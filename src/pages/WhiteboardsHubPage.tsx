@@ -727,22 +727,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     )
   }, [])
 
-  const placeholderBoards = useMemo(() => {
-    const placeholders = []
-    const placeholderNames = ['Design System', 'User Flow', 'Architecture', 'Marketing Ideas']
-    
-    for (let i = 0; i < 4; i++) {
-      placeholders.push({
-        id: `placeholder-${i}`,
-        name: placeholderNames[i],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        isPlaceholder: true
-      })
-    }
-    
-    return placeholders
-  }, [])
+  // Note: placeholder boards intentionally removed — real boards only
 
   async function handleCreate() {
     setCreateError(null)
@@ -902,20 +887,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                   onSave={handleSave}
                 />
               ))}
-              {filteredBoards.length < 4 &&
-                placeholderBoards.slice(0, 4 - filteredBoards.length).map((placeholder, index) => (
-                  <WhiteboardCard
-                    key={placeholder.id}
-                    board={placeholder}
-                    index={filteredBoards.length + index}
-                    isPlaceholder
-                    members={EMPTY_MEMBERS}
-                    profileId={undefined}
-                    profileAvatarUrl={undefined}
-                    onNavigate={handleNavigate}
-                    onSave={handleSave}
-                  />
-                ))}
+              {/* Placeholder cards removed — only real boards render */}
             </div>
           )}
         </div>
