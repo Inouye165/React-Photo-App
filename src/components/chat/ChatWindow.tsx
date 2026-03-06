@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 
 import {
   ArrowDown,
   Image as ImageIcon,
-  MapPin,
-  Maximize2,
-  Minimize2,
+  
+  
   Settings,
   Users,
   X,
@@ -28,10 +26,9 @@ import ChatMembersModal from './ChatMembersModal'
 import ChatSettingsModal from './ChatSettingsModal'
 import ChatRoomInfoPanel from './ChatRoomInfoPanel'
 import PotluckWidget from './widgets/PotluckWidget'
-import LocationMapPanel from '../LocationMapPanel'
 import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
 import WhiteboardViewer from '../whiteboard/WhiteboardViewer'
-import { openSingletonWindow } from '../../utils/openSingletonWindow'
+
 
 export interface ChatWindowProps {
   roomId: string | null
@@ -61,12 +58,7 @@ type ChatHeaderState = {
   otherUserId: string | null
 }
 
-type DashboardCardProps = {
-  title: string
-  onToggleExpand?: () => void
-  isExpanded?: boolean
-  children: ReactNode
-}
+ 
 
 type PostgrestLikeError = {
   code?: string | null
@@ -91,10 +83,6 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const { messages, loading, error, upsertLocalMessage } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
   const isConversationMode = mode === 'conversation'
-  const handleOpenPad = useCallback(() => {
-    if (!roomId) return
-    openSingletonWindow(`/chat/${roomId}/pad`, `whiteboard-pad-${roomId}`)
-  }, [roomId])
 
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
@@ -664,39 +652,12 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     }
   }, [roomId, navigate])
 
-  const potluck = roomMetadata.potluck || { items: [], allergies: [] }
-  const potluckLocation = potluck.location
-  const addressLabel = potluckLocation?.address?.trim() || null
-  const hasLatLng =
-    potluckLocation != null && Number.isFinite(potluckLocation.lat) && Number.isFinite(potluckLocation.lng)
-  const mapPhoto = hasLatLng
-    ? { metadata: { latitude: potluckLocation?.lat, longitude: potluckLocation?.lng } }
-    : null
   const isCollaboration = roomType === 'collaboration'
 
   const gateStatus = useIdentityGateStatus()
   const shouldShowIdentityGate = Boolean(showIdentityGate) && gateStatus.type !== 'allow'
 
-  function DashboardCard({ title, onToggleExpand, isExpanded, children }: DashboardCardProps) {
-    return (
-      <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-          <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-          {onToggleExpand && (
-            <button
-              type="button"
-              onClick={onToggleExpand}
-              className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-              aria-label={isExpanded ? `Collapse ${title}` : `Expand ${title}`}
-            >
-              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-            </button>
-          )}
-        </div>
-        <div className="p-4 text-sm text-slate-700">{children}</div>
-      </section>
-    )
-  }
+  
 
   if (shouldShowIdentityGate) {
     return (
@@ -1140,44 +1101,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </section>
       )}
 
-      {/* Right widget column: show pad mode for collaboration, and location map only when coordinates exist */}
-      {isCollaboration && (
-        <section className="relative h-full min-h-0" aria-label="Pad mode">
-          <div className="h-full overflow-auto">
-            <DashboardCard title="Pad mode">
-              <div className="space-y-3 text-sm text-slate-600">
-                <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
-                <button
-                  type="button"
-                  onClick={handleOpenPad}
-                  className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                >
-                  Open pad mode
-                </button>
-                <div className="text-xs text-slate-500">Tip: keep the pad screen awake while drawing.</div>
-              </div>
-            </DashboardCard>
-          </div>
-        </section>
-      )}
-
-      {roomType === 'potluck' && hasLatLng && (
-        <section className="relative h-full min-h-0" aria-label="Location map">
-          <div className="h-full overflow-auto">
-            <DashboardCard title="Location">
-              <div className="rounded-xl overflow-hidden border border-slate-200">
-                <div className="aspect-video w-full relative">
-                  <LocationMapPanel photo={mapPhoto} />
-                </div>
-                <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                  <MapPin className="h-3 w-3 text-slate-500" />
-                  <span className="truncate">{addressLabel ?? 'Address pending'}</span>
-                </div>
-              </div>
-            </DashboardCard>
-          </div>
-        </section>
-      )}
+      {/* Right widget column removed: pad mode and location cards intentionally omitted */}
     </div>
   )
 }

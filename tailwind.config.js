@@ -6,6 +6,10 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        'xs': '475px',
+        'iphone-pro-max': '430px',
+      },
       fontFamily: {
         display: ['"Cinzel"', 'serif'],
         body: ['"Source Sans 3"', 'sans-serif'],

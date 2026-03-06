@@ -141,7 +141,7 @@ export async function createWhiteboard(title?: string): Promise<ChatRoom> {
 
   const { data: room, error: roomError } = await supabase
     .from('rooms')
-    .insert({ name: title ?? 'Whiteboard', is_group: true, type: 'whiteboard', created_by: userId, metadata: {} })
+    .insert({ name: title ?? 'Untitled', is_group: true, type: 'whiteboard', created_by: userId, metadata: {} })
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 

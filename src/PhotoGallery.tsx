@@ -36,7 +36,7 @@ interface PhotoGalleryProps {
 }
 
 const getMasonryGap = (density: DensityMode): GridConfig => {
-  return { gap: density === 'compact' ? 8 : 16 };
+  return { gap: density === 'compact' ? 6 : 10 };
 };
 
 export default function PhotoGallery({ 
@@ -54,7 +54,7 @@ export default function PhotoGallery({
 }: PhotoGalleryProps): React.JSX.Element {
   const pendingUploads = useStore((state) => state.pendingUploads);
   const { gap } = getMasonryGap(density);
-  const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
+  const paddingClass = density === 'compact' ? 'p-1 xs:p-2 sm:p-3' : 'p-1.5 xs:p-3 sm:p-6';
 
   const mergedPhotos = useMemo(() => {
     const serverPhotosRaw = Array.isArray(photos) ? photos : [];
@@ -93,12 +93,13 @@ export default function PhotoGallery({
   }, [pollingPhotoIds, pollingPhotoId]);
 
   const masonryBreakpoints = useMemo(() => {
-    // 3 cols desktop, 2 cols tablet, 1 col mobile
+    // Optimized for iPhone Pro Max: 2 cols on larger phones, 1 col on small phones
     return {
       default: 3,
       1024: 3,
       768: 2,
-      640: 1,
+      475: 1, // Extra small phones
+      430: 1, // iPhone Pro Max and smaller
     };
   }, []);
 

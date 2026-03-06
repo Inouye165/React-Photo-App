@@ -93,6 +93,14 @@ function toAffectedRows(value: unknown): number {
   return 0;
 }
 
+function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const dbError = error as { code?: string; message?: string };
+  if (dbError.code !== '42703') return false;
+  const message = String(dbError.message || '').toLowerCase();
+  return message.includes(`\"${columnName.toLowerCase()}\"`) || message.includes(` ${columnName.toLowerCase()} `);
+}
+
 function isInviteRoomForeignKeyError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
 
@@ -323,11 +331,22 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
 }
 
 async function fetchHistory(db: Knex, boardId: string): Promise<{ events: WhiteboardEventRow[]; cursor: HistoryCursor }> {
-  const rows = await db<WhiteboardEventRow>('whiteboard_events')
-    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'segment_index', 'source_id', 'color', 'width')
-    .where('board_id', boardId)
-    .orderBy('id', 'asc')
-    .limit(MAX_HISTORY_EVENTS);
+  let rows: WhiteboardEventRow[] = [];
+  try {
+    rows = await db<WhiteboardEventRow>('whiteboard_events')
+      .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'segment_index', 'source_id', 'color', 'width')
+      .where('board_id', boardId)
+      .orderBy('id', 'asc')
+      .limit(MAX_HISTORY_EVENTS);
+  } catch (error) {
+    if (!isMissingColumnError(error, 'segment_index')) throw error;
+
+    rows = (await db('whiteboard_events')
+      .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', db.raw('NULL::integer as segment_index'), 'source_id', 'color', 'width')
+      .where('board_id', boardId)
+      .orderBy('id', 'asc')
+      .limit(MAX_HISTORY_EVENTS)) as WhiteboardEventRow[];
+  }
 
   const lastRow = rows.length ? rows[rows.length - 1] : null;
   const lastSeq = lastRow ? normalizeSeq(lastRow.id) : null;
@@ -365,6 +384,11 @@ type ExcalidrawSnapshotElement = {
   points?: number[][];
   isDeleted?: boolean;
   customData?: Record<string, unknown>;
+  // Text-related fields
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  textColor?: string;
 };
 
 function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array {
@@ -407,7 +431,7 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         if (typeof el.x !== 'number' || typeof el.y !== 'number') return false;
         return true;
       })
-      .map((el: any): ExcalidrawSnapshotElement => ({
+        .map((el: any): ExcalidrawSnapshotElement => ({
         id: String(el.id || ''),
         type: el.type,
         x: el.x,
@@ -423,6 +447,12 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         points: Array.isArray(el.points) ? el.points : undefined,
         isDeleted: false,
         customData: typeof el.customData === 'object' && el.customData ? el.customData : undefined,
+        // Capture text and font fields explicitly so thumbnails can render textual elements
+        text: typeof el.text === 'string' ? el.text : undefined,
+        fontSize: typeof el.fontSize === 'number' ? el.fontSize : undefined,
+        fontFamily: typeof el.fontFamily === 'string' ? el.fontFamily : undefined,
+        // Prefer strokeColor for text color if available
+        textColor: typeof el.strokeColor === 'string' ? el.strokeColor : undefined,
       }));
   } catch (err) {
     console.warn('[WB-HTTP] fetchExcalidrawElements error', { boardId, error: err instanceof Error ? err.message : String(err) });
@@ -806,9 +836,18 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       if (!roomIds.length) return res.json([]);
 
       // Fetch rooms in one query
-      const rooms = await db('rooms')
-        .select('id', 'name', 'is_group', 'created_at', 'updated_at', 'type', 'metadata', 'created_by')
-        .whereIn('id', roomIds as string[]);
+      let rooms: Array<any> = [];
+      try {
+        rooms = await db('rooms')
+          .select('id', 'name', 'is_group', 'created_at', 'updated_at', 'type', 'metadata', 'created_by')
+          .whereIn('id', roomIds as string[]);
+      } catch (error) {
+        if (!isMissingColumnError(error, 'updated_at')) throw error;
+
+        rooms = await db('rooms')
+          .select('id', 'name', 'is_group', 'created_at', db.raw('created_at as updated_at'), 'type', 'metadata', 'created_by')
+          .whereIn('id', roomIds as string[]);
+      }
 
       // Fetch all members for these rooms in one query to avoid N+1
       const allMembers = await db('room_members').select('room_id', 'user_id', 'is_owner').whereIn('room_id', roomIds as string[]);
@@ -890,10 +929,45 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const owner = await isBoardOwner(db, boardId, userId);
       if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
 
-      await db('rooms').where({ id: boardId }).update({ 
-        name: trimmedName,
-        updated_at: new Date().toISOString()
-      });
+      const updatedAt = new Date().toISOString();
+
+      let updated: unknown;
+      try {
+        updated = await db('rooms').where({ id: boardId }).update({
+          name: trimmedName,
+          updated_at: updatedAt,
+        });
+      } catch (error) {
+        if (!isMissingColumnError(error, 'updated_at')) throw error;
+        updated = await db('rooms').where({ id: boardId }).update({ name: trimmedName });
+      }
+
+      if (toAffectedRows(updated) === 0) {
+        // Local dev can run with a split data plane where API DB and Supabase aren't the same.
+        // In that case, persist rename directly to Supabase instead of returning false success.
+        const { data: fallbackRow, error: fallbackError } = await supabase
+          .from('rooms')
+          .update({ name: trimmedName })
+          .eq('id', boardId)
+          .select('id')
+          .maybeSingle();
+
+        if (fallbackError) {
+          console.warn('[WB-HTTP] update fallback failed', {
+            boardId,
+            userId,
+            code: fallbackError.code,
+            message: fallbackError.message,
+          });
+          return res.status(500).json({ success: false, error: 'Unable to persist whiteboard name' });
+        }
+
+        if (!fallbackRow?.id) {
+          return res.status(404).json({ success: false, error: 'Whiteboard not found' });
+        }
+
+        console.log('[WB-HTTP] update fallback applied', { boardId, userId });
+      }
 
       return res.status(200).json({ success: true, name: trimmedName });
     } catch (err) {
