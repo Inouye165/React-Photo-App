@@ -193,7 +193,7 @@ export default function GotwBoardInsightPopup({
       >
         <span className={`text-lg font-bold ${colors.text}`}>{symbol}</span>
         <span className={`text-base font-semibold ${colors.text}`}>{label}</span>
-        {san && <span className="ml-auto text-sm font-medium text-chess-text/70">{san}</span>}
+        <span className="ml-auto text-sm font-medium text-chess-text/70">{san}</span>
       </div>
 
       {/* Short description */}
