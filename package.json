@@ -130,16 +130,21 @@
   },
   "overrides": {
     "@excalidraw/excalidraw": {
-      "nanoid": "3.3.11"
+      "nanoid": "3.3.11",
+      "immutable": "4.3.8",
+      "sass": "1.97.3"
     },
     "@excalidraw/mermaid-to-excalidraw": {
       "nanoid": "5.0.9",
       "mermaid": "10.9.4",
-      "dompurify": "3.2.4"
+      "dompurify": "3.3.2"
     },
     "mermaid": "10.9.4",
-    "dompurify": "3.2.4",
-    "tar": "7.5.7"
+    "dompurify": "3.3.2",
+    "immutable": "4.3.8",
+    "sass": "1.97.3",
+    "tar": "7.5.10",
+    "@tootallnate/once": "3.0.1"
   },
   "size-limit": [
     {
