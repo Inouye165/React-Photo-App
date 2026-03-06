@@ -33,10 +33,54 @@ export type ImageOptimizationOptions = {
 
 const DEFAULT_QUALITY = 0.7
 const IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|webp|gif|bmp|tiff|heic|heif)$/i
+const SAFE_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/bmp',
+  'image/tiff',
+  'image/heic',
+  'image/heif',
+])
 
 function isSupportedImageFile(file: File): boolean {
   if (file.type?.startsWith('image/')) return true
   return IMAGE_EXTENSION_PATTERN.test(file.name)
+}
+
+function isLikelyBinaryImageHeader(arr: Uint8Array): boolean {
+  if (arr && arr.length > 0 && arr[0] === 0x3c) return false
+  if (arr && arr.length >= 2 && arr[0] === 0xff && arr[1] === 0xd8) return true
+  if (arr.length >= 4 && arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4e && arr[3] === 0x47) return true
+  if (arr.length >= 4 && arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x38) return true
+  if (arr.length >= 2 && arr[0] === 0x42 && arr[1] === 0x4d) return true
+  if (
+    arr.length >= 12 &&
+    arr[0] === 0x52 &&
+    arr[1] === 0x49 &&
+    arr[2] === 0x46 &&
+    arr[3] === 0x46 &&
+    arr[8] === 0x57 &&
+    arr[9] === 0x45 &&
+    arr[10] === 0x42 &&
+    arr[11] === 0x50
+  ) return true
+  if (arr.length >= 12 && arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70) return true
+  return true
+}
+
+async function assertSafeImageFile(file: File): Promise<void> {
+  const type = String(file.type || '').toLowerCase().trim()
+  if (type && !SAFE_IMAGE_MIME_TYPES.has(type)) {
+    throw new Error(`Unsupported image type: ${type.replace(/[<>]/g, '')}`)
+  }
+
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer())
+  if (!isLikelyBinaryImageHeader(header)) {
+    throw new Error('Unsupported or unsafe image content')
+  }
 }
 
 function calculateScaledDimensions(width: number, height: number, maxDimension: number) {
@@ -52,6 +96,8 @@ function calculateScaledDimensions(width: number, height: number, maxDimension: 
 }
 
 async function loadSourceImage(file: File): Promise<{ image: HTMLImageElement | ImageBitmap; width: number; height: number }> {
+  await assertSafeImageFile(file)
+
   if (typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(file)
