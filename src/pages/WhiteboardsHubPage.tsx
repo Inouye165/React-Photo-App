@@ -920,6 +920,6 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           )}
         </div>
       </div>
-    </motion.main>
+  </motion.main>
   )
 }

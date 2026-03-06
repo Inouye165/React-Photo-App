@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
+import { generateNKeysBetween } from 'fractional-indexing'
 import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import type {
@@ -727,6 +728,7 @@ export type WhiteboardRealtimeStatus = 'connected' | 'connecting' | 'offline'
 
 export type WhiteboardCanvasHandle = {
   openBackgroundPicker: () => void
+  insertImageFile: (file: File) => Promise<void>
   clearBackground: () => void
   toggleBackgroundFitMode: () => void
   toggleViewMode: () => void
@@ -1709,25 +1711,6 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     [backgroundFitMode, backgroundInfo, handleBackgroundClear, hasBackground, viewModeEnabled],
   )
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      openBackgroundPicker: () => {
-        setBackgroundPickerOpen(true)
-      },
-      clearBackground: () => {
-        handleBackgroundClear()
-      },
-      toggleBackgroundFitMode: () => {
-        setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))
-      },
-      toggleViewMode: () => {
-        setViewModeEnabled((prev) => !prev)
-      },
-    }),
-    [handleBackgroundClear],
-  )
-
   const flushSceneToYjs = useCallback(
     (scene: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles }) => {
       const doc = docRef.current
@@ -2248,6 +2231,132 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
     },
     [applyPendingRemoteScene, commitPendingLocalScene, handleReset, scheduleSceneSync],
+  )
+
+  const insertImageFile = useCallback(
+    async (file: File) => {
+      const api = excalidrawApiRef.current
+      if (!api) {
+        throw new Error('Whiteboard is not ready yet.')
+      }
+      if (!file.type.startsWith('image/')) {
+        throw new Error('Please choose an image file.')
+      }
+
+      const dataUrl = await readFileAsDataUrl(file)
+      const dimensions = await loadImageDimensions(dataUrl)
+      const rawWidth = Math.max(1, dimensions.width)
+      const rawHeight = Math.max(1, dimensions.height)
+      const currentAppState = api.getAppState()
+      const zoom = currentAppState.zoom.value || 1
+      const viewportWidth = Math.max(240, currentAppState.width / zoom)
+      const viewportHeight = Math.max(240, currentAppState.height / zoom)
+      const scale = Math.min(1, 800 / rawWidth, (viewportWidth * 0.8) / rawWidth, (viewportHeight * 0.8) / rawHeight)
+      const width = Math.max(1, Math.round(rawWidth * scale))
+      const height = Math.max(1, Math.round(rawHeight * scale))
+      // Translate the viewport center into scene coordinates so the inserted image lands in view.
+      const centerX = (currentAppState.width / 2 - currentAppState.scrollX) / zoom
+      const centerY = (currentAppState.height / 2 - currentAppState.scrollY) / zoom
+      const x = Math.round(centerX - width / 2)
+      const y = Math.round(centerY - height / 2)
+      const now = Date.now()
+      const fileId = generateId() as BinaryFileData['id']
+      const elementId = generateId()
+      const fileData: BinaryFileData = {
+        id: fileId,
+        dataURL: dataUrl as BinaryFileData['dataURL'],
+        mimeType: (file.type || 'image/*') as BinaryFileData['mimeType'],
+        created: now,
+        lastRetrieved: now,
+      }
+
+      await Promise.resolve(api.addFiles([fileData]))
+      if (typeof window !== 'undefined') {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
+
+      const existingElements = api.getSceneElements()
+      const lastElementIndex = [...existingElements]
+        .reverse()
+        .find((element) => typeof element.index === 'string')?.index
+      const nextIndex = generateNKeysBetween(lastElementIndex, undefined, 1)[0] as ExcalidrawElement['index']
+      const imageElement = {
+        id: elementId,
+        type: 'image',
+        x,
+        y,
+        width,
+        height,
+        angle: 0,
+        strokeColor: 'transparent',
+        backgroundColor: 'transparent',
+        fillStyle: 'solid',
+        strokeWidth: 1,
+        strokeStyle: 'solid',
+        roughness: 0,
+        opacity: 100,
+        groupIds: [],
+        frameId: null,
+        roundness: null,
+        seed: Math.floor(Math.random() * 2 ** 31),
+        version: 1,
+        versionNonce: Math.floor(Math.random() * 2 ** 31),
+        index: nextIndex,
+        isDeleted: false,
+        boundElements: null,
+        updated: now,
+        link: null,
+        locked: false,
+        fileId,
+        scale: [1, 1],
+        crop: null,
+        status: 'saved',
+      } as ExcalidrawElement
+      const nextElements = [...existingElements, imageElement]
+      const nextAppState = {
+        ...currentAppState,
+        selectedElementIds: { [elementId]: true } as Record<string, true>,
+      }
+      const nextFiles = {
+        ...resolveFiles(mapRef.current?.get('files')),
+        [fileId]: fileData,
+      } as BinaryFiles
+
+      suppressSyncRef.current = true
+      api.updateScene({
+        elements: nextElements,
+        appState: nextAppState,
+      })
+      requestAnimationFrame(() => {
+        suppressSyncRef.current = false
+      })
+      commitPendingLocalScene({
+        elements: nextElements,
+        appState: nextAppState,
+        files: nextFiles,
+      })
+    },
+    [commitPendingLocalScene, generateId, loadImageDimensions, readFileAsDataUrl],
+  )
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      openBackgroundPicker: () => {
+        setBackgroundPickerOpen(true)
+      },
+      insertImageFile,
+      clearBackground: () => {
+        handleBackgroundClear()
+      },
+      toggleBackgroundFitMode: () => {
+        setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))
+      },
+      toggleViewMode: () => {
+        setViewModeEnabled((prev) => !prev)
+      },
+    }),
+    [handleBackgroundClear, insertImageFile],
   )
 
   return (

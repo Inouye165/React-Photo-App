@@ -1,5 +1,6 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
@@ -10,6 +11,7 @@ const listRoomMembersMock = vi.fn()
 const searchUsersMock = vi.fn()
 const addRoomMemberMock = vi.fn()
 const useAuthMock = vi.fn()
+const insertImageFileMock = vi.fn()
 
 let roomName = 'Board One'
 let roomCreatedBy = 'owner-1'
@@ -48,10 +50,16 @@ vi.mock('../supabaseClient', () => ({
 }))
 
 vi.mock('../components/whiteboard/WhiteboardPad', () => ({
-  default: ({ onRealtimeStatusChange }: { onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'offline') => void }) => {
+  default: React.forwardRef(function MockWhiteboardPad(
+    { onRealtimeStatusChange }: { onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'offline') => void },
+    ref: React.ForwardedRef<{ insertImageFile: (file: File) => Promise<void> }>,
+  ) {
+    React.useImperativeHandle(ref, () => ({
+      insertImageFile: insertImageFileMock,
+    }))
     onRealtimeStatusChange?.('connected')
     return <div data-testid="whiteboard-pad">WhiteboardPad</div>
-  },
+  }),
 }))
 
 function renderPage() {
@@ -78,6 +86,7 @@ describe('WhiteboardSessionPage', () => {
     ])
     searchUsersMock.mockResolvedValue([])
     addRoomMemberMock.mockResolvedValue(undefined)
+    insertImageFileMock.mockResolvedValue(undefined)
 
     useAuthMock.mockReturnValue({ user: { id: 'user-1' } })
   })
@@ -113,5 +122,20 @@ describe('WhiteboardSessionPage', () => {
     renderPage()
 
     expect(await screen.findByRole('button', { name: 'Create join link' })).toBeInTheDocument()
+  })
+
+  it('forwards selected photos from the header control into the whiteboard canvas handle', async () => {
+    const { container } = renderPage()
+
+    await screen.findByRole('button', { name: 'Upload or take photo' })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null
+    expect(input).not.toBeNull()
+
+    const file = new File(['whiteboard-photo'], 'problem.png', { type: 'image/png' })
+    fireEvent.change(input!, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(insertImageFileMock).toHaveBeenCalledWith(file)
+    })
   })
 })

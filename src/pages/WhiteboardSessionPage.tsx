@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Link, Users, Copy } from 'lucide-react'
+import { ArrowLeft, Link, Users, Copy, Camera } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
+import type { WhiteboardCanvasHandle } from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
 import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
@@ -46,9 +47,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isOwner, setIsOwner] = useState(false)
   const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [joinLinkNotice, setJoinLinkNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [photoUploadError, setPhotoUploadError] = useState<string | null>(null)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
   const inviteDeniedLoggedRef = useRef(false)
+  const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
+  const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
@@ -237,6 +241,26 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     // Future: Handle tab-specific logic here
   }, [])
 
+  const handlePhotoUploadClick = useCallback(() => {
+    photoUploadInputRef.current?.click()
+  }, [])
+
+  const handlePhotoFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setPhotoUploadError(null)
+    try {
+      if (!whiteboardPadRef.current) {
+        throw new Error('Whiteboard is not ready yet.')
+      }
+      await whiteboardPadRef.current.insertImageFile(file)
+    } catch (error) {
+      setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
+    }
+  }, [])
+
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
 
   if (accessState === 'checking') {
@@ -342,9 +366,29 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             <h1 className="text-xl font-semibold font-display truncate">{boardName}</h1>
           </div>
           <div className="flex items-center gap-3">
+            <input
+              ref={photoUploadInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={handlePhotoFileChange}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
             <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${realtimeIndicator.className}`}>
               {realtimeIndicator.label}
             </span>
+            <button
+              onClick={handlePhotoUploadClick}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
+              aria-label="Upload or take photo"
+              title="Upload or take photo"
+              type="button"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="text-sm font-medium">Photo</span>
+            </button>
             <button
               onClick={handleOpenInvite}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
@@ -408,11 +452,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         )}
 
+        {photoUploadError && (
+          <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {photoUploadError}
+          </div>
+        )}
+
         {/* Whiteboard Content */}
         <div className="flex-1 overflow-hidden flex">
           {/* Main Canvas Area */}
           <div className="flex-1 min-w-0">
             <WhiteboardPad
+              ref={whiteboardPadRef}
               boardId={boardId}
               className="h-full"
               onRealtimeStatusChange={(status) => {
