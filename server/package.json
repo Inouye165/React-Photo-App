@@ -42,7 +42,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.210.0",
     "@opentelemetry/sdk-node": "^0.210.0",
     "@supabase/supabase-js": "^2.76.1",
-    "axios": "^1.13.5",
+    "axios": "^1.7.9",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.0",
     "busboy": "^1.6.0",
@@ -85,8 +85,9 @@
     "cookie": "0.7.0",
     "diff": "8.0.3",
     "lodash": "4.17.23",
+    "ajv": "^8.18.0",
     "jest-openapi": {
-      "openapi-validator": "0.14.1"
+      "openapi-validator": "0.14.2"
     }
   },
   "devDependencies": {
@@ -105,12 +106,14 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "jest": "^29.7.0",
-    "jest-openapi": "0.14.1",
+    "jest-openapi": "0.14.2",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "jest": {
     "testEnvironment": "node",
