@@ -16,10 +16,6 @@ jest.mock('../lib/redis', () => ({
   getRedisClient: jest.fn(() => null)
 }));
 
-jest.mock('../utils/urlSigning', () => ({
-  verifyThumbnailSignature: jest.fn(() => ({ valid: true }))
-}));
-
 jest.mock('../lib/supabaseClient', () => {
   const mockStorageApi = {
     createSignedUrl: jest.fn(),
@@ -40,12 +36,18 @@ jest.mock('../lib/supabaseClient', () => {
 const app = require('../server');
 const supabase = require('../lib/supabaseClient');
 const { getConfig } = require('../config/env');
+const { signThumbnailUrl } = require('../utils/urlSigning');
 
 const storageApi = supabase.__mock.storageApi;
 
 function makeTestBearerToken() {
   const { jwtSecret } = getConfig();
   return jwt.sign({ sub: 'test-user-1' }, jwtSecret);
+}
+
+function makeSignedThumbnailQuery(hash = 'testhash') {
+  const { sig, exp } = signThumbnailUrl(hash, 900);
+  return { sig, exp };
 }
 
 describe('Display redirect Cache-Control (HTTP regression)', () => {
@@ -63,7 +65,7 @@ describe('Display redirect Cache-Control (HTTP regression)', () => {
   });
 
   test('GET /display/thumbnails/:filename (signed) 302 includes private no-store Cache-Control', async () => {
-    const exp = Math.floor(Date.now() / 1000) + 600;
+    const { sig, exp } = makeSignedThumbnailQuery('testhash');
 
     storageApi.createSignedUrl.mockResolvedValue({
       data: { signedUrl: 'https://example.invalid/signed-thumbnail-url' },
@@ -71,7 +73,7 @@ describe('Display redirect Cache-Control (HTTP regression)', () => {
     });
 
     const res = await request(app)
-      .get(`/display/thumbnails/testhash.webp?sig=fake&exp=${exp}`)
+      .get(`/display/thumbnails/testhash.webp?sig=${encodeURIComponent(sig)}&exp=${exp}`)
       .expect(302);
 
     expect(storageApi.createSignedUrl).toHaveBeenCalledTimes(1);
@@ -85,6 +87,47 @@ describe('Display redirect Cache-Control (HTTP regression)', () => {
 
     expect(cacheControl).toMatch(/\bprivate\b/i);
     expect(cacheControl).toMatch(/no-store/i);
+  });
+
+  test('GET /display/thumbnails/:filename rejects invalid signature', async () => {
+    const { exp } = makeSignedThumbnailQuery('testhash');
+
+    const res = await request(app)
+      .get(`/display/thumbnails/testhash.webp?sig=invalid-signature&exp=${exp}`)
+      .expect(403);
+
+    expect(storageApi.createSignedUrl).not.toHaveBeenCalled();
+    expect(res.body).toEqual({
+      success: false,
+      error: 'Forbidden'
+    });
+  });
+
+  test('GET /display/thumbnails/:filename rejects expired signed URL', async () => {
+    const { sig } = makeSignedThumbnailQuery('testhash');
+    const expiredExp = Math.floor(Date.now() / 1000) - 60;
+
+    const res = await request(app)
+      .get(`/display/thumbnails/testhash.webp?sig=${encodeURIComponent(sig)}&exp=${expiredExp}`)
+      .expect(403);
+
+    expect(storageApi.createSignedUrl).not.toHaveBeenCalled();
+    expect(res.body).toEqual({
+      success: false,
+      error: 'Forbidden'
+    });
+  });
+
+  test('GET /display/thumbnails/:filename (unsigned) rejects requests without auth', async () => {
+    const res = await request(app)
+      .get('/display/thumbnails/testhash.webp')
+      .expect(401);
+
+    expect(storageApi.createSignedUrl).not.toHaveBeenCalled();
+    expect(res.body).toEqual({
+      success: false,
+      error: 'Access token required for image access'
+    });
   });
 
   test('GET /display/thumbnails/:filename (unsigned) 302 includes private no-store Cache-Control', async () => {
