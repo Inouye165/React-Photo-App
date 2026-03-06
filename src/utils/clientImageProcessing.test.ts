@@ -1,3 +1,4 @@
+// Security-focused test inserted below within the main suite to avoid duplicate imports
 // @ts-nocheck
 /**
  * Unit Tests for Client-Side Image Processing Utility
@@ -35,6 +36,14 @@ function createMockFile(type, name = 'test-image') {
 }
 
 describe('clientImageProcessing', () => {
+  it('rejects text-based SVG disguised as a JPEG file (security)', async () => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`;
+    const fakeFile = new File([svg], 'malicious.jpg', { type: 'image/jpeg' });
+
+    const result = await generateClientThumbnail(fakeFile, 100);
+
+    expect(result).toBeNull();
+  });
   describe('isSupportedImageType', () => {
     it('should return true for supported image types', () => {
       expect(isSupportedImageType(createMockFile('image/jpeg'))).toBe(true);
