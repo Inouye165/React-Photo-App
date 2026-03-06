@@ -94,6 +94,16 @@ const MAX_THUMBNAIL_SIZE = 400; // Maximum dimension for thumbnails
 const MAX_IMAGEDATA_SIZE = 2000; // Safety limit before ImageData creation
 const MAX_UPLOAD_SIZE = 2048; // Maximum dimension for upload compression
 const UPLOAD_WEBP_QUALITY = 0.8; // 80% WebP quality for uploads
+const SAFE_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/bmp',
+  'image/avif',
+  'image/heic',
+  'image/heif',
+]);
 
 // ==================== Private Helper Functions ====================
 
@@ -160,6 +170,12 @@ function isHeicFile(file: File | Blob | null | undefined): boolean {
   );
 }
 
+function isSafeImageBlob(blob: Blob): boolean {
+  const type = String(blob.type || '').trim().toLowerCase();
+  if (!type) return false;
+  return SAFE_IMAGE_MIME_TYPES.has(type);
+}
+
 /**
  * Load an image from a Blob/File using createImageBitmap or Image element
  * @security Validates blob before loading, timeout prevents hanging
@@ -170,6 +186,10 @@ async function loadImage(blob: Blob): Promise<HTMLImageElement | ImageBitmap> {
   // Validate blob first
   if (!blob || blob.size === 0) {
     throw new Error(`Invalid blob: size=${blob?.size}, type=${blob?.type}`);
+  }
+
+  if (!isSafeImageBlob(blob)) {
+    throw new Error(`Unsupported image type: ${String(blob.type || 'unknown').replace(/[<>]/g, '')}`);
   }
 
   // Try createImageBitmap first - more reliable for blobs
