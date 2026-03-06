@@ -3,7 +3,7 @@
 ## Scope
 
 - Repository: `Inouye165/React-Photo-App`
-- Branch: `fix/codeql-open-alerts-2026-03-06`
+- Branches: `fix/codeql-open-alerts-2026-03-06`, `fix/codeql-open-alerts-round-2-2026-03-06`
 - Goal: clear all open code scanning findings that represent real issues and confirm there are no remaining real security issues in GitHub security surfaces.
 
 ## Security Surface Snapshot
@@ -13,6 +13,12 @@ Checked via `gh api` on 2026-03-06:
 - Code scanning: 4 open alerts before fixes
 - Dependabot alerts: 0 open
 - Secret scanning alerts: 0 open
+
+Follow-up check via `gh api` on 2026-03-06 after merge of `#758`:
+
+- Code scanning on `main`: 1 reproducible open alert
+- User-reported warning count: 4 still visible in GitHub UI
+- Assessment: only 1 currently open code scanning alert is returned by GitHub's API, so only that alert could be remediated in this iteration without guessing at non-reproducible findings.
 
 ## Alert Remediation Log
 
@@ -97,6 +103,15 @@ Checked via `gh api` on 2026-03-06:
 - Verified the PR head ref has `0` open CodeQL alerts.
 - No further iteration was required.
 
+### Iteration 2
+
+- Started branch `fix/codeql-open-alerts-round-2-2026-03-06` from `main` after merge of `#758`.
+- Re-queried GitHub code scanning via `gh api`.
+- GitHub returned 1 open alert on `main`: `#344` in `server/routes/users.ts`.
+- Removed the remaining dead-store assignment in the fallback `auth.users` check.
+- The user reported 4 warnings still visible, but GitHub's code-scanning API did not reproduce 4 open alerts at this time.
+- Next step: validate locally, push branch, and open a PR with this remediation log as the PR message.
+
 ## Current Conclusion
 
-At this point there are no open Dependabot alerts and no open secret scanning alerts. The only security findings observed during this remediation were the 4 code scanning alerts above, and the PR branch now validates with `0` open CodeQL alerts plus a fully green check suite.
+At this point there are no open Dependabot alerts and no open secret scanning alerts. Iteration 1 cleared the original 4 code scanning alerts on PR `#758`, and iteration 2 addresses the single reproducible CodeQL alert currently returned for `main`. If GitHub still renders 4 warnings in the UI after the next PR check completes, those additional items will need fresh reproducible alert IDs or a refreshed code-scanning run to distinguish stale UI state from real remaining findings.

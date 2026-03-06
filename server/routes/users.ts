@@ -208,7 +208,6 @@ function createUsersRouter({ db }) {
             if (!authRow) {
               staleDeletedAccount = true;
             }
-            staleCheckCompleted = true;
           } catch {
             // Some DB roles may not have access to auth schema; preserve conflict behavior.
           }
