@@ -64,9 +64,26 @@ Checked via `gh api` on 2026-03-06:
 
 ## PR And CI Tracking
 
-- PR: pending creation
-- CI status: pending
-- Code scanning re-run status: pending
+- PR: `https://github.com/Inouye165/React-Photo-App/pull/758`
+- CI status: completed successfully
+- Code scanning re-run status: completed successfully
+- Branch-level CodeQL result: `0` open alerts for `refs/pull/758/head`
+
+### Final PR Check Results
+
+- `CI / ci (20)`: success
+- `CI / test-prod-csp`: success
+- `Integration Test / integration`: success
+- `Secret Scan & Server Tests / secret-scan`: success
+- `Secret Scan & Server Tests / server-tests (20)`: success
+- `CodeQL / Analyze (javascript-typescript)`: success
+- `CodeQL / Analyze (actions)`: success
+- `CodeQL`: success
+- `Vercel`: success
+- `Vercel Preview Comments`: success
+- `test-a11y-e2e`: skipped by workflow conditions
+- `test-perf-micro`: skipped by workflow conditions
+- `test-docker-smoke`: skipped by workflow conditions
 
 ## Iteration Log
 
@@ -75,8 +92,11 @@ Checked via `gh api` on 2026-03-06:
 - Created remediation branch.
 - Fixed all 4 open code scanning alerts returned by GitHub.
 - Verified targeted tests and type-check.
-- Next step: push branch, open PR, wait for CI and code scanning results, then update this document with outcomes.
+- Pushed branch and opened PR `#758`.
+- Waited for GitHub Actions and CodeQL to complete.
+- Verified the PR head ref has `0` open CodeQL alerts.
+- No further iteration was required.
 
 ## Current Conclusion
 
-At this point there are no open Dependabot alerts and no open secret scanning alerts. The only open security findings observed were the 4 code scanning alerts above, and all 4 have code changes prepared on the remediation branch.
+At this point there are no open Dependabot alerts and no open secret scanning alerts. The only security findings observed during this remediation were the 4 code scanning alerts above, and the PR branch now validates with `0` open CodeQL alerts plus a fully green check suite.
