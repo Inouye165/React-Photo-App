@@ -198,7 +198,7 @@ export default function ChessUserMenu({
 
             <ChevronDown
               size={14}
-              className="text-chess-muted transition-transform ${isOpen ? 'rotate-180' : ''}"
+              className={"text-chess-muted transition-transform " + (isOpen ? 'rotate-180' : '')}
             />
           </button>
         </div>

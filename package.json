@@ -52,6 +52,9 @@
     ]
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.0",
     "@supabase/supabase-js": "^2.84.0",
     "@tanstack/react-virtual": "^3.13.12",
@@ -127,16 +130,21 @@
   },
   "overrides": {
     "@excalidraw/excalidraw": {
-      "nanoid": "3.3.11"
+      "nanoid": "3.3.11",
+      "immutable": "4.3.8",
+      "sass": "1.97.3"
     },
     "@excalidraw/mermaid-to-excalidraw": {
       "nanoid": "5.0.9",
       "mermaid": "10.9.4",
-      "dompurify": "3.2.4"
+      "dompurify": "3.3.2"
     },
     "mermaid": "10.9.4",
-    "dompurify": "3.2.4",
-    "tar": "7.5.7"
+    "dompurify": "3.3.2",
+    "immutable": "4.3.8",
+    "sass": "1.97.3",
+    "tar": "7.5.10",
+    "@tootallnate/once": "3.0.1"
   },
   "size-limit": [
     {

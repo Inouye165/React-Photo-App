@@ -318,7 +318,7 @@ export default function PhotoGalleryPage() {
           <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
             <div className="px-2 sm:px-6 py-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
-                <div className="flex-1 min-w-[200px]">
+                <div className="flex-1 min-w-[180px] xs:min-w-[200px]">
                   <label htmlFor="gallery-search" className="block text-xs font-medium text-slate-600">
                     Search
                   </label>
@@ -328,13 +328,13 @@ export default function PhotoGalleryPage() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search caption, filename, description"
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 xs:px-3 py-2 text-xs xs:text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                     aria-label="Search photos"
                   />
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  <div className="min-w-[160px]">
+                  <div className="min-w-[140px] xs:min-w-[160px]">
                     <label htmlFor="gallery-filter" className="block text-xs font-medium text-slate-600">
                       Filter
                     </label>
@@ -342,7 +342,7 @@ export default function PhotoGalleryPage() {
                       id="gallery-filter"
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 xs:px-3 py-2 text-xs xs:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                     >
                       <option value="all">All</option>
                       <option value="finished">Finished</option>
@@ -351,7 +351,7 @@ export default function PhotoGalleryPage() {
                     </select>
                   </div>
 
-                  <div className="min-w-[180px]">
+                  <div className="min-w-[160px] xs:min-w-[180px]">
                     <label htmlFor="gallery-sort" className="block text-xs font-medium text-slate-600">
                       Sort
                     </label>
@@ -359,7 +359,7 @@ export default function PhotoGalleryPage() {
                       id="gallery-sort"
                       value={sortOrder}
                       onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 xs:px-3 py-2 text-xs xs:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                     >
                       <option value="newest">Newest first</option>
                       <option value="oldest">Oldest first</option>
@@ -367,7 +367,7 @@ export default function PhotoGalleryPage() {
                     </select>
                   </div>
 
-                  <div className="min-w-[200px]">
+                  <div className="min-w-[180px]">
                     <span className="block text-xs font-medium text-slate-600">Density</span>
                     <div className="mt-1 inline-flex rounded-lg border border-slate-300 bg-white p-0.5" role="group" aria-label="Gallery density">
                       <button
@@ -375,18 +375,19 @@ export default function PhotoGalleryPage() {
                         onClick={() => setDensity('comfortable')}
                         aria-pressed={density === 'comfortable'}
                         className={
-                          `px-3 py-2 text-sm rounded-md transition-colors ` +
+                          `px-2 xs:px-3 py-2 text-xs xs:text-sm rounded-md transition-colors ` +
                           (density === 'comfortable' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100')
                         }
                       >
-                        Comfortable
+                        <span className="hidden xs:inline">Comfortable</span>
+                        <span className="xs:hidden">Normal</span>
                       </button>
                       <button
                         type="button"
                         onClick={() => setDensity('compact')}
                         aria-pressed={density === 'compact'}
                         className={
-                          `px-3 py-2 text-sm rounded-md transition-colors ` +
+                          `px-2 xs:px-3 py-2 text-xs xs:text-sm rounded-md transition-colors ` +
                           (density === 'compact' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100')
                         }
                       >
@@ -405,10 +406,11 @@ export default function PhotoGalleryPage() {
                   <button
                     type="button"
                     onClick={refreshPhotos}
-                    className="min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium bg-transparent text-slate-600 hover:bg-slate-100 active:bg-slate-200"
+                    className="min-w-[40px] xs:min-w-[44px] min-h-[40px] xs:min-h-[44px] px-2 xs:px-3 py-2 rounded-lg text-xs xs:text-sm font-medium bg-transparent text-slate-600 hover:bg-slate-100 active:bg-slate-200"
                     aria-label="Refresh photos"
                   >
-                    Refresh
+                    <span className="hidden xs:inline">Refresh</span>
+                    <span className="xs:hidden">↻</span>
                   </button>
                 </div>
               </div>

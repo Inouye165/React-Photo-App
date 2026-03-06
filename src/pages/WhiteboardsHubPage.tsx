@@ -2,6 +2,9 @@ import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3, Copy, Share2, Trash2, Check, X, Link } from 'lucide-react'
+import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
+import { CSS as DndCSS } from '@dnd-kit/utilities'
 import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle, deleteWhiteboard } from '../api/whiteboards'
 import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
@@ -49,6 +52,80 @@ function formatTimestamp(dateString: string): string {
 // Stable empty array — avoids a fresh reference on every parent render
 const EMPTY_MEMBERS: RoomMemberDetails[] = []
 
+// ─── Skeleton shimmer keyframes ──────────────────────────────────────────────
+
+const SHIMMER_STYLE_ID = 'wb-skeleton-shimmer'
+
+function ensureShimmerStyle() {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(SHIMMER_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = SHIMMER_STYLE_ID
+  style.textContent = '@keyframes wb-shimmer { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.7; } }'
+  document.head.appendChild(style)
+}
+
+function SkeletonCard({ index }: { index: number }) {
+  useEffect(() => { ensureShimmerStyle() }, [])
+  const delay = `${index * 0.15}s`
+  return (
+    <div
+      className="bg-[#1A1A1A] border border-[#252525] rounded-xl overflow-hidden"
+      style={{ boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)' }}
+    >
+      <div
+        className="h-40"
+        style={{ backgroundColor: '#252525', animation: 'wb-shimmer 1.5s ease-in-out infinite', animationDelay: delay }}
+      />
+      <div className="p-4 border-t border-[#222]">
+        <div className="flex items-center justify-between mb-3">
+          <div
+            className="h-4 rounded"
+            style={{ width: '60%', backgroundColor: '#252525', animation: 'wb-shimmer 1.5s ease-in-out infinite', animationDelay: delay }}
+          />
+          <div
+            className="h-3 rounded"
+            style={{ width: '30%', backgroundColor: '#252525', animation: 'wb-shimmer 1.5s ease-in-out infinite', animationDelay: `${0.3 + index * 0.15}s` }}
+          />
+        </div>
+        <div className="flex items-center gap-2 mt-3">
+          <div
+            className="w-8 h-8 rounded-full"
+            style={{ backgroundColor: '#252525', animation: 'wb-shimmer 1.5s ease-in-out infinite', animationDelay: `${0.5 + index * 0.15}s` }}
+          />
+          <div
+            className="w-8 h-8 rounded-full"
+            style={{ backgroundColor: '#252525', animation: 'wb-shimmer 1.5s ease-in-out infinite', animationDelay: `${0.7 + index * 0.15}s` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sortable DnD wrapper ────────────────────────────────────────────────────
+
+function SortableCardWrapper({ id, children }: { id: string; children: (isDragging: boolean) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style: React.CSSProperties = {
+    transform: isDragging
+      ? `${DndCSS.Transform.toString(transform)} scale(1.03)`
+      : DndCSS.Transform.toString(transform) ?? undefined,
+    transition: transition ?? undefined,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+    position: 'relative',
+    boxShadow: isDragging ? '0 20px 60px rgba(0, 0, 0, 0.6)' : undefined,
+  }
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      {children(isDragging)}
+    </div>
+  )
+}
+
+// ─── Card context-menu dropdown ──────────────────────────────────────────────
+
 interface CardContextMenuProps {
   onRename: () => void
   onDuplicate: () => void
@@ -85,7 +162,7 @@ const CardContextMenu = React.memo(function CardContextMenu({
     }
   }, [onClose])
 
-  const items: Array<{ label: string; icon: typeof Edit3; action: () => void; danger?: boolean }> = [
+  const items: Array<{ label: string; icon: typeof Edit3; action: () => void; danger?: boolean; disabled?: boolean }> = [
     ...(canRename ? [{ label: 'Rename', icon: Edit3, action: onRename }] : []),
     { label: 'Duplicate', icon: Copy, action: onDuplicate },
     { label: 'Share', icon: Share2, action: onShare },
@@ -95,7 +172,7 @@ const CardContextMenu = React.memo(function CardContextMenu({
   return (
     <div
       ref={menuRef}
-      className="absolute top-full right-0 mt-1 w-44 rounded-lg border border-[#333] bg-[#1A1A1A] py-1 shadow-2xl z-50"
+      className="absolute top-full right-0 mt-1 w-44 bg-[#1A1A1A] border border-[#333] rounded-lg shadow-2xl py-1 z-50"
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((item) => (
@@ -120,6 +197,8 @@ const CardContextMenu = React.memo(function CardContextMenu({
     </div>
   )
 })
+
+// ─── Share modal ─────────────────────────────────────────────────────────────
 
 interface ShareModalProps {
   boardId: string
@@ -161,24 +240,24 @@ function ShareModal({ boardId, boardName, onClose }: ShareModalProps) {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.15 }}
-        className="w-full max-w-md rounded-xl border border-[#333] bg-[#1A1A1A] p-6 shadow-2xl"
+        className="bg-[#1A1A1A] border border-[#333] rounded-xl p-6 w-full max-w-md shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="truncate pr-4 text-lg font-semibold text-white">Share &ldquo;{boardName}&rdquo;</h2>
-          <button type="button" onClick={onClose} className="flex-shrink-0 rounded p-1 transition-colors hover:bg-[#252525]">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-white truncate pr-4">Share &ldquo;{boardName}&rdquo;</h2>
+          <button type="button" onClick={onClose} className="p-1 rounded hover:bg-[#252525] transition-colors flex-shrink-0">
             <X className="w-5 h-5 text-[#666]" />
           </button>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#333] bg-[#111] px-3 py-2">
-            <Link className="w-4 h-4 flex-shrink-0 text-[#666]" />
-            <span className="truncate text-sm text-[#ccc]">{shareUrl}</span>
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 bg-[#111] border border-[#333] rounded-lg min-w-0">
+            <Link className="w-4 h-4 text-[#666] flex-shrink-0" />
+            <span className="text-sm text-[#ccc] truncate">{shareUrl}</span>
           </div>
           <button
             type="button"
             onClick={() => void handleCopy()}
-            className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-lg font-medium text-sm transition-colors flex-shrink-0 ${
               copied ? 'bg-green-600 text-white' : 'bg-[#F59E0B] hover:bg-[#d97706] text-black'
             }`}
           >
@@ -190,6 +269,8 @@ function ShareModal({ boardId, boardName, onClose }: ShareModalProps) {
     </div>
   )
 }
+
+// ─── Delete confirmation dialog ──────────────────────────────────────────────
 
 interface DeleteConfirmDialogProps {
   boardName: string
@@ -211,23 +292,23 @@ function DeleteConfirmDialog({ boardName, onConfirm, onCancel }: DeleteConfirmDi
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.15 }}
-        className="w-full max-w-sm rounded-xl border border-[#333] bg-[#1A1A1A] p-6 shadow-2xl"
+        className="bg-[#1A1A1A] border border-[#333] rounded-xl p-6 w-full max-w-sm shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="mb-2 text-lg font-semibold text-white">Delete &ldquo;{boardName}&rdquo;?</h2>
-        <p className="mb-6 text-sm text-[#999]">This cannot be undone.</p>
+        <h2 className="text-lg font-semibold text-white mb-2">Delete &ldquo;{boardName}&rdquo;?</h2>
+        <p className="text-sm text-[#999] mb-6">This cannot be undone.</p>
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-lg bg-[#252525] px-4 py-2 text-sm font-medium text-[#ccc] transition-colors hover:bg-[#333]"
+            className="px-4 py-2 text-sm font-medium text-[#ccc] bg-[#252525] hover:bg-[#333] rounded-lg transition-colors"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
           >
             Delete
           </button>
@@ -235,6 +316,38 @@ function DeleteConfirmDialog({ boardName, onConfirm, onCancel }: DeleteConfirmDi
       </motion.div>
     </div>
   )
+}
+
+// ─── Order persistence (localStorage) ────────────────────────────────────────
+
+const BOARD_ORDER_KEY = 'wb-board-order'
+
+function loadBoardOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(BOARD_ORDER_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return []
+}
+
+function saveBoardOrder(ids: string[]): void {
+  try {
+    localStorage.setItem(BOARD_ORDER_KEY, JSON.stringify(ids))
+  } catch { /* ignore */ }
+}
+
+function applyBoardOrder(boards: any[], savedOrder: string[]): any[] {
+  if (!savedOrder.length) return boards
+  const byId = new Map(boards.map((b) => [b.id, b]))
+  const ordered: any[] = []
+  for (const id of savedOrder) {
+    const board = byId.get(id)
+    if (board) ordered.push(board)
+  }
+  for (const board of boards) {
+    if (!savedOrder.includes(board.id)) ordered.push(board)
+  }
+  return ordered
 }
 
 // ─── useDesktopLayout ────────────────────────────────────────────────────────
@@ -303,10 +416,8 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
       if (!canvasRef.current || hasLoaded || cancelled) return
 
       try {
-        if (!cancelled) {
-          setIsLoading(true)
-          setError(false)
-        }
+        setIsLoading(true)
+        setError(false)
 
         const { data: { session } } = await supabase.auth.getSession()
         // eslint-disable-next-line no-console
@@ -327,7 +438,7 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
 
         const canvas = canvasRef.current
         if (!canvas) {
-          if (!cancelled) setIsLoading(false)
+          setIsLoading(false)
           return
         }
 
@@ -342,6 +453,10 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
 
         canvas.width = 320
         canvas.height = 200
+        // Ensure the displayed canvas fills the thumbnail container while
+        // keeping the internal pixel buffer for crisp rendering.
+        canvas.style.width = '100%'
+        canvas.style.height = '100%'
         ctx.fillStyle = '#ffffff'
         ctx.fillRect(0, 0, canvas.width, canvas.height)
 
@@ -354,7 +469,20 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
         )
         const excalidrawElements = Array.isArray(snapshot.excalidrawElements) ? snapshot.excalidrawElements : []
         // eslint-disable-next-line no-console
-        console.log('[WB-THUMB] events counts', { boardId, normalized: events.length, drawable: drawableEvents.length, excalidraw: excalidrawElements.length })
+        console.log('[WB-THUMB] events counts', {
+          boardId,
+          normalized: events.length,
+          drawable: drawableEvents.length,
+          excalidraw: excalidrawElements.length,
+        })
+        // Helpful debug for text rendering issues
+        // eslint-disable-next-line no-console
+        if (excalidrawElements.length > 0) {
+          console.log('[WB-THUMB] excalidraw sample', {
+            boardId,
+            sample: excalidrawElements.slice(0, 5),
+          })
+        }
 
         if (drawableEvents.length > 0) {
           emptySnapshotAttemptsRef.current = 0
@@ -541,8 +669,38 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
                 ctx.fill()
               }
               ctx.stroke()
+            } else if (el.type === 'text' || typeof (el as any).text === 'string') {
+              const anyEl = el as any
+              const rawText = typeof anyEl.text === 'string' ? anyEl.text : ''
+              const trimmed = rawText.trim()
+              if (trimmed) {
+                const tl = toCanvas(el.x, el.y)
+                const w = el.width * scale
+                const h = el.height * scale
+                const baseFontSize =
+                  typeof anyEl.fontSize === 'number' && Number.isFinite(anyEl.fontSize)
+                    ? anyEl.fontSize
+                    : h
+                const fontSize = Math.max(8, Math.min(48, baseFontSize * scale * 0.6))
+                const fontFamily =
+                  typeof anyEl.fontFamily === 'string' && anyEl.fontFamily.trim().length > 0
+                    ? anyEl.fontFamily
+                    : 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+                ctx.font = `${fontSize}px ${fontFamily}`
+                ctx.textAlign = 'center'
+                ctx.textBaseline = 'middle'
+                ctx.fillStyle = anyEl.textColor || color
+                const cx = tl.x + w / 2
+                const cy = tl.y + h / 2
+                const text = trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed
+                if (typeof ctx.fillText === 'function') {
+                  ctx.fillText(text, cx, cy)
+                } else if (typeof ctx.strokeText === 'function') {
+                  ctx.strokeText(text, cx, cy)
+                }
+              }
             }
-            // Skip text and image elements for thumbnail
+            // Skip image elements for thumbnail
           }
 
           ctx.globalAlpha = 1
@@ -606,10 +764,10 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
   const gradient = getBoardGradient(boardName)
 
   return (
-    <div ref={containerRef} className="relative h-40 overflow-hidden bg-[#111111]">
+    <div ref={containerRef} className="h-40 relative overflow-hidden bg-[#111111]">
       <canvas
         ref={canvasRef}
-        className="block h-full w-full object-cover"
+        className="w-full h-full object-cover block"
         style={{ imageRendering: 'crisp-edges' as any, width: '100%', height: '100%' }}
         width={320}
         height={200}
@@ -637,7 +795,9 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
 interface WhiteboardCardProps {
   board: any
   index: number
+  isPlaceholder?: boolean
   members: RoomMemberDetails[]
+  isDragging?: boolean
   isOwner?: boolean
   onNavigate: (boardId: string) => void
   onSave: (boardId: string, newTitle: string) => Promise<void>
@@ -649,7 +809,9 @@ interface WhiteboardCardProps {
 const WhiteboardCard = React.memo(function WhiteboardCard({
   board,
   index,
+  isPlaceholder = false,
   members,
+  isDragging = false,
   isOwner = true,
   onNavigate,
   onSave,
@@ -718,57 +880,75 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
     setSaveError(null)
   }, [])
 
+  const gradient = getBoardGradient(board.name || 'Untitled')
+  const initials = getBoardInitials(board.name || 'Untitled')
+
   return (
     <motion.div
+      layout
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
+      animate={{ opacity: isPlaceholder ? 0.6 : 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
       transition={{
         duration: 0.3,
         delay: prefersReducedMotion ? 0 : index * 0.05,
         ease: [0.22, 1, 0.36, 1],
       }}
-      whileHover={{
+      whileHover={isDragging ? undefined : {
         y: -3,
         boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)',
         borderColor: '#444',
         transition: { duration: 0.2, ease: 'easeOut' },
       }}
-      onClick={() => !isEditing && !menuOpen && onNavigate(board.id)}
-      className="relative cursor-pointer overflow-hidden rounded-xl border border-[#252525] bg-[#1A1A1A] transition-all duration-200"
+      onClick={() => !isPlaceholder && !isEditing && !menuOpen && onNavigate(board.id)}
+      className={`relative bg-[#1A1A1A] border border-[#252525] rounded-xl overflow-hidden transition-all duration-200 ${
+        isPlaceholder ? 'cursor-default' : 'cursor-pointer'
+      }`}
       style={{ boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)', border: '1px solid #252525' }}
     >
       {/* Thumbnail Area */}
-      <div className="relative">
-        <div className="m-3 overflow-hidden rounded-[4px] border border-[#e5e5e5]">
-          <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Untitled'} />
+      {!isPlaceholder ? (
+        <div className="relative">
+          <div className="border border-[#e5e5e5] rounded-[4px] overflow-hidden">
+            <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Untitled'} />
+          </div>
+          <div className="absolute top-3 right-3 z-20">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setMenuOpen((prev) => !prev)
+              }}
+              className="p-1.5 rounded-lg bg-black/20 hover:bg-black/40 transition-colors"
+            >
+              <MoreVertical className="w-4 h-4 text-white" />
+            </button>
+            {menuOpen && (
+              <CardContextMenu
+                onRename={() => { setMenuOpen(false); handleEdit() }}
+                onDuplicate={() => onDuplicate(board.id)}
+                onShare={() => onShare(board.id)}
+                onDelete={() => onDelete(board.id)}
+                onClose={() => setMenuOpen(false)}
+                canRename={isOwner}
+                canDelete={isOwner}
+              />
+            )}
+          </div>
         </div>
-        <div className="absolute top-3 right-3 z-20">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setMenuOpen((prev) => !prev)
-            }}
-            className="rounded-lg bg-black/20 p-1.5 transition-colors hover:bg-black/40"
-          >
-            <MoreVertical className="w-4 h-4 text-white" />
-          </button>
-          {menuOpen && (
-            <CardContextMenu
-              onRename={() => { setMenuOpen(false); handleEdit() }}
-              onDuplicate={() => onDuplicate(board.id)}
-              onShare={() => onShare(board.id)}
-              onDelete={() => onDelete(board.id)}
-              onClose={() => setMenuOpen(false)}
-              canRename={isOwner}
-              canDelete={isOwner}
-            />
-          )}
+      ) : (
+        <div
+          className="h-40 relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})` }}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-white text-2xl font-light drop-shadow-lg">{initials}</span>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content Area */}
-      <div className="p-4 border-t border-[#222]">
+      <div className="p-3 xs:p-4 border-t border-[#222]">
         {saveError && <p className="mb-1.5 text-xs text-red-400">{saveError}</p>}
         <div className="flex items-center justify-between">
           {/* Title */}
@@ -788,46 +968,53 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
             />
           ) : (
             <div
-              className={`flex items-center gap-2 flex-1 group ${isOwner ? 'cursor-text' : 'cursor-default'}`}
+              className={`flex items-center gap-2 flex-1 group ${
+                isOwner ? 'cursor-text' : 'cursor-default'
+              }`}
               onClick={isOwner ? handleEdit : undefined}
             >
-              <h3 className="font-medium text-white text-sm truncate">
-                {board.name || 'Untitled'}
+              <h3 className="font-medium text-white text-xs xs:text-sm truncate">
+                {board.name || (isPlaceholder ? 'Example Board' : 'Untitled')}
               </h3>
-              {isOwner && <Edit3 className="w-3 h-3 text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />}
+              {isOwner && (
+                <Edit3 className="w-3 h-3 text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
             </div>
           )}
 
           {/* Timestamp */}
-          <div className="flex items-center gap-1 text-[#666] text-xs ml-3 flex-shrink-0">
-            <Clock className="w-3 h-3" />
-            <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
-          </div>
+          {!isPlaceholder && (
+            <div className="flex items-center gap-1 text-[#666] text-xs ml-2 xs:ml-3 flex-shrink-0">
+              <Clock className="w-3 h-3" />
+              <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
+            </div>
+          )}
         </div>
 
         {/* Collaborators */}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center -space-x-2">
-            {members.slice(0, 3).map((member, idx) => (
-              <div key={member.user_id} className="relative" style={{ zIndex: 3 - idx }}>
-                <div
-                  className="flex items-center justify-center rounded-full border border-[#444] bg-[#2A2A2A] text-sm font-semibold text-[#E5E7EB]"
-                  style={{ width: 32, height: 32 }}
-                  title={member.username ?? undefined}
-                >
-                  {getBoardInitials(member.username || 'User').slice(0, 1)}
+            {!isPlaceholder &&
+              members.slice(0, 3).map((member, idx) => (
+                <div key={member.user_id} className="relative" style={{ zIndex: 3 - idx }}>
+                  <div
+                    className="flex items-center justify-center rounded-full border border-[#444] bg-[#2A2A2A] text-xs xs:text-sm font-semibold text-[#E5E7EB]"
+                    style={{ width: 28, height: 28 }}
+                    title={member.username ?? undefined}
+                  >
+                    {getBoardInitials(member.username || 'User').slice(0, 1)}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {members.length > 3 && (
+              ))}
+            {!isPlaceholder && members.length > 3 && (
               <div
-                className="w-8 h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
+                className="w-6 h-6 xs:w-8 xs:h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
                 style={{ zIndex: 0 }}
               >
                 +{members.length - 3}
               </div>
             )}
-            {members.length === 0 && (
+            {(isPlaceholder || members.length === 0) && (
               <div className="text-xs text-[#666]">No collaborators</div>
             )}
           </div>
@@ -855,6 +1042,16 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const isDesktop = useDesktopLayout()
 
   useEffect(() => {
+    console.log('[WB-HUB] ambient-glow version 1.00 loaded')
+  }, [])
+
+  // DnD sensors — require minimum drag distance so clicks still navigate
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  )
+
+  useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
@@ -862,7 +1059,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         if (cancelled) return
         // Ensure newest first by updated_at or created_at
         rows.sort((a, b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at))
-        setBoards(rows)
+        // Apply saved order if available
+        const savedOrder = loadBoardOrder()
+        const ordered = savedOrder.length ? applyBoardOrder(rows, savedOrder) : rows
+        setBoards(ordered)
         // fetch members for whiteboards (non-blocking)
         void (async () => {
           const map: Record<string, RoomMemberDetails[]> = {}
@@ -914,6 +1114,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     return filtered
   }, [boards, searchQuery, activeTab])
 
+  const boardIds = useMemo(() => filteredBoards.map((b) => b.id), [filteredBoards])
+
   // Stable callbacks — setBoards setter never changes (useState guarantee)
   const handleNavigate = useCallback(
     (boardId: string) => { navigate(`/whiteboards/${boardId}`) },
@@ -940,8 +1142,13 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     setDeleteTarget(null)
     try {
       await deleteWhiteboard(id)
+      // Wait for fade-out animation
       setTimeout(() => {
-        setBoards((prev) => prev.filter((b) => b.id !== id))
+        setBoards((prev) => {
+          const next = prev.filter((b) => b.id !== id)
+          saveBoardOrder(next.map((b) => b.id))
+          return next
+        })
         setDeletingIds((prev) => {
           const next = new Set(prev)
           next.delete(id)
@@ -963,7 +1170,11 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     const originalName = board?.name || 'Untitled'
     try {
       const room = await createWhiteboard(`Copy of ${originalName}`)
-      setBoards((prev) => [{ ...room, updated_at: room.created_at }, ...prev])
+      setBoards((prev) => {
+        const next = [{ ...room, updated_at: room.created_at }, ...prev]
+        saveBoardOrder(next.map((boardItem: { id: string }) => boardItem.id))
+        return next
+      })
     } catch (err) {
       console.warn('[WB-HUB] duplicate failed', { boardId, message: err instanceof Error ? err.message : String(err) })
     }
@@ -973,6 +1184,21 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     const board = boards.find((b) => b.id === boardId)
     setShareTarget({ id: boardId, name: board?.name || 'Untitled' })
   }, [boards])
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    setBoards((prev) => {
+      const oldIndex = prev.findIndex((b) => b.id === active.id)
+      const newIndex = prev.findIndex((b) => b.id === over.id)
+      if (oldIndex === -1 || newIndex === -1) return prev
+      const next = arrayMove(prev, oldIndex, newIndex)
+      saveBoardOrder(next.map((b) => b.id))
+      return next
+    })
+  }, [])
+
+  // Note: placeholder boards intentionally removed — real boards only
 
   async function handleCreate() {
     setCreateError(null)
@@ -1009,9 +1235,68 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       />
 
       <div className="relative z-10 flex h-full min-h-screen flex-col">
-      {/* Sticky Header */}
+      {/* Sticky Header (UI shell) */}
       <div className="sticky top-0 z-10 bg-[#0D0D0D]/80 backdrop-blur-lg border-b border-[#2A2A2A]">
-        <div className="flex items-center justify-between px-6 py-4">
+        {/* Mobile Header */}
+        <div className="xs:hidden px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => navigate('/')}
+              aria-label="Go home"
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">Home</span>
+            </button>
+            <h1 className="text-lg font-semibold">Whiteboards</h1>
+            <button 
+              onClick={handleCreate} 
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#F59E0B] hover:bg-[#d97706] transition-colors text-black font-medium text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create</span>
+            </button>
+          </div>
+          
+          {/* Mobile Search */}
+          <div className="relative mb-3">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-[#666]" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 bg-[#1A1A1A] border border-[#2A2A2A] rounded-lg text-white placeholder-[#666] focus:outline-none focus:border-[#444] transition-colors text-sm"
+            />
+          </div>
+          
+          {/* Mobile Tabs */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('all')}
+              className={`flex-1 px-2 py-1.5 text-xs font-medium transition-all rounded-md ${
+                activeTab === 'all'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setActiveTab('recent')}
+              className={`flex-1 px-2 py-1.5 text-xs font-medium transition-all rounded-md ${
+                activeTab === 'recent'
+                  ? 'bg-[#2a2a2a] text-white'
+                  : 'text-[#666] hover:text-white'
+              }`}
+            >
+              Recent
+            </button>
+          </div>
+        </div>
+        
+        {/* Desktop Header */}
+        <div className="hidden xs:flex items-center justify-between px-6 py-4">
           {/* Left: Title */}
           <div className="flex items-center gap-4">
             <button
@@ -1057,8 +1342,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           </div>
         </div>
 
-        {/* Tab Filters */}
-        <div className="px-6 pb-3">
+        {/* Desktop Tab Filters */}
+        <div className="hidden xs:block px-6 pb-3">
           <div className="flex gap-2">
             <button
               onClick={() => setActiveTab('all')}
@@ -1092,9 +1377,14 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           </div>
         )}
 
-        <div className="p-6">
+        <div className="p-3 xs:p-6">
+          {/* Skeleton loading state */}
           {loading && (
-            <div className="text-center text-[#666] py-12">Loading…</div>
+            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 xs:gap-6">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} index={i} />
+              ))}
+            </div>
           )}
           
           {!loading && filteredBoards.length === 0 && (
@@ -1124,44 +1414,53 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           )}
 
           {!loading && filteredBoards.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              <AnimatePresence mode="popLayout">
-                {filteredBoards.map((board, index) => (
-                  !deletingIds.has(board.id) ? (
-                    <WhiteboardCard
-                      key={board.id}
-                      board={board}
-                      index={index}
-                      members={membersByBoard[board.id] ?? EMPTY_MEMBERS}
-                      isOwner={
-                        board.owner?.id
-                          ? board.owner.id === profile?.id
-                          : (membersByBoard[board.id] ?? []).some(
-                              (m) => m.user_id === profile?.id && m.is_owner,
-                            )
-                      }
-                      onNavigate={handleNavigate}
-                      onSave={handleSave}
-                      onDelete={handleDelete}
-                      onDuplicate={(id) => void handleDuplicate(id)}
-                      onShare={handleShare}
-                    />
-                  ) : (
-                    <motion.div
-                      key={`deleting-${board.id}`}
-                      initial={{ opacity: 1 }}
-                      animate={{ opacity: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="h-64 overflow-hidden rounded-xl border border-[#252525] bg-[#1A1A1A]"
-                    />
-                  )
-                ))}
-              </AnimatePresence>
-            </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={boardIds} strategy={rectSortingStrategy}>
+                <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 xs:gap-6">
+                  <AnimatePresence mode="popLayout">
+                    {filteredBoards.map((board, index) => (
+                      <SortableCardWrapper key={board.id} id={board.id}>
+                        {(isDragging) => (
+                          !deletingIds.has(board.id) ? (
+                            <WhiteboardCard
+                              board={board}
+                              index={index}
+                              members={membersByBoard[board.id] ?? EMPTY_MEMBERS}
+                              isDragging={isDragging}
+                              isOwner={
+                                board.owner?.user_id
+                                  ? board.owner.user_id === profile?.id
+                                  : (membersByBoard[board.id] ?? []).some(
+                                      (m) => m.user_id === profile?.id && m.is_owner
+                                    )
+                              }
+                              onNavigate={handleNavigate}
+                              onSave={handleSave}
+                              onDelete={handleDelete}
+                              onDuplicate={(id) => void handleDuplicate(id)}
+                              onShare={handleShare}
+                            />
+                          ) : (
+                            <motion.div
+                              key={`deleting-${board.id}`}
+                              initial={{ opacity: 1 }}
+                              animate={{ opacity: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="bg-[#1A1A1A] border border-[#252525] rounded-xl overflow-hidden h-64"
+                            />
+                          )
+                        )}
+                      </SortableCardWrapper>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </div>
 
+      {/* Share Modal */}
       <AnimatePresence>
         {shareTarget && (
           <ShareModal
@@ -1172,6 +1471,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         )}
       </AnimatePresence>
 
+      {/* Delete Confirmation Dialog */}
       <AnimatePresence>
         {deleteTarget && (
           <DeleteConfirmDialog
@@ -1182,6 +1482,6 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         )}
       </AnimatePresence>
       </div>
-  </motion.main>
+    </motion.main>
   )
 }

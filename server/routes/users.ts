@@ -190,8 +190,6 @@ function createUsersRouter({ db }) {
               if (!error || code === 404 || msg.includes('not found') || msg.includes('user not found')) {
                 staleDeletedAccount = true;
                 staleCheckCompleted = true;
-              } else if (authUser) {
-                staleCheckCompleted = true;
               }
             } else {
               staleCheckCompleted = true;
@@ -207,8 +205,9 @@ function createUsersRouter({ db }) {
               .select('id')
               .where({ id: existing.id })
               .first();
-            staleDeletedAccount = !authRow;
-            staleCheckCompleted = true;
+            if (!authRow) {
+              staleDeletedAccount = true;
+            }
           } catch {
             // Some DB roles may not have access to auth schema; preserve conflict behavior.
           }
