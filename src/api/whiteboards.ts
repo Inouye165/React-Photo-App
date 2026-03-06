@@ -1,6 +1,6 @@
 import { supabase } from '../supabaseClient'
 import type { ChatRoom } from '../types/chat'
-import type { WhiteboardHubItem } from '../types/whiteboard'
+import type { WhiteboardHubItem, WhiteboardSessionDetails } from '../types/whiteboard'
 import { fetchRooms } from './chat'
 import { ApiError, request } from './httpClient'
 
@@ -141,7 +141,7 @@ export async function createWhiteboard(title?: string): Promise<ChatRoom> {
 
   const { data: room, error: roomError } = await supabase
     .from('rooms')
-    .insert({ name: title ?? 'Whiteboard', is_group: true, type: 'whiteboard', created_by: userId, metadata: {} })
+    .insert({ name: title ?? 'Untitled', is_group: true, type: 'whiteboard', created_by: userId, metadata: {} })
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 
@@ -203,6 +203,36 @@ export async function updateWhiteboardTitle(boardId: string, title: string): Pro
       }
     } catch (e) {
       throw err
+    }
+  }
+}
+
+export async function getWhiteboardSessionDetails(boardId: string): Promise<WhiteboardSessionDetails> {
+  if (!boardId) throw new Error('Missing board id')
+
+  try {
+    return await request<WhiteboardSessionDetails>({
+      path: `/api/whiteboards/${boardId}`,
+      method: 'GET',
+    })
+  } catch (err) {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('id, name, created_by, created_at, updated_at')
+      .eq('id', boardId)
+      .maybeSingle()
+
+    if (error) throw err
+
+    const room = data as Partial<WhiteboardSessionDetails> | null
+    if (!room || typeof room.id !== 'string') throw err
+
+    return {
+      id: room.id,
+      name: typeof room.name === 'string' ? room.name : null,
+      created_by: typeof room.created_by === 'string' ? room.created_by : null,
+      created_at: typeof room.created_at === 'string' ? room.created_at : null,
+      updated_at: typeof room.updated_at === 'string' ? room.updated_at : null,
     }
   }
 }

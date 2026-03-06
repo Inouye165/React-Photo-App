@@ -1,15 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Link, Users, Copy, Camera } from 'lucide-react'
+import { ArrowLeft, Link, Users, Copy, Camera, Edit3 } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import type { WhiteboardCanvasHandle } from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
-import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
+import { createWhiteboardInvite, ensureWhiteboardMembership, getWhiteboardSessionDetails, updateWhiteboardTitle } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
-import { supabase } from '../supabaseClient'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
@@ -41,18 +40,23 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
-  const [boardName, setBoardName] = useState<string>('Whiteboard')
+  const [boardName, setBoardName] = useState<string>('Untitled')
   const [members, setMembers] = useState<RoomMemberSummary[]>([])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
   const [inviteNotice, setInviteNotice] = useState<string | null>(null)
   const [joinLinkNotice, setJoinLinkNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null)
+  const [renameError, setRenameError] = useState<string | null>(null)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState('Untitled')
+  const [isSavingRename, setIsSavingRename] = useState(false)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
   const inviteDeniedLoggedRef = useRef(false)
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
@@ -81,24 +85,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const refreshMembers = useCallback(async () => {
     if (!boardId) return
 
-    const [roomResult, memberRows] = await Promise.all([
-      supabase
-        .from('rooms')
-        .select('name, created_by')
-        .eq('id', boardId)
-        .maybeSingle(),
-      listRoomMembers(boardId),
-    ])
-
-    if (roomResult.error) {
-      throw roomResult.error
-    }
-
-    const room = roomResult.data as { name?: unknown; created_by?: unknown } | null
+    const [room, memberRows] = await Promise.all([getWhiteboardSessionDetails(boardId), listRoomMembers(boardId)])
     const createdBy = typeof room?.created_by === 'string' ? room.created_by : null
-    const resolvedName = typeof room?.name === 'string' && room.name.trim() ? room.name.trim() : 'Whiteboard'
+    const resolvedName = typeof room?.name === 'string' && room.name.trim() ? room.name.trim() : 'Untitled'
 
     setBoardName(resolvedName)
+    setRenameDraft(resolvedName)
 
     const nextMembers: RoomMemberSummary[] = memberRows.map((member) => ({
       userId: member.user_id,
@@ -241,6 +233,65 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     // Future: Handle tab-specific logic here
   }, [])
 
+  useEffect(() => {
+    if (!isRenaming) return
+    try {
+      renameInputRef.current?.focus()
+      const len = renameInputRef.current?.value.length ?? 0
+      renameInputRef.current?.setSelectionRange(len, len)
+    } catch {
+      // ignore focus errors
+    }
+  }, [isRenaming])
+
+  const handleRenameStart = useCallback(() => {
+    if (!isOwner) return
+    setRenameError(null)
+    setRenameDraft(boardName)
+    setIsRenaming(true)
+  }, [boardName, isOwner])
+
+  const handleRenameCancel = useCallback(() => {
+    setIsRenaming(false)
+    setRenameDraft(boardName)
+    setRenameError(null)
+  }, [boardName])
+
+  const handleRenameSave = useCallback(async () => {
+    if (!isOwner) {
+      setIsRenaming(false)
+      return
+    }
+
+    const trimmed = renameDraft.trim()
+    const currentTitle = boardName.trim() || 'Untitled'
+
+    if (!trimmed) {
+      setRenameError('Whiteboard name cannot be empty')
+      return
+    }
+
+    if (trimmed === currentTitle) {
+      setIsRenaming(false)
+      setRenameError(null)
+      return
+    }
+
+    setIsSavingRename(true)
+    setRenameError(null)
+
+    try {
+      await updateWhiteboardTitle(boardId, trimmed)
+      setBoardName(trimmed)
+      setRenameDraft(trimmed)
+      setIsRenaming(false)
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Unable to rename whiteboard')
+    } finally {
+      setIsSavingRename(false)
+    }
+  }, [boardId, boardName, isOwner, renameDraft])
+
   const handlePhotoUploadClick = useCallback(() => {
     photoUploadInputRef.current?.click()
   }, [])
@@ -363,7 +414,47 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm font-medium">Back</span>
             </button>
-            <h1 className="text-xl font-semibold font-display truncate">{boardName}</h1>
+            {isRenaming ? (
+              <div className="flex items-center gap-2">
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameDraft}
+                  disabled={isSavingRename}
+                  onChange={(event) => setRenameDraft(event.target.value)}
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      void handleRenameSave()
+                    } else if (event.key === 'Escape') {
+                      event.preventDefault()
+                      handleRenameCancel()
+                    }
+                  }}
+                  onBlur={() => {
+                    void handleRenameSave()
+                  }}
+                  className="min-w-[220px] max-w-[40vw] rounded-lg border border-white/12 bg-chess-surface px-3 py-2 text-xl font-semibold font-display text-white outline-none ring-0 transition-colors focus:border-chess-accent"
+                  aria-label="Whiteboard name"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-xl font-semibold font-display truncate">{boardName}</h1>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={handleRenameStart}
+                    className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
+                    aria-label="Rename whiteboard"
+                    title="Rename whiteboard"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <input
@@ -455,6 +546,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         {photoUploadError && (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {photoUploadError}
+          </div>
+        )}
+
+        {renameError && (
+          <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {renameError}
           </div>
         )}
 

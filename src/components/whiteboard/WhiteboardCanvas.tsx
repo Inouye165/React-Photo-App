@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, PointerEvent } from 'react'
+import type { CSSProperties, ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
 import { generateNKeysBetween } from 'fractional-indexing'
 import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
@@ -19,7 +19,7 @@ import { API_BASE_URL } from '../../api'
 import { fetchWhiteboardSnapshot, fetchWhiteboardWsToken } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
-import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
+import { BOARD_ASPECT, computeContainedRect, computeWhiteboardFrameRect, type ContainedRect } from './whiteboardAspect'
 import LuminaCaptureSession from '../LuminaCaptureSession'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
@@ -716,6 +716,7 @@ type BackgroundFitMode = 'width' | 'contain'
 export type BackgroundInfo = {
   name: string
   sizeBytes: number
+  aspectRatio?: number
   fileId?: string
   originalSizeBytes?: number
   originalType?: string
@@ -777,6 +778,9 @@ function resolveBackgroundInfo(value: unknown): BackgroundInfo | null {
   const info: BackgroundInfo = {
     name: candidate.name.trim(),
     sizeBytes,
+  }
+  if (typeof candidate.aspectRatio === 'number' && Number.isFinite(candidate.aspectRatio) && candidate.aspectRatio > 0) {
+    info.aspectRatio = candidate.aspectRatio
   }
   if (typeof candidate.fileId === 'string') {
     info.fileId = candidate.fileId
@@ -919,6 +923,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [isSynced, setIsSynced] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
+  const [stageRect, setStageRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const [boardRect, setBoardRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('width')
 
@@ -927,6 +932,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const viewModeEnabledRef = useRef(viewModeEnabled)
   const docRef = useRef<Y.Doc | null>(null)
   const mapRef = useRef<Y.Map<unknown> | null>(null)
+  const stageViewportRef = useRef<HTMLDivElement | null>(null)
   const boardFrameRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const suppressSyncRef = useRef(false)
@@ -975,6 +981,51 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onRealtimeStatusChangeRef.current = onRealtimeStatusChange
   }, [onRealtimeStatusChange])
+
+  const updateStageRect = useCallback(() => {
+    const stage = stageViewportRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+
+    setStageRect({
+      left: 0,
+      top: 0,
+      width: rect.width,
+      height: rect.height,
+    })
+  }, [])
+
+  useEffect(() => {
+    updateStageRect()
+    const stage = stageViewportRef.current
+    if (!stage || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => updateStageRect())
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [updateStageRect])
+
+  const boardFrameRect = useMemo(
+    () => (
+      hasBackground
+        ? computeWhiteboardFrameRect(stageRect.width, stageRect.height, backgroundInfo?.aspectRatio ?? BOARD_ASPECT)
+        : { left: 0, top: 0, width: stageRect.width, height: stageRect.height }
+    ),
+    [backgroundInfo?.aspectRatio, hasBackground, stageRect.height, stageRect.width],
+  )
+
+  const boardFrameStyle = useMemo<CSSProperties>(() => {
+    if (boardFrameRect.width <= 0 || boardFrameRect.height <= 0) {
+      return { inset: 0 }
+    }
+
+    return {
+      left: `${boardFrameRect.left}px`,
+      top: `${boardFrameRect.top}px`,
+      width: `${boardFrameRect.width}px`,
+      height: `${boardFrameRect.height}px`,
+    }
+  }, [boardFrameRect.height, boardFrameRect.left, boardFrameRect.top, boardFrameRect.width])
 
   useEffect(() => {
     return () => {
@@ -1380,6 +1431,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const nextBackgroundInfo: BackgroundInfo = {
           name: originalName,
           sizeBytes: convertedSizeBytes,
+          aspectRatio: rawWidth / rawHeight,
           fileId,
           ...(file.type === 'image/webp' ? {
             // For already WebP files (e.g., cropped results), treat as both original and converted
@@ -2555,10 +2607,11 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           aria-hidden="true"
           tabIndex={-1}
         />
-        <div className="whiteboard-stage relative min-h-0 flex-1">
+        <div ref={stageViewportRef} className="whiteboard-stage relative min-h-0 flex-1">
           <div
             ref={boardFrameRef}
-            className="whiteboard-page relative h-full w-full"
+            className="whiteboard-page absolute"
+            style={boardFrameStyle}
           >
             {!isSynced ? (
               <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">

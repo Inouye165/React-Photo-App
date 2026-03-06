@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_ASPECT, computeContainedRect } from './whiteboardAspect'
+import { BOARD_ASPECT, computeContainedRect, computeWhiteboardFrameRect, resolveWhiteboardAspect } from './whiteboardAspect'
 
 describe('computeContainedRect', () => {
   it('uses height to fit when wrapper is wider than aspect', () => {
@@ -26,5 +26,18 @@ describe('computeContainedRect', () => {
     expect(rect.top).toBe(0)
     expect(rect.width).toBe(width)
     expect(rect.height).toBe(height)
+  })
+
+  it('uses the background aspect when one is provided', () => {
+    const rect = computeWhiteboardFrameRect(1000, 600, 16 / 9)
+    expect(rect.width).toBe(1000)
+    expect(rect.height).toBeCloseTo(562.5)
+    expect(rect.top).toBeCloseTo((600 - rect.height) / 2)
+  })
+
+  it('falls back to the default board aspect for invalid background ratios', () => {
+    expect(resolveWhiteboardAspect(0)).toBe(BOARD_ASPECT)
+    expect(resolveWhiteboardAspect(Number.NaN)).toBe(BOARD_ASPECT)
+    expect(resolveWhiteboardAspect(undefined)).toBe(BOARD_ASPECT)
   })
 })

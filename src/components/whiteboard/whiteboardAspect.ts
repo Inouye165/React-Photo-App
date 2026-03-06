@@ -37,3 +37,19 @@ export function computeContainedRect(
     height,
   }
 }
+
+export function resolveWhiteboardAspect(backgroundAspect?: number | null): number {
+  if (typeof backgroundAspect === 'number' && Number.isFinite(backgroundAspect) && backgroundAspect > 0) {
+    return backgroundAspect
+  }
+
+  return BOARD_ASPECT
+}
+
+export function computeWhiteboardFrameRect(
+  wrapperWidth: number,
+  wrapperHeight: number,
+  backgroundAspect?: number | null,
+): ContainedRect {
+  return computeContainedRect(wrapperWidth, wrapperHeight, resolveWhiteboardAspect(backgroundAspect))
+}

@@ -96,3 +96,11 @@ export type WhiteboardHubItem = {
   owner: WhiteboardHubUser | null
   participants: WhiteboardHubUser[]
 }
+
+export type WhiteboardSessionDetails = {
+  id: string
+  name: string | null
+  created_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}

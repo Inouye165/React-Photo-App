@@ -434,6 +434,94 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   if (!db) throw new Error('db is required');
 
   const router = express.Router();
+  let roomsUpdatedAtColumnPromise: Promise<boolean> | null = null;
+
+  const hasRoomsUpdatedAtColumn = () => {
+    if (!roomsUpdatedAtColumnPromise) {
+      roomsUpdatedAtColumnPromise = db.schema.hasColumn('rooms', 'updated_at').catch(() => false);
+    }
+    return roomsUpdatedAtColumnPromise;
+  };
+
+  const normalizeTimestamp = (value: unknown): string | null => {
+    if (typeof value === 'string') return value;
+    if (value instanceof Date) return value.toISOString();
+    return null;
+  };
+
+  const normalizeRoomSnapshot = (room: Record<string, unknown> | null | undefined) => {
+    if (!room || typeof room.id !== 'string') {
+      return null;
+    }
+
+    return {
+      id: room.id,
+      name: typeof room.name === 'string' ? room.name : null,
+      created_by: typeof room.created_by === 'string' ? room.created_by : null,
+      created_at: normalizeTimestamp(room.created_at),
+      updated_at: normalizeTimestamp(room.updated_at),
+      type: typeof room.type === 'string' ? room.type : null,
+      metadata: room.metadata ?? null,
+      is_group: typeof room.is_group === 'boolean' ? room.is_group : null,
+    };
+  };
+
+  const mergeRoomSnapshot = (
+    primary: ReturnType<typeof normalizeRoomSnapshot>,
+    secondary: ReturnType<typeof normalizeRoomSnapshot>,
+  ) => {
+    const base = secondary ?? primary;
+    if (!base) return null;
+
+    return {
+      id: base.id,
+      name: secondary?.name ?? primary?.name ?? null,
+      created_by: secondary?.created_by ?? primary?.created_by ?? null,
+      created_at: secondary?.created_at ?? primary?.created_at ?? null,
+      updated_at: secondary?.updated_at ?? primary?.updated_at ?? null,
+      type: secondary?.type ?? primary?.type ?? null,
+      metadata: secondary?.metadata ?? primary?.metadata ?? null,
+      is_group: secondary?.is_group ?? primary?.is_group ?? null,
+    };
+  };
+
+  const fetchSupabaseRoomSnapshots = async (roomIds: string[]) => {
+    const snapshots = new Map<string, NonNullable<ReturnType<typeof normalizeRoomSnapshot>>>();
+
+    if (process.env.NODE_ENV === 'test' || roomIds.length === 0) {
+      return snapshots;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('id, name, created_by, created_at, updated_at, type, metadata, is_group')
+        .in('id', roomIds);
+
+      if (error) {
+        console.warn('[WB-HTTP] room-snapshot:fallback-failed', {
+          roomIds,
+          code: error.code,
+          message: error.message,
+        });
+        return snapshots;
+      }
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const snapshot = normalizeRoomSnapshot(row as Record<string, unknown>);
+        if (snapshot) {
+          snapshots.set(snapshot.id, snapshot);
+        }
+      }
+    } catch (error) {
+      console.warn('[WB-HTTP] room-snapshot:fallback-error', {
+        roomIds,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return snapshots;
+  };
 
   const buildPayload = async (boardId: string) => {
     const { events, cursor } = await fetchHistory(db, boardId);
@@ -495,6 +583,39 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
     return boardId;
   };
+
+  const buildRoomDetails = async (boardId: string) => {
+    const hasUpdatedAt = await hasRoomsUpdatedAtColumn();
+    const columns = hasUpdatedAt
+      ? ['id', 'name', 'created_by', 'created_at', 'updated_at']
+      : ['id', 'name', 'created_by', 'created_at'];
+
+    const room = await db('rooms').select(columns).where({ id: boardId }).first();
+    const primaryRoom = normalizeRoomSnapshot((room as Record<string, unknown> | undefined) ?? null);
+    const supabaseRooms = await fetchSupabaseRoomSnapshots([boardId]);
+    return mergeRoomSnapshot(primaryRoom, supabaseRooms.get(boardId) ?? null);
+  };
+
+  router.get(
+    '/:boardId',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const room = await buildRoomDetails(boardId);
+        if (!room) {
+          return res.status(404).json({ success: false, error: 'Not found' });
+        }
+
+        return res.status(200).json(room);
+      } catch (error) {
+        console.error('[WB-HTTP] details failed', { error });
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    }
+  );
 
   router.get(
     '/:boardId/history',
@@ -809,6 +930,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const rooms = await db('rooms')
         .select('id', 'name', 'is_group', 'created_at', 'updated_at', 'type', 'metadata', 'created_by')
         .whereIn('id', roomIds as string[]);
+      const supabaseRoomsById = await fetchSupabaseRoomSnapshots(roomIds as string[]);
 
       // Fetch all members for these rooms in one query to avoid N+1
       const allMembers = await db('room_members').select('room_id', 'user_id', 'is_owner').whereIn('room_id', roomIds as string[]);
@@ -836,10 +958,14 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const hubItems = (rooms as Array<any>)
         .map((r) => {
           const roomId = String(r.id);
+          const roomSnapshot = mergeRoomSnapshot(
+            normalizeRoomSnapshot(r as Record<string, unknown>),
+            supabaseRoomsById.get(roomId) ?? null,
+          );
           const members = membersByRoom.get(roomId) ?? [];
           // Determine owner: prefer explicit is_owner flag, fall back to created_by
           const ownerMember = members.find((m) => m.is_owner) ?? null;
-          const ownerId = ownerMember ? ownerMember.user_id : (typeof r.created_by === 'string' ? r.created_by : null);
+          const ownerId = ownerMember ? ownerMember.user_id : roomSnapshot?.created_by ?? null;
           const ownerProfile = ownerId ? usersById.get(ownerId) ?? { id: ownerId, username: null, avatar_url: null } : null;
 
           const participants = members
@@ -851,11 +977,11 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
           return {
             id: roomId,
-            name: typeof r.name === 'string' ? r.name : null,
-            created_at: r.created_at,
-            updated_at: r.updated_at ?? r.created_at,
-            type: r.type,
-            metadata: r.metadata ?? null,
+            name: roomSnapshot?.name ?? null,
+            created_at: roomSnapshot?.created_at ?? null,
+            updated_at: roomSnapshot?.updated_at ?? roomSnapshot?.created_at ?? null,
+            type: roomSnapshot?.type ?? null,
+            metadata: roomSnapshot?.metadata ?? null,
             owner: ownerProfile ? { id: ownerProfile.id, username: ownerProfile.username, avatar_url: ownerProfile.avatar_url } : null,
             participants,
           };
@@ -890,10 +1016,30 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const owner = await isBoardOwner(db, boardId, userId);
       if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
 
-      await db('rooms').where({ id: boardId }).update({ 
-        name: trimmedName,
-        updated_at: new Date().toISOString()
-      });
+      const hasUpdatedAt = await hasRoomsUpdatedAtColumn();
+
+      await db('rooms').where({ id: boardId }).update(
+        hasUpdatedAt
+          ? { name: trimmedName, updated_at: new Date().toISOString() }
+          : { name: trimmedName }
+      );
+
+      if (process.env.NODE_ENV !== 'test') {
+        const nextUpdatedAt = new Date().toISOString();
+        const { error } = await supabase
+          .from('rooms')
+          .update({ name: trimmedName, updated_at: nextUpdatedAt })
+          .eq('id', boardId);
+
+        if (error) {
+          console.warn('[WB-HTTP] rename:supabase-sync-failed', {
+            boardId,
+            userId,
+            code: error.code,
+            message: error.message,
+          });
+        }
+      }
 
       return res.status(200).json({ success: true, name: trimmedName });
     } catch (err) {

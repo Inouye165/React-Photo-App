@@ -20,7 +20,7 @@ export interface RightSidePanelProps {
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
   className = '',
   initialTab = 'ai-tutor',
-  width = '360px',
+  width = '320px',
   backgroundColor = '#161b22',
   onTabChange
 }) => {
@@ -44,16 +44,18 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
   const panelStyle: React.CSSProperties = {
     width: typeof width === 'number' ? `${width}px` : width,
+    minWidth: typeof width === 'number' ? `${width}px` : width,
     backgroundColor,
     fontFamily: '"DM Sans", sans-serif'
   }
 
   return (
     <div 
-      className={`flex flex-col h-full ${className}`}
+      className={`flex h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-white/10 shadow-[-16px_0_32px_rgba(0,0,0,0.28)] ${className}`}
       style={panelStyle}
     >
       <TabbedPanel
+        className="min-h-0"
         tabs={tabs}
         initialTab={initialTab}
         onTabChange={onTabChange}

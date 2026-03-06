@@ -39,8 +39,10 @@ function TabbedPanel<T extends string = string>({
     onTabChange?.(tabId)
   }
 
-  const defaultTabButton = (tab: TabConfig<T>, isActive: boolean) => (
+  const defaultTabButton = (tab: TabConfig<T>, isActive: boolean, onClick: () => void) => (
     <button
+      type="button"
+      onClick={onClick}
       className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
         isActive
           ? 'text-white border-b-2 border-[#F59E0B]'
@@ -66,7 +68,7 @@ function TabbedPanel<T extends string = string>({
             <div key={tab.id} className="flex-1">
               {renderTabButton 
                 ? renderTabButton(tab, isActive, () => handleTabChange(tab.id))
-                : defaultTabButton(tab, isActive)
+                : defaultTabButton(tab, isActive, () => handleTabChange(tab.id))
               }
             </div>
           )

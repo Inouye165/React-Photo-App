@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3 } from 'lucide-react'
-import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle } from '../api/whiteboards'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
+import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3, Copy, Share2, Trash2, Check, X, Link } from 'lucide-react'
+import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle, deleteWhiteboard } from '../api/whiteboards'
 import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
-import Avatar from '../components/Avatar'
+import { ApiError } from '../api/httpClient'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
@@ -26,7 +26,7 @@ function getBoardGradient(name: string): { from: string; to: string } {
 }
 
 function getBoardInitials(name: string): string {
-  const cleanName = name || 'Whiteboard'
+  const cleanName = name || 'Untitled'
   const words = cleanName.trim().split(/\s+/)
   if (words.length >= 2) {
     return words.slice(0, 2).map((w) => w[0]).join('').toUpperCase()
@@ -48,6 +48,194 @@ function formatTimestamp(dateString: string): string {
 
 // Stable empty array — avoids a fresh reference on every parent render
 const EMPTY_MEMBERS: RoomMemberDetails[] = []
+
+interface CardContextMenuProps {
+  onRename: () => void
+  onDuplicate: () => void
+  onShare: () => void
+  onDelete: () => void
+  onClose: () => void
+  canRename?: boolean
+  canDelete?: boolean
+}
+
+const CardContextMenu = React.memo(function CardContextMenu({
+  onRename,
+  onDuplicate,
+  onShare,
+  onDelete,
+  onClose,
+  canRename = true,
+  canDelete = true,
+}: CardContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
+    }
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [onClose])
+
+  const items: Array<{ label: string; icon: typeof Edit3; action: () => void; danger?: boolean }> = [
+    ...(canRename ? [{ label: 'Rename', icon: Edit3, action: onRename }] : []),
+    { label: 'Duplicate', icon: Copy, action: onDuplicate },
+    { label: 'Share', icon: Share2, action: onShare },
+    ...(canDelete ? [{ label: 'Delete', icon: Trash2, action: onDelete, danger: true }] : []),
+  ]
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute top-full right-0 mt-1 w-44 rounded-lg border border-[#333] bg-[#1A1A1A] py-1 shadow-2xl z-50"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            item.action()
+            onClose()
+          }}
+          className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+            item.danger
+              ? 'text-red-400 hover:bg-red-500/10'
+              : 'text-[#ccc] hover:bg-[#252525] hover:text-white'
+          }`}
+        >
+          <item.icon className="w-4 h-4" />
+          {item.label}
+        </button>
+      ))}
+    </div>
+  )
+})
+
+interface ShareModalProps {
+  boardId: string
+  boardName: string
+  onClose: () => void
+}
+
+function ShareModal({ boardId, boardName, onClose }: ShareModalProps) {
+  const [copied, setCopied] = useState(false)
+  const shareUrl = `${window.location.origin}/whiteboards/${boardId}`
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = shareUrl
+      ta.style.position = 'fixed'
+      ta.style.left = '-9999px'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [shareUrl])
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.15 }}
+        className="w-full max-w-md rounded-xl border border-[#333] bg-[#1A1A1A] p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="truncate pr-4 text-lg font-semibold text-white">Share &ldquo;{boardName}&rdquo;</h2>
+          <button type="button" onClick={onClose} className="flex-shrink-0 rounded p-1 transition-colors hover:bg-[#252525]">
+            <X className="w-5 h-5 text-[#666]" />
+          </button>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#333] bg-[#111] px-3 py-2">
+            <Link className="w-4 h-4 flex-shrink-0 text-[#666]" />
+            <span className="truncate text-sm text-[#ccc]">{shareUrl}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className={`flex flex-shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              copied ? 'bg-green-600 text-white' : 'bg-[#F59E0B] hover:bg-[#d97706] text-black'
+            }`}
+          >
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {copied ? 'Copied!' : 'Copy Link'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+interface DeleteConfirmDialogProps {
+  boardName: string
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function DeleteConfirmDialog({ boardName, onConfirm, onCancel }: DeleteConfirmDialogProps) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [onCancel])
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onCancel}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        transition={{ duration: 0.15 }}
+        className="w-full max-w-sm rounded-xl border border-[#333] bg-[#1A1A1A] p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-2 text-lg font-semibold text-white">Delete &ldquo;{boardName}&rdquo;?</h2>
+        <p className="mb-6 text-sm text-[#999]">This cannot be undone.</p>
+        <div className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg bg-[#252525] px-4 py-2 text-sm font-medium text-[#ccc] transition-colors hover:bg-[#333]"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700"
+          >
+            Delete
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
 
 // ─── useDesktopLayout ────────────────────────────────────────────────────────
 
@@ -418,11 +606,11 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
   const gradient = getBoardGradient(boardName)
 
   return (
-    <div ref={containerRef} className="h-40 relative overflow-hidden bg-[#111111] flex items-center justify-center">
+    <div ref={containerRef} className="relative h-40 overflow-hidden bg-[#111111]">
       <canvas
         ref={canvasRef}
-        className="max-w-full max-h-full object-contain"
-        style={{ imageRendering: 'crisp-edges' as any }}
+        className="block h-full w-full object-cover"
+        style={{ imageRendering: 'crisp-edges' as any, width: '100%', height: '100%' }}
         width={320}
         height={200}
       />
@@ -449,28 +637,31 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
 interface WhiteboardCardProps {
   board: any
   index: number
-  isPlaceholder?: boolean
   members: RoomMemberDetails[]
-  profileId: string | undefined
-  profileAvatarUrl: string | null | undefined
+  isOwner?: boolean
   onNavigate: (boardId: string) => void
   onSave: (boardId: string, newTitle: string) => Promise<void>
+  onDelete: (boardId: string) => void
+  onDuplicate: (boardId: string) => void
+  onShare: (boardId: string) => void
 }
 
 const WhiteboardCard = React.memo(function WhiteboardCard({
   board,
   index,
-  isPlaceholder = false,
   members,
-  profileId,
-  profileAvatarUrl,
+  isOwner = true,
   onNavigate,
   onSave,
+  onDelete,
+  onDuplicate,
+  onShare,
 }: WhiteboardCardProps) {
   const prefersReducedMotion = useReducedMotion()
   const [isEditing, setIsEditing] = useState(false)
   const [editingTitle, setEditingTitle] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Focus the input only when first entering edit mode
@@ -487,18 +678,22 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
   }, [isEditing])
 
   const handleEdit = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
+    (e?: React.MouseEvent) => {
+      e?.stopPropagation()
+      if (!isOwner) {
+        setSaveError('Only the board owner can rename this whiteboard.')
+        return
+      }
       setSaveError(null)
-      setEditingTitle(board.name || 'Whiteboard')
+      setEditingTitle(board.name || 'Untitled')
       setIsEditing(true)
     },
-    [board.name],
+    [board.name, isOwner],
   )
 
   const handleSave = useCallback(async () => {
     const trimmed = editingTitle.trim()
-    const currentTitle = (board.name || 'Whiteboard').trim()
+    const currentTitle = (board.name || 'Untitled').trim()
     if (!trimmed) {
       setSaveError('Name cannot be empty')
       return
@@ -509,7 +704,11 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
     try {
       await onSave(board.id, trimmed)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Unable to rename')
+      if (err instanceof ApiError && err.status === 403) {
+        setSaveError('Only the board owner can rename this whiteboard.')
+      } else {
+        setSaveError(err instanceof Error ? err.message : 'Unable to rename')
+      }
     }
   }, [editingTitle, board.name, board.id, onSave])
 
@@ -519,13 +718,10 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
     setSaveError(null)
   }, [])
 
-  const gradient = getBoardGradient(board.name || 'Whiteboard')
-  const initials = getBoardInitials(board.name || 'Whiteboard')
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: isPlaceholder ? 0.6 : 1, y: 0 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: 0.3,
         delay: prefersReducedMotion ? 0 : index * 0.05,
@@ -537,35 +733,39 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
         borderColor: '#444',
         transition: { duration: 0.2, ease: 'easeOut' },
       }}
-      onClick={() => !isPlaceholder && onNavigate(board.id)}
-      className={`relative bg-[#1A1A1A] border border-[#252525] rounded-xl overflow-hidden transition-all duration-200 ${
-        isPlaceholder ? 'cursor-default' : 'cursor-pointer'
-      }`}
+      onClick={() => !isEditing && !menuOpen && onNavigate(board.id)}
+      className="relative cursor-pointer overflow-hidden rounded-xl border border-[#252525] bg-[#1A1A1A] transition-all duration-200"
       style={{ boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)', border: '1px solid #252525' }}
     >
       {/* Thumbnail Area */}
-      {!isPlaceholder ? (
-        <div className="relative">
-          <div className="border border-[#e5e5e5] rounded-[4px] overflow-hidden m-3">
-            <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Whiteboard'} />
-          </div>
+      <div className="relative">
+        <div className="m-3 overflow-hidden rounded-[4px] border border-[#e5e5e5]">
+          <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Untitled'} />
+        </div>
+        <div className="absolute top-3 right-3 z-20">
           <button
-            onClick={(e) => e.stopPropagation()}
-            className="absolute top-3 right-3 p-1.5 rounded-lg bg-black/20 hover:bg-black/40 transition-colors"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setMenuOpen((prev) => !prev)
+            }}
+            className="rounded-lg bg-black/20 p-1.5 transition-colors hover:bg-black/40"
           >
             <MoreVertical className="w-4 h-4 text-white" />
           </button>
+          {menuOpen && (
+            <CardContextMenu
+              onRename={() => { setMenuOpen(false); handleEdit() }}
+              onDuplicate={() => onDuplicate(board.id)}
+              onShare={() => onShare(board.id)}
+              onDelete={() => onDelete(board.id)}
+              onClose={() => setMenuOpen(false)}
+              canRename={isOwner}
+              canDelete={isOwner}
+            />
+          )}
         </div>
-      ) : (
-        <div
-          className="h-40 relative overflow-hidden"
-          style={{ background: `linear-gradient(135deg, ${gradient.from}, ${gradient.to})` }}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-white text-2xl font-light drop-shadow-lg">{initials}</span>
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* Content Area */}
       <div className="p-4 border-t border-[#222]">
@@ -588,40 +788,38 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
             />
           ) : (
             <div
-              className="flex items-center gap-2 flex-1 cursor-text group"
-              onClick={handleEdit}
+              className={`flex items-center gap-2 flex-1 group ${isOwner ? 'cursor-text' : 'cursor-default'}`}
+              onClick={isOwner ? handleEdit : undefined}
             >
               <h3 className="font-medium text-white text-sm truncate">
-                {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
+                {board.name || 'Untitled'}
               </h3>
-              <Edit3 className="w-3 h-3 text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />
+              {isOwner && <Edit3 className="w-3 h-3 text-[#9CA3AF] opacity-0 group-hover:opacity-100 transition-opacity" />}
             </div>
           )}
 
           {/* Timestamp */}
-          {!isPlaceholder && (
-            <div className="flex items-center gap-1 text-[#666] text-xs ml-3 flex-shrink-0">
-              <Clock className="w-3 h-3" />
-              <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1 text-[#666] text-xs ml-3 flex-shrink-0">
+            <Clock className="w-3 h-3" />
+            <span>{formatTimestamp(board.updated_at || board.created_at)}</span>
+          </div>
         </div>
 
         {/* Collaborators */}
         <div className="flex items-center justify-between mt-3">
           <div className="flex items-center -space-x-2">
-            {!isPlaceholder &&
-              members.slice(0, 3).map((member, idx) => (
-                <div key={member.user_id} className="relative" style={{ zIndex: 3 - idx }}>
-                  <Avatar
-                    src={member.avatar_url || (profileId === member.user_id ? (profileAvatarUrl || undefined) : undefined)}
-                    username={member.username || null}
-                    size={32}
-                    loading="eager"
-                  />
+            {members.slice(0, 3).map((member, idx) => (
+              <div key={member.user_id} className="relative" style={{ zIndex: 3 - idx }}>
+                <div
+                  className="flex items-center justify-center rounded-full border border-[#444] bg-[#2A2A2A] text-sm font-semibold text-[#E5E7EB]"
+                  style={{ width: 32, height: 32 }}
+                  title={member.username ?? undefined}
+                >
+                  {getBoardInitials(member.username || 'User').slice(0, 1)}
                 </div>
-              ))}
-            {!isPlaceholder && members.length > 3 && (
+              </div>
+            ))}
+            {members.length > 3 && (
               <div
                 className="w-8 h-8 rounded-full bg-[#2A2A2A] border border-[#444] flex items-center justify-center text-xs text-[#666]"
                 style={{ zIndex: 0 }}
@@ -629,7 +827,7 @@ const WhiteboardCard = React.memo(function WhiteboardCard({
                 +{members.length - 3}
               </div>
             )}
-            {(isPlaceholder || members.length === 0) && (
+            {members.length === 0 && (
               <div className="text-xs text-[#666]">No collaborators</div>
             )}
           </div>
@@ -650,6 +848,9 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<'recent' | 'all'>('all')
+  const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const prefersReducedMotion = useReducedMotion()
   const isDesktop = useDesktopLayout()
 
@@ -706,7 +907,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       filtered = filtered.filter(board => 
-        (board.name || 'Whiteboard').toLowerCase().includes(query)
+        (board.name || 'Untitled').toLowerCase().includes(query)
       )
     }
     
@@ -727,22 +928,51 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     )
   }, [])
 
-  const placeholderBoards = useMemo(() => {
-    const placeholders = []
-    const placeholderNames = ['Design System', 'User Flow', 'Architecture', 'Marketing Ideas']
-    
-    for (let i = 0; i < 4; i++) {
-      placeholders.push({
-        id: `placeholder-${i}`,
-        name: placeholderNames[i],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        isPlaceholder: true
+  const handleDelete = useCallback((boardId: string) => {
+    const board = boards.find((b) => b.id === boardId)
+    setDeleteTarget({ id: boardId, name: board?.name || 'Untitled' })
+  }, [boards])
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return
+    const { id } = deleteTarget
+    setDeletingIds((prev) => new Set(prev).add(id))
+    setDeleteTarget(null)
+    try {
+      await deleteWhiteboard(id)
+      setTimeout(() => {
+        setBoards((prev) => prev.filter((b) => b.id !== id))
+        setDeletingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      }, 300)
+    } catch (err) {
+      console.warn('[WB-HUB] delete failed', { id, message: err instanceof Error ? err.message : String(err) })
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
       })
     }
-    
-    return placeholders
-  }, [])
+  }, [deleteTarget])
+
+  const handleDuplicate = useCallback(async (boardId: string) => {
+    const board = boards.find((b) => b.id === boardId)
+    const originalName = board?.name || 'Untitled'
+    try {
+      const room = await createWhiteboard(`Copy of ${originalName}`)
+      setBoards((prev) => [{ ...room, updated_at: room.created_at }, ...prev])
+    } catch (err) {
+      console.warn('[WB-HUB] duplicate failed', { boardId, message: err instanceof Error ? err.message : String(err) })
+    }
+  }, [boards])
+
+  const handleShare = useCallback((boardId: string) => {
+    const board = boards.find((b) => b.id === boardId)
+    setShareTarget({ id: boardId, name: board?.name || 'Untitled' })
+  }, [boards])
 
   async function handleCreate() {
     setCreateError(null)
@@ -756,16 +986,29 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   }
 
   const pageClassName = isDesktop
-    ? 'flex h-[100dvh] flex-col overflow-hidden bg-[#0D0D0D] font-body text-white'
-    : 'min-h-[100dvh] bg-[#0D0D0D] font-body text-white'
+    ? 'relative isolate flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-[#0D0D0D] font-body text-white'
+    : 'relative isolate min-h-screen min-h-[100dvh] bg-[#0D0D0D] font-body text-white'
 
   return (
     <motion.main
       className={pageClassName}
+      style={{
+        minHeight: '100vh',
+        background: 'radial-gradient(ellipse 80% 40% at 50% 100%, rgba(245,158,11,0.08) 0%, transparent 65%)',
+      }}
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
     >
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background: 'radial-gradient(ellipse 80% 40% at 50% 100%, rgba(245,158,11,0.08) 0%, transparent 65%)',
+        }}
+      />
+
+      <div className="relative z-10 flex h-full min-h-screen flex-col">
       {/* Sticky Header */}
       <div className="sticky top-0 z-10 bg-[#0D0D0D]/80 backdrop-blur-lg border-b border-[#2A2A2A]">
         <div className="flex items-center justify-between px-6 py-4">
@@ -843,14 +1086,6 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
 
       {/* Content */}
       <div className="flex-1 overflow-auto relative">
-        {/* Bottom gradient glow */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 h-96 pointer-events-none"
-          style={{
-            background: 'radial-gradient(ellipse 80% 40% at 50% 95%, rgba(245, 158, 11, 0.04) 0%, transparent 70%)'
-          }}
-        />
-        
         {createError && (
           <div className="mx-6 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {createError}
@@ -890,35 +1125,62 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
 
           {!loading && filteredBoards.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredBoards.map((board, index) => (
-                <WhiteboardCard
-                  key={board.id}
-                  board={board}
-                  index={index}
-                  members={membersByBoard[board.id] ?? EMPTY_MEMBERS}
-                  profileId={profile?.id}
-                  profileAvatarUrl={profile?.avatar_url}
-                  onNavigate={handleNavigate}
-                  onSave={handleSave}
-                />
-              ))}
-              {filteredBoards.length < 4 &&
-                placeholderBoards.slice(0, 4 - filteredBoards.length).map((placeholder, index) => (
-                  <WhiteboardCard
-                    key={placeholder.id}
-                    board={placeholder}
-                    index={filteredBoards.length + index}
-                    isPlaceholder
-                    members={EMPTY_MEMBERS}
-                    profileId={undefined}
-                    profileAvatarUrl={undefined}
-                    onNavigate={handleNavigate}
-                    onSave={handleSave}
-                  />
+              <AnimatePresence mode="popLayout">
+                {filteredBoards.map((board, index) => (
+                  !deletingIds.has(board.id) ? (
+                    <WhiteboardCard
+                      key={board.id}
+                      board={board}
+                      index={index}
+                      members={membersByBoard[board.id] ?? EMPTY_MEMBERS}
+                      isOwner={
+                        board.owner?.id
+                          ? board.owner.id === profile?.id
+                          : (membersByBoard[board.id] ?? []).some(
+                              (m) => m.user_id === profile?.id && m.is_owner,
+                            )
+                      }
+                      onNavigate={handleNavigate}
+                      onSave={handleSave}
+                      onDelete={handleDelete}
+                      onDuplicate={(id) => void handleDuplicate(id)}
+                      onShare={handleShare}
+                    />
+                  ) : (
+                    <motion.div
+                      key={`deleting-${board.id}`}
+                      initial={{ opacity: 1 }}
+                      animate={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="h-64 overflow-hidden rounded-xl border border-[#252525] bg-[#1A1A1A]"
+                    />
+                  )
                 ))}
+              </AnimatePresence>
             </div>
           )}
         </div>
+      </div>
+
+      <AnimatePresence>
+        {shareTarget && (
+          <ShareModal
+            boardId={shareTarget.id}
+            boardName={shareTarget.name}
+            onClose={() => setShareTarget(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {deleteTarget && (
+          <DeleteConfirmDialog
+            boardName={deleteTarget.name}
+            onConfirm={() => void confirmDelete()}
+            onCancel={() => setDeleteTarget(null)}
+          />
+        )}
+      </AnimatePresence>
       </div>
   </motion.main>
   )
