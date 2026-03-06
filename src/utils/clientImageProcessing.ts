@@ -234,10 +234,10 @@ async function assertSafeImageBlob(blob: Blob): Promise<void> {
 }
 
 /**
- * Load an image from a Blob/File using createImageBitmap or Image element
- * @security Validates blob before loading, timeout prevents hanging
+ * Load an image from a Blob/File using `createImageBitmap`
+ * @security Validates blob before loading and avoids DOM URL sinks for untrusted files
  * @param blob - The blob to load
- * @returns Promise resolving to loaded image or bitmap
+ * @returns Promise resolving to loaded image bitmap
  */
 async function loadImage(blob: Blob): Promise<HTMLImageElement | ImageBitmap> {
   // Validate blob first
@@ -247,57 +247,19 @@ async function loadImage(blob: Blob): Promise<HTMLImageElement | ImageBitmap> {
 
   await assertSafeImageBlob(blob);
 
-  // Try createImageBitmap first - more reliable for blobs
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const bitmap = await createImageBitmap(blob);
-      return bitmap;
-    } catch (bitmapError) {
-      console.warn(
-        `[loadImage] createImageBitmap failed, falling back to Image element:`,
-        (bitmapError as Error).message
-      );
-    }
+  if (typeof createImageBitmap !== 'function') {
+    throw new Error('Image decoding requires createImageBitmap support');
   }
 
-  // Fallback to Image element
-  return new Promise((resolve, reject) => {
-    const imageFactory = globalThis.Image as unknown as {
-      new (): HTMLImageElement
-      (): HTMLImageElement
-    }
-    let img: HTMLImageElement
-    try {
-      img = new imageFactory()
-    } catch {
-      try {
-        img = imageFactory()
-      } catch {
-        img = document.createElement('img')
-      }
-    }
-    const url = URL.createObjectURL(blob);
-
-    const timeout = setTimeout(() => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Image load timeout'));
-    }, 30000);
-
-    img.onload = () => {
-      clearTimeout(timeout);
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-
-    img.onerror = () => {
-      clearTimeout(timeout);
-      URL.revokeObjectURL(url);
-      console.warn(`[loadImage] Image element failed: type=${blob.type?.replace(/[<>]/g, '') || 'unknown'}, size=${blob.size}`);
-      reject(new Error('Failed to decode image'));
-    };
-
-    img.src = url;
-  });
+  try {
+    return await createImageBitmap(blob);
+  } catch (bitmapError) {
+    console.warn(
+      `[loadImage] createImageBitmap failed:`,
+      (bitmapError as Error).message
+    );
+    throw new Error('Failed to decode image');
+  }
 }
 
 /**

@@ -35,6 +35,28 @@ function createMockFile(type, name = 'test-image') {
   return new File([blob], name, { type });
 }
 
+function installCreateImageBitmapMock() {
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => {
+    const imageFactory = globalThis.Image;
+    const candidate = typeof imageFactory === 'function' ? imageFactory() : null;
+    const width = Number(candidate?.width ?? candidate?.naturalWidth);
+    const height = Number(candidate?.height ?? candidate?.naturalHeight);
+
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new Error('Failed to decode image');
+    }
+
+    return {
+      ...candidate,
+      width,
+      height,
+      naturalWidth: candidate?.naturalWidth ?? width,
+      naturalHeight: candidate?.naturalHeight ?? height,
+      close: vi.fn(),
+    };
+  }));
+}
+
 describe('clientImageProcessing', () => {
   it('rejects text-based SVG disguised as a JPEG file (security)', async () => {
     const svg = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`;
@@ -112,6 +134,7 @@ describe('clientImageProcessing', () => {
     let originalCreateObjectURL;
     let originalRevokeObjectURL;
     let originalImage;
+    let originalCreateImageBitmap;
 
     beforeEach(() => {
       // Store originals
@@ -119,10 +142,12 @@ describe('clientImageProcessing', () => {
       originalCreateObjectURL = URL.createObjectURL;
       originalRevokeObjectURL = URL.revokeObjectURL;
       originalImage = globalThis.Image;
+      originalCreateImageBitmap = globalThis.createImageBitmap;
 
       // Mock URL methods
       URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       URL.revokeObjectURL = vi.fn();
+      installCreateImageBitmapMock();
 
       // Reset heic mocks
       vi.mocked(heic2any).mockReset();
@@ -135,6 +160,7 @@ describe('clientImageProcessing', () => {
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
       globalThis.Image = originalImage;
+      globalThis.createImageBitmap = originalCreateImageBitmap;
       vi.clearAllMocks();
     });
 
@@ -598,15 +624,18 @@ describe('clientImageProcessing', () => {
     let originalCreateElement;
     let originalCreateObjectURL;
     let originalRevokeObjectURL;
+    let originalCreateImageBitmap;
 
     beforeEach(() => {
       originalImage = globalThis.Image;
       originalCreateElement = document.createElement;
       originalCreateObjectURL = URL.createObjectURL;
       originalRevokeObjectURL = URL.revokeObjectURL;
+      originalCreateImageBitmap = globalThis.createImageBitmap;
 
       URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       URL.revokeObjectURL = vi.fn();
+      installCreateImageBitmapMock();
     });
 
     afterEach(() => {
@@ -614,6 +643,7 @@ describe('clientImageProcessing', () => {
       document.createElement = originalCreateElement;
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
+      globalThis.createImageBitmap = originalCreateImageBitmap;
       vi.clearAllMocks();
     });
 
@@ -749,6 +779,7 @@ describe('clientImageProcessing', () => {
     let originalCreateObjectURL;
     let originalRevokeObjectURL;
     let originalImage;
+    let originalCreateImageBitmap;
 
     beforeEach(() => {
       // Store originals
@@ -756,10 +787,12 @@ describe('clientImageProcessing', () => {
       originalCreateObjectURL = URL.createObjectURL;
       originalRevokeObjectURL = URL.revokeObjectURL;
       originalImage = globalThis.Image;
+      originalCreateImageBitmap = globalThis.createImageBitmap;
 
       // Mock URL methods
       URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       URL.revokeObjectURL = vi.fn();
+      installCreateImageBitmapMock();
 
       // Reset heic mocks
       vi.mocked(heic2any).mockReset();
@@ -772,6 +805,7 @@ describe('clientImageProcessing', () => {
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
       globalThis.Image = originalImage;
+      globalThis.createImageBitmap = originalCreateImageBitmap;
       vi.clearAllMocks();
     });
 
