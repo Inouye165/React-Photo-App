@@ -190,8 +190,6 @@ function createUsersRouter({ db }) {
               if (!error || code === 404 || msg.includes('not found') || msg.includes('user not found')) {
                 staleDeletedAccount = true;
                 staleCheckCompleted = true;
-              } else if (authUser) {
-                staleCheckCompleted = true;
               }
             } else {
               staleCheckCompleted = true;

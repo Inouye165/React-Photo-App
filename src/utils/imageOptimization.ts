@@ -51,8 +51,8 @@ function isSupportedImageFile(file: File): boolean {
 }
 
 function isLikelyBinaryImageHeader(arr: Uint8Array): boolean {
-  if (arr && arr.length > 0 && arr[0] === 0x3c) return false
-  if (arr && arr.length >= 2 && arr[0] === 0xff && arr[1] === 0xd8) return true
+  if (arr.length > 0 && arr[0] === 0x3c) return false
+  if (arr.length >= 2 && arr[0] === 0xff && arr[1] === 0xd8) return true
   if (arr.length >= 4 && arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4e && arr[3] === 0x47) return true
   if (arr.length >= 4 && arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46 && arr[3] === 0x38) return true
   if (arr.length >= 2 && arr[0] === 0x42 && arr[1] === 0x4d) return true
