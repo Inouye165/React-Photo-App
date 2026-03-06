@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Link, Users, Copy } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
-import RightSidePanel from '../components/whiteboard/RightSidePanel'
+import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
 import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
@@ -232,6 +232,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [boardId, isOwner])
 
+  const handleTabChange = useCallback((tab: TabType) => {
+    console.log('Active tab changed to:', tab)
+    // Future: Handle tab-specific logic here
+  }, [])
+
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
 
   if (accessState === 'checking') {
@@ -421,7 +426,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
           
           {/* Right Side Panel */}
-          <RightSidePanel />
+          <RightSidePanel onTabChange={handleTabChange} />
         </div>
       </div>
 
