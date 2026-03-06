@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ArrowLeft, Link, Users, Copy } from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
+import RightSidePanel from '../components/whiteboard/RightSidePanel'
 import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
@@ -403,18 +404,24 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         )}
 
         {/* Whiteboard Content */}
-        <div className="flex-1 overflow-hidden">
-          <WhiteboardPad
-            boardId={boardId}
-            className="h-full"
-            onRealtimeStatusChange={(status) => {
-              setRealtimeStatus(status)
-            }}
-            onAccessDenied={() => {
-              setAccessState('denied')
-              setRealtimeStatus('offline')
-            }}
-          />
+        <div className="flex-1 overflow-hidden flex">
+          {/* Main Canvas Area */}
+          <div className="flex-1 min-w-0">
+            <WhiteboardPad
+              boardId={boardId}
+              className="h-full"
+              onRealtimeStatusChange={(status) => {
+                setRealtimeStatus(status)
+              }}
+              onAccessDenied={() => {
+                setAccessState('denied')
+                setRealtimeStatus('offline')
+              }}
+            />
+          </div>
+          
+          {/* Right Side Panel */}
+          <RightSidePanel />
         </div>
       </div>
 
