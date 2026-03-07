@@ -1,6 +1,12 @@
 import { supabase } from '../supabaseClient'
+import { buildTutorResponse } from '../components/whiteboard/whiteboardTutor'
 import type { ChatRoom } from '../types/chat'
-import type { WhiteboardHubItem, WhiteboardSessionDetails } from '../types/whiteboard'
+import type {
+  WhiteboardHubItem,
+  WhiteboardSessionDetails,
+  WhiteboardTutorRequest,
+  WhiteboardTutorResponse,
+} from '../types/whiteboard'
 import { fetchRooms } from './chat'
 import { ApiError, request } from './httpClient'
 
@@ -348,6 +354,22 @@ export async function joinWhiteboardByToken(token: string): Promise<JoinWhiteboa
     }
     throw error
   }
+}
+
+export async function analyzeWhiteboardPhoto(
+  boardId: string,
+  payload: WhiteboardTutorRequest,
+): Promise<WhiteboardTutorResponse> {
+  if (!boardId) throw new Error('Missing board id')
+  if (!payload.imageDataUrl.trim()) throw new Error('Missing image data')
+
+  const response = await request<{ reply: string; messages: WhiteboardTutorResponse['messages'] }>({
+    path: `/api/whiteboards/${boardId}/tutor`,
+    method: 'POST',
+    body: payload,
+  })
+
+  return buildTutorResponse(response.reply, response.messages)
 }
 
 export default {}

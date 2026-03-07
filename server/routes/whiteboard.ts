@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import express from 'express';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Knex } from 'knex';
 import { createHash, randomBytes } from 'crypto';
 import { gzip } from 'zlib';
@@ -24,6 +25,26 @@ const BoardIdParamsSchema = z.object({
 const JoinInviteBodySchema = z.object({
   token: z.string().min(1).max(2048),
 });
+
+const WhiteboardTutorMessageSchema = z.object({
+  role: z.enum(['user', 'assistant']),
+  content: z.string().trim().min(1).max(4000),
+});
+
+const WhiteboardTutorBodySchema = z.object({
+  imageDataUrl: z.string().min(1).max(12_000_000),
+  imageMimeType: z.string().max(128).optional(),
+  imageName: z.string().max(255).optional(),
+  messages: z.array(WhiteboardTutorMessageSchema).max(40).optional(),
+  mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
+});
+
+const WHITEBOARD_TUTOR_MODEL = 'gemini-2.0-flash';
+const WHITEBOARD_TUTOR_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+const WHITEBOARD_TUTOR_SYSTEM_PROMPT =
+  'You are an AI tutor analyzing a student\'s handwritten math or science work. Identify the problem being solved, check each step for correctness, identify any errors, and provide clear, encouraging feedback. Format your response with: Problem, Steps Analysis (numbered), Errors Found, and Encouragement.';
+const WHITEBOARD_CHAT_SYSTEM_PROMPT =
+  'You are an AI tutor discussing a student\'s handwritten math or science work. Use the image and conversation history as context, answer conversationally, and stay encouraging and specific.';
 
 type AuthenticatedRequest = Request & {
   user?: {
@@ -67,6 +88,192 @@ type WhiteboardInviteRow = {
   uses: number | string;
   revoked_at: string | Date | null;
 };
+
+type WhiteboardTutorMessage = z.infer<typeof WhiteboardTutorMessageSchema>;
+
+type WhiteboardTutorBody = z.infer<typeof WhiteboardTutorBodySchema>;
+
+type GeminiErrorInfo = {
+  statusCode?: number;
+  reason?: string;
+  message: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null;
+  return value as Record<string, unknown>;
+}
+
+function normalizeModelNameForSdk(model: string): string {
+  return model.trim().replace(/^models\//i, '');
+}
+
+function buildGeminiModelCandidates(configuredModel: string): string[] {
+  const normalizedConfigured = normalizeModelNameForSdk(configuredModel || WHITEBOARD_TUTOR_MODEL);
+  const models = [normalizedConfigured, ...WHITEBOARD_TUTOR_FALLBACK_MODELS];
+  return models.filter((model, index) => model.length > 0 && models.indexOf(model) === index);
+}
+
+function extractGeminiErrorInfo(error: unknown): GeminiErrorInfo {
+  const errorRecord = asRecord(error);
+  const nestedError = asRecord(errorRecord?.error);
+  const response = asRecord(errorRecord?.response);
+  const responseData = asRecord(response?.data);
+  const responseError = asRecord(responseData?.error);
+  const providerError = responseError || nestedError;
+
+  const statusCodeValue = providerError?.code ?? errorRecord?.status ?? errorRecord?.statusCode;
+  const statusCode = typeof statusCodeValue === 'number' ? statusCodeValue : undefined;
+
+  const reasonValue = providerError?.status ?? providerError?.reason ?? errorRecord?.code;
+  const reason = typeof reasonValue === 'string' ? reasonValue : undefined;
+
+  const messageValue = providerError?.message ?? errorRecord?.message;
+  const message = typeof messageValue === 'string' && messageValue.trim().length > 0
+    ? messageValue
+    : 'Gemini request failed';
+
+  return { statusCode, reason, message };
+}
+
+function isModelNotFoundError(errorInfo: GeminiErrorInfo): boolean {
+  const combined = `${errorInfo.reason || ''} ${errorInfo.message}`.toLowerCase();
+  return errorInfo.statusCode === 404 || combined.includes('not found') || combined.includes('not supported');
+}
+
+function parseImageDataUrl(dataUrl: string, fallbackMimeType?: string): { mimeType: string; base64Data: string } {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) {
+    throw new Error('Invalid image payload');
+  }
+
+  const mimeType = (fallbackMimeType || match[1] || 'image/png').trim().toLowerCase();
+  const base64Data = match[2]?.trim();
+  if (!base64Data) {
+    throw new Error('Missing image data');
+  }
+
+  return { mimeType, base64Data };
+}
+
+function formatConversationTranscript(messages: WhiteboardTutorMessage[]): string {
+  return messages
+    .map((message) => `${message.role === 'assistant' ? 'Tutor' : 'Student'}: ${message.content}`)
+    .join('\n\n');
+}
+
+function buildTutorPrompt(body: WhiteboardTutorBody): string {
+  const messages = body.messages ?? [];
+  if (messages.length === 0 || body.mode === 'analysis') {
+    return 'Analyze the uploaded student work using the required format.';
+  }
+
+  const transcript = formatConversationTranscript(messages);
+  if (body.mode === 'chat') {
+    return `Use the uploaded work as context and continue this tutoring conversation.\n\nConversation so far:\n${transcript}`;
+  }
+
+  return `Use the uploaded work as context and answer the student\'s follow-up. Keep the response structured with Problem, Steps Analysis (numbered), Errors Found, and Encouragement unless the student clearly asks for a short direct answer.\n\nConversation so far:\n${transcript}`;
+}
+
+async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    const error = new Error('GEMINI_API_KEY is not configured') as Error & { statusCode?: number };
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const { mimeType, base64Data } = parseImageDataUrl(body.imageDataUrl, body.imageMimeType);
+  const prompt = buildTutorPrompt(body);
+  const systemPrompt = body.mode === 'chat' ? WHITEBOARD_CHAT_SYSTEM_PROMPT : WHITEBOARD_TUTOR_SYSTEM_PROMPT;
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const modelCandidates = buildGeminiModelCandidates(process.env.WHITEBOARD_TUTOR_MODEL?.trim() || WHITEBOARD_TUTOR_MODEL);
+  const fullPrompt = [
+    systemPrompt,
+    '',
+    'Use the attached image as the source of truth.',
+    prompt,
+  ].join('\n');
+
+  let lastError: GeminiErrorInfo | null = null;
+
+  for (let index = 0; index < modelCandidates.length; index += 1) {
+    const candidateModel = modelCandidates[index];
+    const isLastCandidate = index === modelCandidates.length - 1;
+
+    try {
+      const modelClient = genAI.getGenerativeModel({ model: candidateModel });
+      const result = await modelClient.generateContent({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+              {
+                text: fullPrompt,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 1400,
+        },
+      });
+
+      const reply = result?.response?.text()?.trim();
+      if (!reply) {
+        throw new Error('Gemini returned an empty response');
+      }
+
+      return reply;
+    } catch (error) {
+      const errorInfo = extractGeminiErrorInfo(error);
+      lastError = errorInfo;
+
+      if (!isLastCandidate && isModelNotFoundError(errorInfo)) {
+        continue;
+      }
+
+      const tutorError = new Error(errorInfo.message) as Error & { statusCode?: number };
+      tutorError.statusCode = errorInfo.statusCode === 404 ? 502 : errorInfo.statusCode || 502;
+      throw tutorError;
+    }
+  }
+
+  const tutorError = new Error(lastError?.message || 'Gemini request failed') as Error & { statusCode?: number };
+  tutorError.statusCode = lastError?.statusCode === 404 ? 502 : lastError?.statusCode || 502;
+  throw tutorError;
+}
+
+async function deleteWhiteboardFromSupabase(boardId: string): Promise<boolean> {
+  const memberResult = await supabase
+    .from('room_members')
+    .delete()
+    .eq('room_id', boardId);
+
+  if (memberResult.error) {
+    throw new Error(memberResult.error.message || 'Unable to delete whiteboard memberships');
+  }
+
+  const roomResult = await supabase
+    .from('rooms')
+    .delete()
+    .eq('id', boardId)
+    .select('id');
+
+  if (roomResult.error) {
+    throw new Error(roomResult.error.message || 'Unable to delete whiteboard room');
+  }
+
+  return Array.isArray(roomResult.data) && roomResult.data.length > 0;
+}
 
 function normalizeSeq(value: number | string): number | null {
   const seq = typeof value === 'string' ? Number(value) : value;
@@ -943,6 +1150,35 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   );
 
   router.post(
+    '/:boardId/tutor',
+    validateRequest({ params: BoardIdParamsSchema, body: WhiteboardTutorBodySchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const body = req.body as WhiteboardTutorBody;
+        const reply = await callWhiteboardTutor(body);
+        const messages = [...(body.messages ?? []), { role: 'assistant', content: reply }];
+
+        return res.status(200).json({ reply, messages, boardId });
+      } catch (error) {
+        const statusCode =
+          error && typeof error === 'object' && 'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number'
+            ? Number((error as { statusCode?: unknown }).statusCode)
+            : 500;
+        const message = error instanceof Error ? error.message : 'Internal server error';
+        console.error('[WB-TUTOR] request failed', {
+          boardId: req.validated?.params?.boardId,
+          statusCode,
+          message,
+        });
+        return res.status(statusCode).json({ success: false, error: message });
+      }
+    },
+  );
+
+  router.post(
     '/:boardId/ws-token',
     validateRequest({ params: BoardIdParamsSchema }),
     async (req: AuthenticatedRequest, res: Response) => {
@@ -1185,13 +1421,29 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const owner = await isBoardOwner(db, boardId, userId);
       if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
 
+      let deletedPrimaryRoom = false;
+
       // perform clean delete in transaction
       await db.transaction(async (trx) => {
+        const hasWhiteboardDocuments = await trx.schema.hasTable(WHITEBOARD_DOC_TABLE);
+        if (hasWhiteboardDocuments) {
+          await trx(WHITEBOARD_DOC_TABLE).where({ board_id: boardId }).del();
+        }
         await trx('whiteboard_events').where({ board_id: boardId }).del();
         await trx('whiteboard_invites').where({ room_id: boardId }).del();
         await trx('room_members').where({ room_id: boardId }).del();
-        await trx('rooms').where({ id: boardId }).del();
+        const deletedRooms = await trx('rooms').where({ id: boardId }).del();
+        deletedPrimaryRoom = toAffectedRows(deletedRooms) > 0;
       });
+
+      let deletedFallbackRoom = false;
+      if (process.env.NODE_ENV !== 'test') {
+        deletedFallbackRoom = await deleteWhiteboardFromSupabase(boardId);
+      }
+
+      if (!deletedPrimaryRoom && !deletedFallbackRoom) {
+        return res.status(404).json({ success: false, error: 'Whiteboard not found' });
+      }
 
       return res.status(204).send();
     } catch (err) {

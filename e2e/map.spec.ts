@@ -11,7 +11,7 @@ test.describe('Map Component', () => {
     });
 
     const corsHeaders = {
-      'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+      'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
       'Access-Control-Allow-Credentials': 'true',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-E2E-User-ID',
@@ -230,7 +230,7 @@ test.describe('Map Component', () => {
 
 
     // Navigate directly to gallery for stable selection
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:4173/gallery', { waitUntil: 'networkidle' });
     
     // Handle disclaimer modal if present
     await acceptDisclaimer(page);

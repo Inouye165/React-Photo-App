@@ -23,7 +23,7 @@ test('A11y: gallery page', async ({ page }) => {
   await page.route('**/api/users/me', async route => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
         'Access-Control-Allow-Credentials': 'true'
       },
       json: {
@@ -40,14 +40,14 @@ test('A11y: gallery page', async ({ page }) => {
   await page.route('**/api/users/accept-terms', async route => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
         'Access-Control-Allow-Credentials': 'true'
       },
       json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
     });
   });
 
-  await page.goto('http://127.0.0.1:5173/gallery');
+  await page.goto('http://127.0.0.1:4173/gallery');
   
   // Handle disclaimer modal if present
   await acceptDisclaimer(page);

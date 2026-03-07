@@ -1,20 +1,30 @@
 import React from 'react'
 import TabbedPanel, { type TabConfig } from '../common/TabbedPanel'
 import { AITutorTab, ChatTab, StepsTab } from './tabs'
+import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../../types/whiteboard'
 
 export type TabType = 'ai-tutor' | 'chat' | 'steps'
 
 export interface RightSidePanelProps {
-  /** Optional custom className for additional styling */
   className?: string
-  /** Initial active tab (defaults to 'ai-tutor') */
   initialTab?: TabType
-  /** Width of the panel (defaults to 360px) */
   width?: string | number
-  /** Background color (defaults to #161b22) */
   backgroundColor?: string
-  /** Callback when tab changes */
   onTabChange?: (tab: TabType) => void
+  hasPhoto: boolean
+  analysis: WhiteboardTutorResponse | null
+  analysisLoading: boolean
+  analysisError: string | null
+  onStartAnalysis: () => void
+  tutorDraft: string
+  tutorSubmitting: boolean
+  onTutorDraftChange: (value: string) => void
+  onTutorSubmit: () => void
+  chatMessages: WhiteboardTutorMessage[]
+  chatDraft: string
+  chatSubmitting: boolean
+  onChatDraftChange: (value: string) => void
+  onChatSubmit: () => void
 }
 
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
@@ -22,23 +32,58 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   initialTab = 'ai-tutor',
   width = '320px',
   backgroundColor = '#161b22',
-  onTabChange
+  onTabChange,
+  hasPhoto,
+  analysis,
+  analysisLoading,
+  analysisError,
+  onStartAnalysis,
+  tutorDraft,
+  tutorSubmitting,
+  onTutorDraftChange,
+  onTutorSubmit,
+  chatMessages,
+  chatDraft,
+  chatSubmitting,
+  onChatDraftChange,
+  onChatSubmit,
 }) => {
   const tabs: TabConfig<TabType>[] = [
     {
       id: 'ai-tutor',
       label: 'AI Tutor',
-      content: <AITutorTab />
+      content: (
+        <AITutorTab
+          hasPhoto={hasPhoto}
+          analysis={analysis}
+          isLoading={analysisLoading}
+          error={analysisError}
+          onStartAnalysis={onStartAnalysis}
+          followUpDraft={tutorDraft}
+          isSubmitting={tutorSubmitting}
+          onFollowUpDraftChange={onTutorDraftChange}
+          onSubmitFollowUp={onTutorSubmit}
+        />
+      )
     },
     {
       id: 'chat',
       label: 'Chat',
-      content: <ChatTab />
+      content: (
+        <ChatTab
+          hasPhoto={hasPhoto}
+          messages={chatMessages}
+          draft={chatDraft}
+          isSubmitting={chatSubmitting}
+          onDraftChange={onChatDraftChange}
+          onSubmit={onChatSubmit}
+        />
+      )
     },
     {
       id: 'steps',
       label: 'Steps',
-      content: <StepsTab />
+      content: <StepsTab hasPhoto={hasPhoto} isLoading={analysisLoading} steps={analysis?.steps ?? []} />
     }
   ]
 

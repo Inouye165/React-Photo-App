@@ -1,17 +1,46 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Link, Users, Copy, Camera, Edit3 } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Camera,
+  ChevronDown,
+  Circle,
+  Copy,
+  Edit3,
+  Eraser,
+  Highlighter,
+  ImageMinus,
+  PenTool,
+  Share2,
+  Square,
+  Type,
+  Users,
+} from 'lucide-react'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
-import type { WhiteboardCanvasHandle } from '../components/whiteboard/WhiteboardCanvas'
+import type {
+  AnnotationTool,
+  BackgroundImageAsset,
+  WhiteboardCanvasHandle,
+} from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
-import { createWhiteboardInvite, ensureWhiteboardMembership, getWhiteboardSessionDetails, updateWhiteboardTitle } from '../api/whiteboards'
+import {
+  analyzeWhiteboardPhoto,
+  createWhiteboardInvite,
+  ensureWhiteboardMembership,
+  getWhiteboardSessionDetails,
+  updateWhiteboardTitle,
+} from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
+import { buildChatSeed } from '../components/whiteboard/whiteboardTutor'
+import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
+type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -35,6 +64,37 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
   }
 }
 
+function buildNextMessages(messages: WhiteboardTutorMessage[], draft: string): WhiteboardTutorMessage[] {
+  return [...messages, { role: 'user', content: draft.trim() }]
+}
+
+function ToolButton({
+  active,
+  label,
+  onClick,
+  icon,
+}: {
+  active: boolean
+  label: string
+  onClick: () => void
+  icon: React.JSX.Element
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+        active ? 'bg-amber-500 text-slate-950' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'
+      }`}
+    >
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+    </button>
+  )
+}
+
 export default function WhiteboardSessionPage(): React.JSX.Element {
   const { boardId } = useParams()
   const navigate = useNavigate()
@@ -53,33 +113,38 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isSavingRename, setIsSavingRename] = useState(false)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
+  const [hasBackground, setHasBackground] = useState(false)
+  const [backgroundImageAsset, setBackgroundImageAsset] = useState<BackgroundImageAsset | null>(null)
+  const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [tutorDraft, setTutorDraft] = useState('')
+  const [tutorSubmitting, setTutorSubmitting] = useState(false)
+  const [chatMessages, setChatMessages] = useState<WhiteboardTutorMessage[]>([])
+  const [chatDraft, setChatDraft] = useState('')
+  const [chatSubmitting, setChatSubmitting] = useState(false)
+  const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
+  const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
+  const [shareMenuOpen, setShareMenuOpen] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
+  const shareMenuRef = useRef<HTMLDivElement | null>(null)
+  const shapeMenuRef = useRef<HTMLDivElement | null>(null)
+  const hasBackgroundRef = useRef(false)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
 
-  const realtimeIndicator = useMemo(() => {
-    if (realtimeStatus === 'connected') {
-      return {
-        label: 'Connected',
-        className: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-      }
-    }
-
+  const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
-      return {
-        label: 'Offline',
-        className: 'border-chess-muted/30 bg-chess-surfaceSoft text-chess-muted',
-      }
+      return { tone: 'error' as const, message: 'Realtime sync is offline. Changes will reconnect when the session recovers.' }
     }
-
-    return {
-      label: 'Connecting…',
-      className: 'border-chess-accent/30 bg-chess-accent/10 text-chess-accentSoft',
+    if (realtimeStatus === 'connecting') {
+      return { tone: 'info' as const, message: 'Connecting to collaborators…' }
     }
+    return null
   }, [realtimeStatus])
 
   const refreshMembers = useCallback(async () => {
@@ -106,9 +171,305 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setIsOwner(ownerFromMembership || ownerFromCreator)
   }, [boardId, currentUserId])
 
-  if (!boardId) return <div>Missing board id</div>
+  const runTutorRequest = useCallback(
+    async (messages: WhiteboardTutorMessage[] = [], mode: 'analysis' | 'tutor' | 'chat' = 'analysis') => {
+      if (!boardId) throw new Error('Missing board id')
+      if (!backgroundImageAsset) throw new Error('Import a photo first.')
+
+      return analyzeWhiteboardPhoto(boardId, {
+        imageDataUrl: backgroundImageAsset.dataUrl,
+        imageMimeType: backgroundImageAsset.mimeType,
+        imageName: backgroundImageAsset.name,
+        messages,
+        mode,
+      })
+    },
+    [backgroundImageAsset, boardId],
+  )
+
+  const handleAnnotationToolSelect = useCallback((tool: AnnotationTool) => {
+    setAnnotationTool(tool)
+    setShapeMenuOpen(false)
+    whiteboardPadRef.current?.setAnnotationTool(tool)
+  }, [])
+
+  const handleCopyBoardLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setJoinLinkNotice({ tone: 'success', message: 'Board link copied to clipboard.' })
+    } catch {
+      setJoinLinkNotice({ tone: 'error', message: 'Unable to copy the board link.' })
+    } finally {
+      setShareMenuOpen(false)
+    }
+  }, [])
+
+  const handleCreateJoinLink = useCallback(async () => {
+    if (!boardId) {
+      setJoinLinkNotice({ tone: 'error', message: 'Missing whiteboard id.' })
+      setShareMenuOpen(false)
+      return
+    }
+
+    if (!isOwner) {
+      setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link.' })
+      setShareMenuOpen(false)
+      return
+    }
+
+    setIsCreatingJoinLink(true)
+    setJoinLinkNotice(null)
+
+    try {
+      const result = await createWhiteboardInvite(boardId)
+      let copied = false
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(result.joinUrl)
+          copied = true
+        } catch {
+          copied = false
+        }
+      }
+
+      const expiresLabel = new Date(result.expiresAt).toLocaleString()
+      setJoinLinkNotice({
+        tone: 'success',
+        message: copied
+          ? `Join link copied to clipboard. Expires ${expiresLabel}.`
+          : `Join link created. Expires ${expiresLabel}.`,
+      })
+    } catch (error) {
+      const details = getSafeErrorDetails(error)
+      if (details.status === 403) {
+        setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link for this board.' })
+      } else {
+        setJoinLinkNotice({ tone: 'error', message: details.message || 'Unable to create join link.' })
+      }
+    } finally {
+      setIsCreatingJoinLink(false)
+      setShareMenuOpen(false)
+    }
+  }, [boardId, isOwner])
+
+  const handleOpenInvite = useCallback(() => {
+    if (isOwner) {
+      setInviteNotice(null)
+      setInviteOpen(true)
+      return
+    }
+
+    setInviteNotice('Only the owner can invite.')
+    if (!inviteDeniedLoggedRef.current) {
+      inviteDeniedLoggedRef.current = true
+      console.info('[WB-INVITE] invite-denied not-owner', { boardId })
+    }
+  }, [boardId, isOwner])
+
+  const handleInviteMember = useCallback(async (userId: string) => {
+    if (!boardId) {
+      throw new Error('Missing whiteboard id')
+    }
+
+    try {
+      await addRoomMember(boardId, userId)
+      await refreshMembers()
+    } catch (error) {
+      const details = getSafeErrorDetails(error)
+      console.warn('[WB-INVITE] invite-failed', {
+        boardId,
+        userId,
+        code: details.code,
+        status: details.status,
+        message: details.message,
+      })
+      throw new Error(details.message)
+    }
+  }, [boardId, refreshMembers])
+
+  const handleSearchUsers = useCallback(async (query: string): Promise<UserSearchResult[]> => {
+    return searchUsers(query)
+  }, [])
+
+  const handleRenameStart = useCallback(() => {
+    if (!isOwner) return
+    setRenameError(null)
+    setRenameDraft(boardName)
+    setIsRenaming(true)
+  }, [boardName, isOwner])
+
+  const handleRenameCancel = useCallback(() => {
+    setIsRenaming(false)
+    setRenameDraft(boardName)
+    setRenameError(null)
+  }, [boardName])
+
+  const handleRenameSave = useCallback(async () => {
+    if (!boardId) {
+      setRenameError('Missing whiteboard id')
+      return
+    }
+
+    if (!isOwner) {
+      setIsRenaming(false)
+      return
+    }
+
+    const trimmed = renameDraft.trim()
+    const currentTitle = boardName.trim() || 'Untitled'
+
+    if (!trimmed) {
+      setRenameError('Whiteboard name cannot be empty')
+      return
+    }
+
+    if (trimmed === currentTitle) {
+      setIsRenaming(false)
+      setRenameError(null)
+      return
+    }
+
+    setIsSavingRename(true)
+    setRenameError(null)
+
+    try {
+      await updateWhiteboardTitle(boardId, trimmed)
+      setBoardName(trimmed)
+      setRenameDraft(trimmed)
+      setIsRenaming(false)
+    } catch (error) {
+      setRenameError(error instanceof Error ? error.message : 'Unable to rename whiteboard')
+    } finally {
+      setIsSavingRename(false)
+    }
+  }, [boardId, boardName, isOwner, renameDraft])
+
+  const resetTutorState = useCallback(() => {
+    setAnalysis(null)
+    setAnalysisError(null)
+    setAnalysisLoading(false)
+    setTutorDraft('')
+    setTutorSubmitting(false)
+    setChatMessages([])
+    setChatDraft('')
+    setChatSubmitting(false)
+    setAnnotationTool('pen')
+  }, [])
 
   useEffect(() => {
+    hasBackgroundRef.current = hasBackground
+  }, [hasBackground])
+
+  const handleRealtimeStatusChange = useCallback((status: RealtimeStatus) => {
+    setRealtimeStatus(status)
+  }, [])
+
+  const handleBackgroundChange = useCallback(
+    (value: boolean) => {
+      if (hasBackgroundRef.current === value) {
+        return
+      }
+
+      hasBackgroundRef.current = value
+      setHasBackground(value)
+
+      if (!value) {
+        setBackgroundImageAsset(null)
+        resetTutorState()
+      }
+    },
+    [resetTutorState],
+  )
+
+  const handleBackgroundImageAssetChange = useCallback((asset: BackgroundImageAsset | null) => {
+    setBackgroundImageAsset(asset)
+  }, [])
+
+  const handleWhiteboardAccessDenied = useCallback(() => {
+    setAccessState('denied')
+    setRealtimeStatus('offline')
+  }, [])
+
+  const handlePhotoUploadClick = useCallback(() => {
+    photoUploadInputRef.current?.click()
+  }, [])
+
+  const handlePhotoFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    setPhotoUploadError(null)
+    resetTutorState()
+
+    try {
+      if (!whiteboardPadRef.current) {
+        throw new Error('Whiteboard is not ready yet.')
+      }
+      await whiteboardPadRef.current.insertImageFile(file)
+      handleAnnotationToolSelect('pen')
+    } catch (error) {
+      setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
+    }
+  }, [handleAnnotationToolSelect, resetTutorState])
+
+  const handleRemovePhoto = useCallback(() => {
+    whiteboardPadRef.current?.clearBackground()
+    setBackgroundImageAsset(null)
+    setHasBackground(false)
+    resetTutorState()
+  }, [resetTutorState])
+
+  const handleStartAnalysis = useCallback(async () => {
+    if (!backgroundImageAsset) return
+    setAnalysisLoading(true)
+    setAnalysisError(null)
+    try {
+      const response = await runTutorRequest([], 'analysis')
+      setAnalysis(response)
+      setChatMessages(buildChatSeed(response))
+      handleAnnotationToolSelect('pen')
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Unable to analyze the photo.')
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }, [backgroundImageAsset, handleAnnotationToolSelect, runTutorRequest])
+
+  const handleTutorFollowUp = useCallback(async () => {
+    if (!analysis || !tutorDraft.trim()) return
+    const nextMessages = buildNextMessages(analysis.messages, tutorDraft)
+    setTutorSubmitting(true)
+    setAnalysisError(null)
+    try {
+      const response = await runTutorRequest(nextMessages, 'tutor')
+      setAnalysis(response)
+      setTutorDraft('')
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Unable to send follow-up question.')
+    } finally {
+      setTutorSubmitting(false)
+    }
+  }, [analysis, runTutorRequest, tutorDraft])
+
+  const handleChatSubmit = useCallback(async () => {
+    if (!chatDraft.trim()) return
+    const nextMessages = buildNextMessages(chatMessages, chatDraft)
+    setChatSubmitting(true)
+    try {
+      const response = await runTutorRequest(nextMessages, 'chat')
+      setChatMessages(response.messages)
+      setChatDraft('')
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Unable to continue the chat.')
+    } finally {
+      setChatSubmitting(false)
+    }
+  }, [chatDraft, chatMessages, runTutorRequest])
+
+  useEffect(() => {
+    if (!boardId) return
     let cancelled = false
     setAccessState('checking')
 
@@ -145,94 +506,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [accessState, boardId, refreshMembers])
 
-  const handleOpenInvite = useCallback(() => {
-    if (isOwner) {
-      setInviteNotice(null)
-      setInviteOpen(true)
-      return
-    }
-
-    setInviteNotice('Only the owner can invite.')
-    if (!inviteDeniedLoggedRef.current) {
-      inviteDeniedLoggedRef.current = true
-      console.info('[WB-INVITE] invite-denied not-owner', { boardId })
-    }
-  }, [boardId, isOwner])
-
-  const handleInviteMember = useCallback(async (userId: string) => {
-    try {
-      await addRoomMember(boardId, userId)
-      await refreshMembers()
-    } catch (error) {
-      const details = getSafeErrorDetails(error)
-      console.warn('[WB-INVITE] invite-failed', {
-        boardId,
-        userId,
-        code: details.code,
-        status: details.status,
-        message: details.message,
-      })
-      throw new Error(details.message)
-    }
-  }, [boardId, refreshMembers])
-
-  const handleSearchUsers = useCallback(async (query: string): Promise<UserSearchResult[]> => {
-    return searchUsers(query)
-  }, [])
-
-  const handleCreateJoinLink = useCallback(async () => {
-    if (!isOwner) {
-      setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link.' })
-      return
-    }
-
-    setIsCreatingJoinLink(true)
-    setJoinLinkNotice(null)
-
-    try {
-      const result = await createWhiteboardInvite(boardId)
-      let copied = false
-
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(result.joinUrl)
-          copied = true
-        } catch {
-          copied = false
-        }
-      }
-
-      const expiresLabel = new Date(result.expiresAt).toLocaleString()
-      setJoinLinkNotice({
-        tone: 'success',
-        message: copied
-          ? `Join link copied to clipboard. Expires ${expiresLabel}.`
-          : `Join link created. Expires ${expiresLabel}.`,
-      })
-    } catch (error) {
-      const details = getSafeErrorDetails(error)
-      console.warn('[WB-JOIN] create-link-failed', {
-        boardId,
-        code: details.code,
-        status: details.status,
-        message: details.message,
-      })
-      // If backend explicitly returns 403, surface a clearer UX message for non-owners.
-      if (details.status === 403) {
-        setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link for this board.' })
-      } else {
-        setJoinLinkNotice({ tone: 'error', message: details.message || 'Unable to create join link.' })
-      }
-    } finally {
-      setIsCreatingJoinLink(false)
-    }
-  }, [boardId, isOwner])
-
-  const handleTabChange = useCallback((tab: TabType) => {
-    console.log('Active tab changed to:', tab)
-    // Future: Handle tab-specific logic here
-  }, [])
-
   useEffect(() => {
     if (!isRenaming) return
     try {
@@ -244,107 +517,222 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [isRenaming])
 
-  const handleRenameStart = useCallback(() => {
-    if (!isOwner) return
-    setRenameError(null)
-    setRenameDraft(boardName)
-    setIsRenaming(true)
-  }, [boardName, isOwner])
-
-  const handleRenameCancel = useCallback(() => {
-    setIsRenaming(false)
-    setRenameDraft(boardName)
-    setRenameError(null)
-  }, [boardName])
-
-  const handleRenameSave = useCallback(async () => {
-    if (!isOwner) {
-      setIsRenaming(false)
-      return
-    }
-
-    const trimmed = renameDraft.trim()
-    const currentTitle = boardName.trim() || 'Untitled'
-
-    if (!trimmed) {
-      setRenameError('Whiteboard name cannot be empty')
-      return
-    }
-
-    if (trimmed === currentTitle) {
-      setIsRenaming(false)
-      setRenameError(null)
-      return
-    }
-
-    setIsSavingRename(true)
-    setRenameError(null)
-
-    try {
-      await updateWhiteboardTitle(boardId, trimmed)
-      setBoardName(trimmed)
-      setRenameDraft(trimmed)
-      setIsRenaming(false)
-    } catch (error) {
-      setRenameError(error instanceof Error ? error.message : 'Unable to rename whiteboard')
-    } finally {
-      setIsSavingRename(false)
-    }
-  }, [boardId, boardName, isOwner, renameDraft])
-
-  const handlePhotoUploadClick = useCallback(() => {
-    photoUploadInputRef.current?.click()
-  }, [])
-
-  const handlePhotoFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-
-    setPhotoUploadError(null)
-    try {
-      if (!whiteboardPadRef.current) {
-        throw new Error('Whiteboard is not ready yet.')
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (shareMenuRef.current && !shareMenuRef.current.contains(target)) {
+        setShareMenuOpen(false)
       }
-      await whiteboardPadRef.current.insertImageFile(file)
-    } catch (error) {
-      setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
+      if (shapeMenuRef.current && !shapeMenuRef.current.contains(target)) {
+        setShapeMenuOpen(false)
+      }
     }
+
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
   }, [])
+
+  if (!boardId) return <div>Missing board id</div>
 
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
 
+  const renderHeader = () => (
+    <div className="border-b border-white/12 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
+        <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[30%]">
+          <button
+            onClick={() => navigate('/whiteboards')}
+            className="flex items-center gap-2 rounded-lg bg-chess-surface px-3 py-2 transition-colors hover:bg-chess-surfaceSoft"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-sm font-medium">Back</span>
+          </button>
+          {isRenaming ? (
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameDraft}
+              disabled={isSavingRename}
+              onChange={(event) => setRenameDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void handleRenameSave()
+                } else if (event.key === 'Escape') {
+                  event.preventDefault()
+                  handleRenameCancel()
+                }
+              }}
+              onBlur={() => {
+                void handleRenameSave()
+              }}
+              className="min-w-[220px] max-w-[40vw] rounded-lg border border-white/12 bg-chess-surface px-3 py-2 text-xl font-semibold font-display text-white outline-none transition-colors focus:border-chess-accent"
+              aria-label="Whiteboard name"
+            />
+          ) : (
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="truncate text-xl font-semibold font-display">{boardName}</h1>
+              {isOwner ? (
+                <button
+                  type="button"
+                  onClick={handleRenameStart}
+                  className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
+                  aria-label="Rename whiteboard"
+                  title="Rename whiteboard"
+                >
+                  <Edit3 className="h-4 w-4" />
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+
+        <div className="order-3 flex w-full justify-center md:order-2 md:flex-1">
+          {hasBackground ? (
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+              <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
+              <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
+              <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
+              <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
+              <div className="relative" ref={shapeMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setShapeMenuOpen((prev) => !prev)}
+                  className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                    ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    {annotationTool === 'arrow' ? <ArrowRight className="h-4 w-4" /> : annotationTool === 'rectangle' ? <Square className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                    Shapes
+                    <ChevronDown className="h-4 w-4" />
+                  </span>
+                </button>
+                {shapeMenuOpen ? (
+                  <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl">
+                    {([
+                      ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
+                      ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
+                      ['ellipse', <Circle className="h-4 w-4" />, 'Circle'],
+                    ] as [ShapeTool, React.JSX.Element, string][]).map(([tool, icon, label]) => (
+                      <button
+                        key={tool}
+                        type="button"
+                        onClick={() => handleAnnotationToolSelect(tool)}
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-white/10"
+                      >
+                        {icon}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                className="rounded-xl border border-amber-500/40 px-3 py-2 text-sm font-medium text-amber-300 transition hover:bg-amber-500/10"
+              >
+                <span className="flex items-center gap-2">
+                  <ImageMinus className="h-4 w-4" />
+                  Remove photo
+                </span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handlePhotoUploadClick}
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+              type="button"
+            >
+              <Camera className="h-4 w-4" />
+              Add photo to annotate
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-1 items-center justify-end gap-2 md:max-w-[30%]">
+          <input
+            ref={photoUploadInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handlePhotoFileChange}
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+          <button
+            onClick={handleOpenInvite}
+            className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+            aria-label="Invite"
+          >
+            <Users className="h-4 w-4" />
+            Invite
+          </button>
+          <div className="relative" ref={shareMenuRef}>
+            <button
+              type="button"
+              onClick={() => setShareMenuOpen((prev) => !prev)}
+              className="flex items-center gap-2 rounded-xl bg-chess-surface px-3 py-2 text-sm font-medium text-white transition hover:bg-chess-surfaceSoft"
+              aria-expanded={shareMenuOpen}
+              aria-haspopup="menu"
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+              <ChevronDown className="h-4 w-4" />
+            </button>
+            {shareMenuOpen ? (
+              <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl" role="menu" aria-label="Share actions">
+                <button
+                  type="button"
+                  onClick={() => void handleCopyBoardLink()}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                  role="menuitem"
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy board link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleCreateJoinLink()
+                  }}
+                  disabled={isCreatingJoinLink}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                  role="menuitem"
+                >
+                  <Share2 className="h-4 w-4" />
+                  {isCreatingJoinLink ? 'Creating join link…' : 'Create join link'}
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <ChessUserMenu
+            onOpenPhotos={() => navigate('/photos')}
+            onOpenEdit={() => navigate('/edit')}
+            onOpenAdmin={() => navigate('/admin')}
+            showAdminQuickAction={false}
+          />
+        </div>
+      </div>
+    </div>
+  )
+
   if (accessState === 'checking') {
     return (
-      <motion.div 
+      <motion.div
         className={pageClassName}
         initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
         animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
         transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => navigate('/whiteboards')}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm font-medium">Back</span>
-              </button>
-              <h1 className="text-xl font-semibold font-display">Checking Access</h1>
-            </div>
-            <ChessUserMenu
-              onOpenPhotos={() => navigate('/photos')}
-              onOpenEdit={() => navigate('/edit')}
-              onOpenAdmin={() => navigate('/admin')}
-              showAdminQuickAction={false}
-            />
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-chess-muted mb-2">Checking whiteboard access…</div>
-            </div>
+        <div className="flex h-full flex-col">
+          {renderHeader()}
+          <div className="flex flex-1 items-center justify-center">
+            <div className="text-center text-chess-muted">Checking whiteboard access…</div>
           </div>
         </div>
       </motion.div>
@@ -353,39 +741,22 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   if (accessState === 'denied') {
     return (
-      <motion.div 
+      <motion.div
         className={pageClassName}
         initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
         animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
         transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
-            <div className="flex items-center gap-3">
+        <div className="flex h-full flex-col">
+          {renderHeader()}
+          <div className="flex flex-1 items-center justify-center">
+            <div className="max-w-md text-center">
+              <Users className="mx-auto mb-4 h-12 w-12 text-chess-muted/50" />
+              <h2 className="mb-2 text-lg font-medium">No Access</h2>
+              <p className="mb-6 text-chess-muted">You don't have access to this whiteboard.</p>
               <button
                 onClick={() => navigate('/whiteboards')}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm font-medium">Back</span>
-              </button>
-              <h1 className="text-xl font-semibold font-display">Access Denied</h1>
-            </div>
-            <ChessUserMenu
-              onOpenPhotos={() => navigate('/photos')}
-              onOpenEdit={() => navigate('/edit')}
-              onOpenAdmin={() => navigate('/admin')}
-              showAdminQuickAction={false}
-            />
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center max-w-md">
-              <Users className="w-12 h-12 mx-auto mb-4 text-chess-muted/50" />
-              <h2 className="text-lg font-medium mb-2">No Access</h2>
-              <p className="text-chess-muted mb-6">You don't have access to this whiteboard.</p>
-              <button 
-                onClick={() => navigate('/whiteboards')} 
-                className="px-4 py-2 rounded-lg bg-chess-accent hover:bg-chess-accentSoft transition-colors text-white font-medium"
+                className="rounded-lg bg-chess-accent px-4 py-2 font-medium text-white transition-colors hover:bg-chess-accentSoft"
               >
                 Back to Whiteboards
               </button>
@@ -397,141 +768,22 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }
 
   return (
-    <motion.div 
+    <motion.div
       className={pageClassName}
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
     >
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/12">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/whiteboards')}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm font-medium">Back</span>
-            </button>
-            {isRenaming ? (
-              <div className="flex items-center gap-2">
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameDraft}
-                  disabled={isSavingRename}
-                  onChange={(event) => setRenameDraft(event.target.value)}
-                  onClick={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void handleRenameSave()
-                    } else if (event.key === 'Escape') {
-                      event.preventDefault()
-                      handleRenameCancel()
-                    }
-                  }}
-                  onBlur={() => {
-                    void handleRenameSave()
-                  }}
-                  className="min-w-[220px] max-w-[40vw] rounded-lg border border-white/12 bg-chess-surface px-3 py-2 text-xl font-semibold font-display text-white outline-none ring-0 transition-colors focus:border-chess-accent"
-                  aria-label="Whiteboard name"
-                />
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-xl font-semibold font-display truncate">{boardName}</h1>
-                {isOwner && (
-                  <button
-                    type="button"
-                    onClick={handleRenameStart}
-                    className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
-                    aria-label="Rename whiteboard"
-                    title="Rename whiteboard"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              ref={photoUploadInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handlePhotoFileChange}
-              aria-hidden="true"
-              tabIndex={-1}
-            />
-            <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${realtimeIndicator.className}`}>
-              {realtimeIndicator.label}
-            </span>
-            <button
-              onClick={handlePhotoUploadClick}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-              aria-label="Upload or take photo"
-              title="Upload or take photo"
-              type="button"
-            >
-              <Camera className="w-4 h-4" />
-              <span className="text-sm font-medium">Photo</span>
-            </button>
-            <button
-              onClick={handleOpenInvite}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-              aria-label="Invite"
-            >
-              <Users className="w-4 h-4" />
-              <span className="text-sm font-medium">Invite</span>
-            </button>
-            {isOwner && (
-              <button
-                onClick={() => {
-                  void handleCreateJoinLink()
-                }}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-                disabled={isCreatingJoinLink}
-              >
-                <Link className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  {isCreatingJoinLink ? 'Creating…' : 'Create join link'}
-                </span>
-              </button>
-            )}
-            <button
-              onClick={() => {
-                try {
-                  void navigator.clipboard.writeText(window.location.href)
-                } catch {
-                  // ignore
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-chess-surface hover:bg-chess-surfaceSoft transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              <span className="text-sm font-medium">Copy link</span>
-            </button>
-            <ChessUserMenu
-              onOpenPhotos={() => navigate('/photos')}
-              onOpenEdit={() => navigate('/edit')}
-              onOpenAdmin={() => navigate('/admin')}
-              showAdminQuickAction={false}
-            />
-          </div>
-        </div>
+      <div className="flex h-full flex-col">
+        {renderHeader()}
 
-        {/* Notices */}
-        {inviteNotice && (
+        {inviteNotice ? (
           <div className="border-b border-chess-accent/30 bg-chess-accent/10 px-4 py-3 text-sm text-chess-accentSoft">
             {inviteNotice}
           </div>
-        )}
+        ) : null}
 
-        {joinLinkNotice && (
+        {joinLinkNotice ? (
           <div
             className={`border-b px-4 py-3 text-sm ${
               joinLinkNotice.tone === 'success'
@@ -541,40 +793,69 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           >
             {joinLinkNotice.message}
           </div>
-        )}
+        ) : null}
 
-        {photoUploadError && (
+        {statusNotice ? (
+          <div
+            className={`border-b px-4 py-3 text-sm ${
+              statusNotice.tone === 'error'
+                ? 'border-red-500/30 bg-red-500/10 text-red-300'
+                : 'border-chess-accent/30 bg-chess-accent/10 text-chess-accentSoft'
+            }`}
+          >
+            {statusNotice.message}
+          </div>
+        ) : null}
+
+        {photoUploadError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {photoUploadError}
           </div>
-        )}
+        ) : null}
 
-        {renameError && (
+        {renameError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {renameError}
           </div>
-        )}
+        ) : null}
 
-        {/* Whiteboard Content */}
-        <div className="flex-1 overflow-hidden flex">
-          {/* Main Canvas Area */}
-          <div className="flex-1 min-w-0">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1">
             <WhiteboardPad
               ref={whiteboardPadRef}
               boardId={boardId}
               className="h-full"
-              onRealtimeStatusChange={(status) => {
-                setRealtimeStatus(status)
-              }}
-              onAccessDenied={() => {
-                setAccessState('denied')
-                setRealtimeStatus('offline')
-              }}
+              annotationMode={hasBackground}
+              onRealtimeStatusChange={handleRealtimeStatusChange}
+              onHasBackgroundChange={handleBackgroundChange}
+              onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+              onAccessDenied={handleWhiteboardAccessDenied}
             />
           </div>
-          
-          {/* Right Side Panel */}
-          <RightSidePanel onTabChange={handleTabChange} />
+
+          <RightSidePanel
+            hasPhoto={hasBackground}
+            analysis={analysis}
+            analysisLoading={analysisLoading}
+            analysisError={analysisError}
+            onStartAnalysis={() => {
+              void handleStartAnalysis()
+            }}
+            tutorDraft={tutorDraft}
+            tutorSubmitting={tutorSubmitting}
+            onTutorDraftChange={setTutorDraft}
+            onTutorSubmit={() => {
+              void handleTutorFollowUp()
+            }}
+            chatMessages={chatMessages}
+            chatDraft={chatDraft}
+            chatSubmitting={chatSubmitting}
+            onChatDraftChange={setChatDraft}
+            onChatSubmit={() => {
+              void handleChatSubmit()
+            }}
+            onTabChange={(_tab: TabType) => undefined}
+          />
         </div>
       </div>
 

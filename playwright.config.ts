@@ -10,7 +10,7 @@ export default defineConfig({
   retries: 1,
   use: {
     headless: true,
-    baseURL: 'http://127.0.0.1:5173'
+    baseURL: 'http://127.0.0.1:4173'
   },
   webServer: [
     {
@@ -34,8 +34,8 @@ export default defineConfig({
     },
     {
       // Frontend
-      command: 'npm run dev -- --mode e2e --port 5173 --strictPort',
-      url: 'http://127.0.0.1:5173',
+      command: 'npm run dev -- --mode e2e --port 4173 --strictPort',
+      url: 'http://127.0.0.1:4173',
       // Always start isolated frontend for deterministic E2E behavior.
       reuseExistingServer: false,
       timeout: 120_000,

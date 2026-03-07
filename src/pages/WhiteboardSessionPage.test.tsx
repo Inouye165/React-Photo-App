@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
 
 const {
+  analyzeWhiteboardPhoto,
   ensureWhiteboardMembership,
   createWhiteboardInvite,
   getWhiteboardSessionDetails,
@@ -12,6 +13,7 @@ const {
   listRoomMembers,
   searchUsers,
 } = vi.hoisted(() => ({
+  analyzeWhiteboardPhoto: vi.fn(),
   ensureWhiteboardMembership: vi.fn(),
   createWhiteboardInvite: vi.fn(),
   getWhiteboardSessionDetails: vi.fn(),
@@ -21,7 +23,13 @@ const {
   searchUsers: vi.fn(),
 }))
 
+const whiteboardPadState = vi.hoisted(() => ({
+  hasBackground: false,
+  asset: null as null | { dataUrl: string; mimeType: string; name: string },
+}))
+
 vi.mock('../api/whiteboards', () => ({
+  analyzeWhiteboardPhoto,
   ensureWhiteboardMembership,
   createWhiteboardInvite,
   getWhiteboardSessionDetails,
@@ -55,14 +63,27 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
 vi.mock('../components/whiteboard/WhiteboardPad', async () => {
   const ReactModule = await import('react')
   return {
-    default: ReactModule.forwardRef((_props, _ref) => <div data-testid="whiteboard-pad" />),
+    default: ReactModule.forwardRef((props: any, _ref) => {
+      ReactModule.useEffect(() => {
+        props.onHasBackgroundChange?.(whiteboardPadState.hasBackground)
+        props.onBackgroundImageAssetChange?.(whiteboardPadState.asset)
+      }, [])
+
+      return <div data-testid="whiteboard-pad" />
+    }),
   }
 })
 
 describe('WhiteboardSessionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    whiteboardPadState.hasBackground = false
+    whiteboardPadState.asset = null
 
+    analyzeWhiteboardPhoto.mockResolvedValue({
+      reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
+      messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
+    })
     ensureWhiteboardMembership.mockResolvedValue({ ok: true })
     createWhiteboardInvite.mockResolvedValue({ joinUrl: 'https://example.com/join', expiresAt: new Date().toISOString() })
     getWhiteboardSessionDetails.mockResolvedValue({
@@ -143,5 +164,34 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(screen.queryByRole('button', { name: 'Rename whiteboard' })).not.toBeInTheDocument()
+  })
+
+  it('shows the decluttered annotation toolbar when a background photo is present without auto-starting tutor analysis', async () => {
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: /invite/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /share/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
+    expect(screen.getByText('Pen')).toBeInTheDocument()
+    expect(screen.getByText('Highlighter')).toBeInTheDocument()
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 })

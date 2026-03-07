@@ -307,7 +307,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
         if (subpath === 'thumbnail-url') {
           return fulfill({ 
             success: true, 
-            url: `http://localhost:5173/photos/${photoId}/thumb`,
+            url: `http://localhost:4173/photos/${photoId}/thumb`,
             expiresAt: Date.now() + 3600000
           });
         }

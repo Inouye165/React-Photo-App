@@ -13,7 +13,7 @@ test('E2E smoke: login → upload → view', async ({ page }) => {
   await page.route('**/api/test/e2e-verify', async route => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
         'Access-Control-Allow-Credentials': 'true'
       },
       json: {
@@ -65,7 +65,7 @@ test('E2E smoke: login → upload → view', async ({ page }) => {
   const mockPhotoId = '999';
   const now = Math.floor(Date.now() / 1000);
   const corsHeaders = {
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+    'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -173,7 +173,7 @@ test('E2E smoke: login → upload → view', async ({ page }) => {
   });
 
   // Go directly to gallery (avoid SmartRouter redirects affecting stability)
-  await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
+  await page.goto('http://127.0.0.1:4173/gallery', { waitUntil: 'networkidle' });
   
   // Handle disclaimer modal if present
   await acceptDisclaimer(page);

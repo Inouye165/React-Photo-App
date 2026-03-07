@@ -4,7 +4,7 @@ import { acceptDisclaimer } from './helpers/disclaimer'
 import { mockCoreApi } from './helpers/mockCoreApi'
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+  'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
@@ -75,7 +75,7 @@ async function setupChessHubPage(page: Page): Promise<void> {
     })
   })
 
-  await page.goto('http://127.0.0.1:5173/games/chess', { waitUntil: 'networkidle' })
+  await page.goto('http://127.0.0.1:4173/games/chess', { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)
 }
 
@@ -85,7 +85,7 @@ test('hub is one-screen desktop, removes old sections, and keeps GOTW board in o
 
   for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
     await page.setViewportSize(viewport)
-    await page.goto('http://127.0.0.1:5173/games/chess', { waitUntil: 'networkidle' })
+    await page.goto('http://127.0.0.1:4173/games/chess', { waitUntil: 'networkidle' })
 
     await expect(page.getByTestId('gotw-card')).toBeVisible()
     await expect(page.getByTestId('mode-card')).toHaveCount(3)

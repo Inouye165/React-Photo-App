@@ -1,6 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
-import WhiteboardCanvas, { type BackgroundInfo, type WhiteboardCanvasHandle } from './WhiteboardCanvas'
+import WhiteboardCanvas, {
+  type AnnotationTool,
+  type BackgroundImageAsset,
+  type BackgroundInfo,
+  type WhiteboardCanvasHandle,
+} from './WhiteboardCanvas'
 
 type BackgroundFitMode = 'width' | 'contain'
 
@@ -13,6 +18,8 @@ type WhiteboardPadProps = {
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
+  onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
+  annotationMode?: boolean
 }
 
 const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
@@ -26,6 +33,8 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       onBackgroundFitModeChange,
       onHasBackgroundChange,
       onBackgroundInfoChange,
+      onBackgroundImageAssetChange,
+      annotationMode,
     },
     ref,
   ) => {
@@ -41,6 +50,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       clearBackground: () => canvasRef.current?.clearBackground(),
       toggleBackgroundFitMode: () => canvasRef.current?.toggleBackgroundFitMode(),
       toggleViewMode: () => canvasRef.current?.toggleViewMode(),
+      setAnnotationTool: (tool: AnnotationTool) => canvasRef.current?.setAnnotationTool(tool),
     }))
     return (
       <div className={`flex h-full w-full flex-col ${className || ''}`}>
@@ -53,18 +63,12 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             className="h-full"
             onAccessDenied={onAccessDenied}
             onRealtimeStatusChange={onRealtimeStatusChange}
-            onViewModeChange={(enabled) => {
-              onViewModeChange?.(enabled)
-            }}
-            onBackgroundFitModeChange={(mode) => {
-              onBackgroundFitModeChange?.(mode)
-            }}
-            onHasBackgroundChange={(has) => {
-              onHasBackgroundChange?.(has)
-            }}
-            onBackgroundInfoChange={(info) => {
-              onBackgroundInfoChange?.(info)
-            }}
+            onViewModeChange={onViewModeChange}
+            onBackgroundFitModeChange={onBackgroundFitModeChange}
+            onHasBackgroundChange={onHasBackgroundChange}
+            onBackgroundInfoChange={onBackgroundInfoChange}
+            onBackgroundImageAssetChange={onBackgroundImageAssetChange}
+            annotationMode={annotationMode}
           />
         </div>
       </div>
