@@ -211,7 +211,9 @@ describe('WhiteboardSessionPage', () => {
       expect(updateWhiteboardTitle).toHaveBeenCalledWith('board-1', 'Sprint Plan')
     })
 
-    expect(screen.getByText('Sprint Plan')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Sprint Plan' })).toBeInTheDocument()
+    })
   })
 
   it('does not expose rename controls to non-owners', async () => {
