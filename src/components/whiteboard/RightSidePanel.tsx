@@ -1,7 +1,7 @@
 import React from 'react'
 import TabbedPanel, { type TabConfig } from '../common/TabbedPanel'
 import { AITutorTab, ChatTab, StepsTab } from './tabs'
-import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../../types/whiteboard'
+import type { WhiteboardTutorResponse } from '../../types/whiteboard'
 
 export type TabType = 'ai-tutor' | 'chat' | 'steps'
 
@@ -24,11 +24,7 @@ export interface RightSidePanelProps {
   tutorSubmitting: boolean
   onTutorDraftChange: (value: string) => void
   onTutorSubmit: () => void
-  chatMessages: WhiteboardTutorMessage[]
-  chatDraft: string
-  chatSubmitting: boolean
-  onChatDraftChange: (value: string) => void
-  onChatSubmit: () => void
+  onRequestHumanTutor: () => void
 }
 
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
@@ -50,16 +46,12 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   tutorSubmitting,
   onTutorDraftChange,
   onTutorSubmit,
-  chatMessages,
-  chatDraft,
-  chatSubmitting,
-  onChatDraftChange,
-  onChatSubmit,
+  onRequestHumanTutor,
 }) => {
   const tabs: TabConfig<TabType>[] = [
     {
       id: 'ai-tutor',
-      label: 'AI Tutor',
+      label: 'AI TUTOR',
       content: (
         <AITutorTab
           hasPhoto={hasPhoto}
@@ -78,35 +70,21 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         />
       )
     },
-  ]
-
-  if (hasPhoto && chatMessages.length > 0) {
-    tabs.push({
+    {
       id: 'chat',
-      label: 'Helper Chat',
+      label: 'CHAT',
       content: (
         <ChatTab
-          hasPhoto={hasPhoto}
-          messages={chatMessages}
-          responseAge={responseAge}
-          responseAgeInvalid={responseAgeInvalid}
-          onResponseAgeChange={onResponseAgeChange}
-          draft={chatDraft}
-          isSubmitting={chatSubmitting}
-          onDraftChange={onChatDraftChange}
-          onSubmit={onChatSubmit}
+          onRequestHumanTutor={onRequestHumanTutor}
         />
       )
-    })
-  }
-
-  if (hasPhoto && ((analysis?.steps?.length ?? 0) > 0 || analysisLoading)) {
-    tabs.push({
+    },
+    {
       id: 'steps',
-      label: 'Steps',
-      content: <StepsTab hasPhoto={hasPhoto} isLoading={analysisLoading} steps={analysis?.steps ?? []} />
-    })
-  }
+      label: 'STEPS',
+      content: <StepsTab hasPhoto={hasPhoto} isLoading={analysisLoading} correctSolution={analysis?.correctSolution ?? ''} steps={analysis?.steps ?? []} />
+    },
+  ]
 
   const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
 
@@ -135,7 +113,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             aria-label={`${tab.label} tab`}
             className={`flex w-full items-center justify-center rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors ${
               isActive
-                ? 'border-amber-400 bg-amber-400/12 text-[#F0EDE8]'
+                ? 'border-amber-400 bg-amber-400 text-slate-950 shadow-[0_10px_24px_rgba(201,130,43,0.22)]'
                 : 'border-transparent text-[#c6b4a4] hover:border-amber-400/40 hover:bg-white/[0.04] hover:text-[#F0EDE8]'
             }`}
           >

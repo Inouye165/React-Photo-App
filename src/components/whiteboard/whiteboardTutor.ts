@@ -1,4 +1,5 @@
 import type {
+  WhiteboardTutorErrorItem,
   WhiteboardTutorMessage,
   WhiteboardTutorResponse,
   WhiteboardTutorSections,
@@ -12,6 +13,17 @@ const EMPTY_SECTIONS: WhiteboardTutorSections = {
   encouragement: '',
 }
 
+const EMPTY_RESPONSE: Omit<WhiteboardTutorResponse, 'messages' | 'reply'> = {
+  sections: EMPTY_SECTIONS,
+  problem: '',
+  correctSolution: '',
+  scoreCorrect: 0,
+  scoreTotal: 0,
+  steps: [],
+  errorsFound: [],
+  closingEncouragement: '',
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -21,67 +33,98 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function cleanSectionBody(value: string): string {
-  return value.replace(/^[-:\s]+/, '').trim()
+function toStepNumber(value: unknown, fallbackValue: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.round(value)) : fallbackValue
 }
 
-function sectionValue(reply: string, header: string, nextHeaders: string[]): string {
-  const pattern = new RegExp(
-    `${header}\\s*:?\\s*([\\s\\S]*?)(?=${nextHeaders.join('|')}|$)`,
-    'i',
-  )
-  const match = reply.match(pattern)
-  return cleanSectionBody(match?.[1] ?? '')
-}
+function normalizeStep(step: unknown, index: number): WhiteboardTutorStep | null {
+  if (!step || typeof step !== 'object') return null
 
-function parseStepLine(line: string, fallbackNumber: number): WhiteboardTutorStep | null {
-  const cleaned = line.replace(/^[-*•\s]+/, '').trim()
-  if (!cleaned) return null
-
-  const match = cleaned.match(/^(\d+)[.):-]?\s*(.*)$/)
-  const number = match ? Number(match[1]) : fallbackNumber
-  const rawBody = (match?.[2] ?? cleaned).trim()
-  if (!rawBody) return null
-
-  const normalized = rawBody.replace(/\s+/g, ' ').trim()
-  const isIncorrect = /(incorrect|wrong|error|mistake|not correct|issue)/i.test(normalized)
-  const isCorrect = !isIncorrect && /(correct|right|valid|good|looks good)/i.test(normalized)
-  const parts = normalized.split(/\s+(?:because|but|however|instead|needs to)\s+/i)
+  const candidate = step as Partial<WhiteboardTutorStep> & Record<string, unknown>
+  const studentWork = typeof candidate.studentWork === 'string' ? candidate.studentWork.trim() : ''
+  const explanation = typeof candidate.explanation === 'string' ? candidate.explanation.trim() : ''
 
   return {
-    number,
-    description: parts[0]?.trim() || normalized,
-    isCorrect,
-    errorExplanation: isIncorrect && parts.length > 1 ? parts.slice(1).join(' ').trim() : null,
+    number: toStepNumber(candidate.number ?? candidate.stepNumber, index + 1),
+    label: typeof candidate.label === 'string' && candidate.label.trim() ? candidate.label.trim() : `Step ${index + 1}`,
+    studentWork,
+    correct: Boolean(candidate.correct),
+    neutral: Boolean(candidate.neutral),
+    explanation,
   }
 }
 
-export function parseTutorReply(reply: string): Pick<WhiteboardTutorResponse, 'sections' | 'steps'> {
+function normalizeErrorItem(item: unknown, index: number): WhiteboardTutorErrorItem | null {
+  if (!item || typeof item !== 'object') return null
+  const candidate = item as Partial<WhiteboardTutorErrorItem> & Record<string, unknown>
+
+  return {
+    stepNumber: toStepNumber(candidate.stepNumber, index + 1),
+    issue: typeof candidate.issue === 'string' ? candidate.issue.trim() : '',
+    correction: typeof candidate.correction === 'string' ? candidate.correction.trim() : '',
+  }
+}
+
+type StructuredTutorPayload = Partial<Omit<WhiteboardTutorResponse, 'messages' | 'reply' | 'sections'>> & {
+  sections?: Partial<WhiteboardTutorSections>
+}
+
+function buildReplySummary(response: Omit<WhiteboardTutorResponse, 'messages' | 'reply'>): string {
+  const stepLines = response.steps.map((step) => `${step.number}. ${step.label}: ${step.explanation}`)
+  const errorLines = response.errorsFound.map((item) => `Step ${item.stepNumber}: ${item.issue} ${item.correction}`.trim())
+
+  return [
+    `Problem: ${response.problem}`,
+    '',
+    'Steps Analysis:',
+    ...(stepLines.length > 0 ? stepLines : ['No step details available.']),
+    '',
+    'Errors Found:',
+    ...(errorLines.length > 0 ? errorLines : ['None.']),
+    '',
+    `Encouragement: ${response.closingEncouragement}`,
+  ].join('\n')
+}
+
+export function buildTutorResponse(payload: StructuredTutorPayload, messages: WhiteboardTutorMessage[]): WhiteboardTutorResponse {
+  const steps = Array.isArray(payload.steps)
+    ? payload.steps.map(normalizeStep).filter((step): step is WhiteboardTutorStep => Boolean(step))
+    : []
+  const errorsFound = Array.isArray(payload.errorsFound)
+    ? payload.errorsFound.map(normalizeErrorItem).filter((item): item is WhiteboardTutorErrorItem => Boolean(item))
+    : []
+
+  const problem = typeof payload.problem === 'string' ? payload.problem.trim() : ''
+  const correctSolution = typeof payload.correctSolution === 'string' ? payload.correctSolution.trim() : ''
+  const closingEncouragement = typeof payload.closingEncouragement === 'string' ? payload.closingEncouragement.trim() : ''
+  const scoreTotal = typeof payload.scoreTotal === 'number' && Number.isFinite(payload.scoreTotal) ? payload.scoreTotal : steps.length
+  const scoreCorrect = typeof payload.scoreCorrect === 'number' && Number.isFinite(payload.scoreCorrect)
+    ? payload.scoreCorrect
+    : steps.filter((step) => step.neutral || step.correct).length
+
   const sections: WhiteboardTutorSections = {
-    problem: sectionValue(reply, 'Problem', ['Steps Analysis', 'Errors Found', 'Encouragement']),
-    stepsAnalysis: sectionValue(reply, 'Steps Analysis', ['Errors Found', 'Encouragement']),
-    errorsFound: sectionValue(reply, 'Errors Found', ['Encouragement']),
-    encouragement: sectionValue(reply, 'Encouragement', []),
+    problem,
+    stepsAnalysis: steps.map((step) => `${step.number}. ${step.label}: ${step.explanation}`).join('\n'),
+    errorsFound: errorsFound.map((item) => `Step ${item.stepNumber}: ${item.issue}\n${item.correction}`).join('\n\n'),
+    encouragement: closingEncouragement,
   }
 
-  const steps = (sections.stepsAnalysis || '')
-    .split(/\r?\n/)
-    .map((line, index) => parseStepLine(line, index + 1))
-    .filter((step): step is WhiteboardTutorStep => Boolean(step))
-
-  return {
-    sections: { ...EMPTY_SECTIONS, ...sections },
+  const response: Omit<WhiteboardTutorResponse, 'messages' | 'reply'> = {
+    ...EMPTY_RESPONSE,
+    problem,
+    correctSolution,
+    scoreCorrect,
+    scoreTotal,
     steps,
+    errorsFound,
+    closingEncouragement,
+    sections: { ...EMPTY_SECTIONS, ...sections, ...(payload.sections ?? {}) },
   }
-}
 
-export function buildTutorResponse(reply: string, messages: WhiteboardTutorMessage[]): WhiteboardTutorResponse {
-  const parsed = parseTutorReply(reply)
   return {
-    reply,
+    reply: buildReplySummary(response),
     messages,
-    sections: parsed.sections,
-    steps: parsed.steps,
+    ...response,
   }
 }
 

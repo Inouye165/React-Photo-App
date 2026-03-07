@@ -59,7 +59,7 @@ const PanelScrollArea: React.FC<PanelScrollAreaProps> = ({ className = '', conte
             className="absolute inset-0"
             style={{ background: `linear-gradient(to bottom, ${PANEL_FADE_BACKGROUND} 0%, rgba(28, 28, 30, 0) 100%)` }}
           />
-          <ChevronUp className="relative mt-1 h-4 w-4 text-[#F0EDE8]/50" />
+          <ChevronUp className="tutor-scroll-chevron relative mt-1 h-4 w-4 text-[#F0EDE8]/50" />
         </div>
       ) : null}
 
@@ -69,7 +69,7 @@ const PanelScrollArea: React.FC<PanelScrollAreaProps> = ({ className = '', conte
             className="absolute inset-0"
             style={{ background: `linear-gradient(to top, ${PANEL_FADE_BACKGROUND} 0%, rgba(28, 28, 30, 0) 100%)` }}
           />
-          <ChevronDown className="relative mb-1 h-4 w-4 text-[#F0EDE8]/50" />
+          <ChevronDown className="tutor-scroll-chevron relative mb-1 h-4 w-4 text-[#F0EDE8]/50" />
         </div>
       ) : null}
     </div>

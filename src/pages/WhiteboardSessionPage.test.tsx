@@ -273,11 +273,11 @@ describe('WhiteboardSessionPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /remove photo/i }))
 
-    expect(screen.getByText('Are you sure? This cannot be undone.')).toBeInTheDocument()
+    expect(screen.getByText("Remove this photo? This can't be undone.")).toBeInTheDocument()
     expect(whiteboardPadState.clearBackground).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.queryByText('Are you sure? This cannot be undone.')).not.toBeInTheDocument()
+    expect(screen.queryByText("Remove this photo? This can't be undone.")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /remove photo/i }))
     fireEvent.click(screen.getByRole('button', { name: 'Yes, Remove' }))

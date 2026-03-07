@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import express from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Knex } from 'knex';
 import { createHash, randomBytes } from 'crypto';
@@ -40,12 +41,106 @@ const WhiteboardTutorBodySchema = z.object({
   mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
 });
 
-const WHITEBOARD_TUTOR_MODEL = 'gemini-2.0-flash';
-const WHITEBOARD_TUTOR_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
-const WHITEBOARD_TUTOR_SYSTEM_PROMPT =
-  'You are a warm, patient AI tutor helping with a learner\'s handwritten math or science work. Speak directly to the learner using second person. Start by noticing what they did well, then explain mistakes gently and clearly in active voice. Celebrate correct thinking when you see it. Use plain text only, with short sentences and concrete language. Never ask the learner for their age, grade, or personal details. Format your response with these exact headings: Problem, Steps Analysis, Errors Found, and Encouragement. End with one short encouraging closing line.';
-const WHITEBOARD_CHAT_SYSTEM_PROMPT =
-  'You are a warm, patient AI tutor discussing a learner\'s handwritten math or science work. Speak directly to the learner using second person, active voice, and encouraging language. Use the image and conversation history as context, celebrate correct thinking when it appears, answer conversationally in plain text, and never ask the learner for their age, grade, or personal details. End with a short encouraging closing when it fits naturally.';
+const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
+const WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
+const WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514';
+const WHITEBOARD_TRANSCRIPTION_PROMPT = `Look at this homework photo. Transcribe exactly what 
+is written, step by step. Do not evaluate whether anything 
+is right or wrong. Just tell me:
+1. What is the problem being asked?
+2. What did the student write on each line, in order?
+Return as JSON:
+{
+  problem: string,
+  steps: [{ stepNumber: number, content: string }]
+}`;
+const WHITEBOARD_EVALUATION_SYSTEM_PROMPT = `You are a warm, encouraging human tutor speaking DIRECTLY 
+to a student. You must ALWAYS follow these rules:
+
+VOICE RULES — NON-NEGOTIABLE:
+- ALWAYS use second person: 'you' and 'your', NEVER 
+  'the student' under any circumstance
+- ALWAYS acknowledge correct work warmly before 
+  pointing out errors
+- NEVER use passive voice
+- NEVER use clinical, robotic, or report-card language
+- Correct steps must feel celebratory:
+  'Great job! You nailed this step ✓'
+- Incorrect steps must feel supportive and specific:
+  'You were so close here! The tricky part is...'
+- End every full analysis with one warm encouraging 
+  closing sentence
+- Age-appropriate language based on the age parameter:
+  * Age 5-10: very simple words, maximum encouragement,
+    short sentences, exclamation points welcome
+  * Age 11-15: friendly, slightly more technical, 
+    still warm and direct
+  * Age 16-20: peer-like tone, respectful, 
+    honest but encouraging
+
+EVALUATION RULES — NON-NEGOTIABLE:
+- ALWAYS solve the problem yourself completely FIRST
+  before evaluating any student step
+- Only grade student steps by comparing them to 
+  YOUR correct solution
+- NEUTRAL steps (restating the problem, writing the 
+  original equation) are NEVER marked incorrect — 
+  they are always marked as correct or neutral
+- A step that simply copies the problem is always 
+  correct — the student did nothing wrong
+- Never mark a step incorrect just because it shows 
+  no computation
+
+Return ONLY valid JSON, no markdown, no preamble:
+{
+  problem: string,
+  correctSolution: string,
+  scoreCorrect: number,
+  scoreTotal: number,
+  steps: [{
+    stepNumber: number,
+    label: string,
+    studentWork: string,
+    correct: boolean,
+    neutral: boolean,
+    explanation: string (warm, second-person, human voice)
+  }],
+  errorsFound: [{
+    stepNumber: number,
+    issue: string (second-person, warm),
+    correction: string (second-person, clear)
+  }],
+  closingEncouragement: string
+}`;
+
+const WhiteboardTutorTranscriptionSchema = z.object({
+  problem: z.string().trim().default(''),
+  steps: z.array(z.object({
+    stepNumber: z.number().int().min(1),
+    content: z.string().trim().default(''),
+  })).default([]),
+});
+
+const WhiteboardTutorEvaluationSchema = z.object({
+  problem: z.string().trim(),
+  correctSolution: z.string().trim(),
+  scoreCorrect: z.number().int().min(0),
+  scoreTotal: z.number().int().min(0),
+  steps: z.array(z.object({
+    stepNumber: z.number().int().min(1),
+    label: z.string().trim(),
+    studentWork: z.string().trim(),
+    correct: z.boolean(),
+    neutral: z.boolean(),
+    explanation: z.string().trim(),
+  })),
+  errorsFound: z.array(z.object({
+    stepNumber: z.number().int().min(1),
+    issue: z.string().trim(),
+    correction: z.string().trim(),
+  })).default([]),
+  closingEncouragement: z.string().trim(),
+});
 
 type AuthenticatedRequest = Request & {
   user?: {
@@ -93,11 +188,20 @@ type WhiteboardInviteRow = {
 type WhiteboardTutorMessage = z.infer<typeof WhiteboardTutorMessageSchema>;
 
 type WhiteboardTutorBody = z.infer<typeof WhiteboardTutorBodySchema>;
+type WhiteboardTutorTranscription = z.infer<typeof WhiteboardTutorTranscriptionSchema>;
+type WhiteboardTutorEvaluation = z.infer<typeof WhiteboardTutorEvaluationSchema>;
 
 type GeminiErrorInfo = {
   statusCode?: number;
   reason?: string;
   message: string;
+};
+
+type TutorPipelineError = Error & {
+  statusCode?: number;
+  stage?: 'transcription' | 'evaluation';
+  provider?: 'gemini' | 'anthropic';
+  model?: string;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -110,8 +214,8 @@ function normalizeModelNameForSdk(model: string): string {
 }
 
 function buildGeminiModelCandidates(configuredModel: string): string[] {
-  const normalizedConfigured = normalizeModelNameForSdk(configuredModel || WHITEBOARD_TUTOR_MODEL);
-  const models = [normalizedConfigured, ...WHITEBOARD_TUTOR_FALLBACK_MODELS];
+  const normalizedConfigured = normalizeModelNameForSdk(configuredModel || WHITEBOARD_TRANSCRIPTION_MODEL);
+  const models = [normalizedConfigured, ...WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS];
   return models.filter((model, index) => model.length > 0 && models.indexOf(model) === index);
 }
 
@@ -142,6 +246,53 @@ function isModelNotFoundError(errorInfo: GeminiErrorInfo): boolean {
   return errorInfo.statusCode === 404 || combined.includes('not found') || combined.includes('not supported');
 }
 
+function toTutorPipelineError(
+  message: string,
+  options: {
+    statusCode?: number;
+    stage: 'transcription' | 'evaluation';
+    provider: 'gemini' | 'anthropic';
+    model?: string;
+  },
+): TutorPipelineError {
+  const error = new Error(message) as TutorPipelineError;
+  error.statusCode = options.statusCode;
+  error.stage = options.stage;
+  error.provider = options.provider;
+  error.model = options.model;
+  return error;
+}
+
+function summarizeAnthropicError(error: unknown): { message: string; statusCode: number } {
+  const fallback = { message: 'Anthropic evaluation failed', statusCode: 502 };
+  if (!error || typeof error !== 'object') return fallback;
+
+  const candidate = error as {
+    status?: unknown;
+    message?: unknown;
+    error?: { type?: unknown; message?: unknown };
+  };
+
+  const statusCode = typeof candidate.status === 'number' ? candidate.status : 502;
+  const nestedType = typeof candidate.error?.type === 'string' ? candidate.error.type : null;
+  const nestedMessage = typeof candidate.error?.message === 'string' ? candidate.error.message : null;
+  const rootMessage = typeof candidate.message === 'string' ? candidate.message : null;
+  const rawMessage = nestedMessage || rootMessage || fallback.message;
+  const lower = rawMessage.toLowerCase();
+
+  if (statusCode === 401 || lower.includes('invalid x-api-key') || lower.includes('authentication_error')) {
+    return {
+      statusCode: 502,
+      message: 'Anthropic authentication failed: invalid ANTHROPIC_API_KEY',
+    };
+  }
+
+  return {
+    statusCode: statusCode >= 400 && statusCode < 600 ? statusCode : 502,
+    message: nestedType ? `${nestedType}: ${rawMessage}` : rawMessage,
+  };
+}
+
 function parseImageDataUrl(dataUrl: string, fallbackMimeType?: string): { mimeType: string; base64Data: string } {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
   if (!match) {
@@ -159,103 +310,83 @@ function parseImageDataUrl(dataUrl: string, fallbackMimeType?: string): { mimeTy
 
 function formatConversationTranscript(messages: WhiteboardTutorMessage[]): string {
   return messages
-    .map((message) => `${message.role === 'assistant' ? 'Tutor' : 'Student'}: ${message.content}`)
+    .map((message) => `${message.role === 'assistant' ? 'Tutor' : 'You'}: ${message.content}`)
     .join('\n\n');
 }
 
-function buildAudienceInstruction(body: WhiteboardTutorBody): string {
-  if (typeof body.audienceAge === 'number') {
-    return `Write for a learner around age ${body.audienceAge}. Match the vocabulary, tone, pacing, and examples to that age without sounding babyish.`;
+function extractJsonText(rawText: string): string {
+  const trimmed = rawText.trim();
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
   }
 
-  return 'Write for a broad school-age audience from ages 5 to 20 using simple, welcoming language that can work for children, tweens, and teens.';
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  return trimmed;
 }
 
-function buildToneInstruction(body: WhiteboardTutorBody): string {
-  const age = body.audienceAge;
-
-  if (typeof age !== 'number') {
-    return 'Use a friendly school-age tone: clear, warm, specific, and never babyish.';
+function parseJsonResponse<T>(rawText: string, schema: z.ZodType<T>, label: string): T {
+  try {
+    const parsed = JSON.parse(extractJsonText(rawText));
+    return schema.parse(parsed);
+  } catch (error) {
+    const wrappedError = new Error(`${label} returned invalid JSON`) as Error & { statusCode?: number };
+    wrappedError.statusCode = 502;
+    throw wrappedError;
   }
-
-  if (age <= 8) {
-    return 'Use very simple vocabulary, short sentences, and concrete explanations that feel kind and confidence-building.';
-  }
-
-  if (age <= 12) {
-    return 'Use clear everyday vocabulary, short explanations, and a supportive tone that treats the learner with respect.';
-  }
-
-  if (age <= 15) {
-    return 'Use age-appropriate academic language, direct explanations, and an encouraging tone that sounds natural for a teen.';
-  }
-
-  return 'Use plain but mature language, direct explanations, and a respectful encouraging tone for an older teen or young adult learner.';
 }
 
-function buildTutorPrompt(body: WhiteboardTutorBody): string {
-  const messages = body.messages ?? [];
-  const audienceInstruction = buildAudienceInstruction(body);
-  const toneInstruction = buildToneInstruction(body);
-  if (messages.length === 0 || body.mode === 'analysis') {
-    return [
-      audienceInstruction,
-      toneInstruction,
-      'Analyze the uploaded learner work using the required format.',
-      'Always use second person so the learner feels directly supported.',
-      'Start with something the learner did well before you explain a correction.',
-      'Keep the feedback encouraging, age-appropriate, and free of markdown syntax.',
-      'When possible, explain one fix at a time and celebrate correct steps explicitly.',
-      'Never ask the learner for their age, grade, or personal details.',
-    ].join('\n');
+function buildPassTwoUserPrompt(body: WhiteboardTutorBody, transcription: WhiteboardTutorTranscription): string {
+  const basePrompt = `The problem is: ${transcription.problem}
+The student's steps are: ${JSON.stringify(transcription.steps)}
+The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}
+First solve this problem yourself, then evaluate 
+each of the student's steps against your solution.`;
+
+  const transcript = formatConversationTranscript(body.messages ?? []);
+  if (!transcript) {
+    return basePrompt;
   }
 
-  const transcript = formatConversationTranscript(messages);
-  if (body.mode === 'chat') {
-    return [
-      audienceInstruction,
-      toneInstruction,
-      'Use the uploaded work as context and continue this tutoring conversation.',
-      'Always use second person, active voice, and an encouraging tone.',
-      'Keep the explanation encouraging, clear, and age-appropriate. Do not ask for the learner\'s age.',
-      'If the learner got part of the work right, say so plainly before guiding the next fix.',
-      '',
-      `Conversation so far:\n${transcript}`,
-    ].join('\n');
-  }
+  return `${basePrompt}\n\nConversation so far:\n${transcript}`;
+}
+
+function buildAssistantReply(evaluation: WhiteboardTutorEvaluation): string {
+  const stepLines = evaluation.steps.map((step) => `${step.stepNumber}. ${step.label}: ${step.explanation}`);
+  const errorLines = evaluation.errorsFound.map((item) => `Step ${item.stepNumber}: ${item.issue} ${item.correction}`.trim());
 
   return [
-    audienceInstruction,
-    toneInstruction,
-    'Use the uploaded work as context and answer the learner\'s follow-up.',
-    'Keep the response structured with Problem, Steps Analysis (numbered), Errors Found, and Encouragement unless the learner clearly asks for a short direct answer.',
-    'Always use second person, active voice, and an encouraging tone.',
-    'Keep the explanation encouraging, clear, and free of markdown syntax. Do not ask for the learner\'s age.',
-    'If the learner got part of the work right, say so plainly before guiding the next fix.',
+    `Problem: ${evaluation.problem}`,
     '',
-    `Conversation so far:\n${transcript}`,
+    'Steps Analysis:',
+    ...(stepLines.length > 0 ? stepLines : ['No step details available.']),
+    '',
+    'Errors Found:',
+    ...(errorLines.length > 0 ? errorLines : ['None.']),
+    '',
+    `Encouragement: ${evaluation.closingEncouragement}`,
   ].join('\n');
 }
 
-async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {
+async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<WhiteboardTutorTranscription> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
-    const error = new Error('GEMINI_API_KEY is not configured') as Error & { statusCode?: number };
-    error.statusCode = 503;
-    throw error;
+    throw toTutorPipelineError('GEMINI_API_KEY is not configured', {
+      statusCode: 503,
+      stage: 'transcription',
+      provider: 'gemini',
+      model: process.env.WHITEBOARD_TRANSCRIPTION_MODEL?.trim() || WHITEBOARD_TRANSCRIPTION_MODEL,
+    });
   }
 
   const { mimeType, base64Data } = parseImageDataUrl(body.imageDataUrl, body.imageMimeType);
-  const prompt = buildTutorPrompt(body);
-  const systemPrompt = body.mode === 'chat' ? WHITEBOARD_CHAT_SYSTEM_PROMPT : WHITEBOARD_TUTOR_SYSTEM_PROMPT;
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelCandidates = buildGeminiModelCandidates(process.env.WHITEBOARD_TUTOR_MODEL?.trim() || WHITEBOARD_TUTOR_MODEL);
-  const fullPrompt = [
-    systemPrompt,
-    '',
-    'Use the attached image as the source of truth.',
-    prompt,
-  ].join('\n');
+  const modelCandidates = buildGeminiModelCandidates(process.env.WHITEBOARD_TRANSCRIPTION_MODEL?.trim() || WHITEBOARD_TRANSCRIPTION_MODEL);
 
   let lastError: GeminiErrorInfo | null = null;
 
@@ -277,14 +408,14 @@ async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {
                 },
               },
               {
-                text: fullPrompt,
+                text: WHITEBOARD_TRANSCRIPTION_PROMPT,
               },
             ],
           },
         ],
         generationConfig: {
-          temperature: 0.3,
-          maxOutputTokens: 1400,
+          temperature: 0.1,
+          maxOutputTokens: 1200,
         },
       });
 
@@ -293,7 +424,7 @@ async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {
         throw new Error('Gemini returned an empty response');
       }
 
-      return reply;
+      return parseJsonResponse(reply, WhiteboardTutorTranscriptionSchema, 'Pass 1 transcription');
     } catch (error) {
       const errorInfo = extractGeminiErrorInfo(error);
       lastError = errorInfo;
@@ -302,15 +433,86 @@ async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {
         continue;
       }
 
-      const tutorError = new Error(errorInfo.message) as Error & { statusCode?: number };
-      tutorError.statusCode = errorInfo.statusCode === 404 ? 502 : errorInfo.statusCode || 502;
-      throw tutorError;
+      throw toTutorPipelineError(errorInfo.message, {
+        statusCode: errorInfo.statusCode === 404 ? 502 : errorInfo.statusCode || 502,
+        stage: 'transcription',
+        provider: 'gemini',
+        model: candidateModel,
+      });
     }
   }
 
-  const tutorError = new Error(lastError?.message || 'Gemini request failed') as Error & { statusCode?: number };
-  tutorError.statusCode = lastError?.statusCode === 404 ? 502 : lastError?.statusCode || 502;
-  throw tutorError;
+  throw toTutorPipelineError(lastError?.message || 'Gemini request failed', {
+    statusCode: lastError?.statusCode === 404 ? 502 : lastError?.statusCode || 502,
+    stage: 'transcription',
+    provider: 'gemini',
+    model: modelCandidates[modelCandidates.length - 1],
+  });
+}
+
+async function callWhiteboardEvaluation(
+  body: WhiteboardTutorBody,
+  transcription: WhiteboardTutorTranscription,
+): Promise<WhiteboardTutorEvaluation> {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) {
+    throw toTutorPipelineError('ANTHROPIC_API_KEY is not configured', {
+      statusCode: 503,
+      stage: 'evaluation',
+      provider: 'anthropic',
+      model: WHITEBOARD_EVALUATION_MODEL,
+    });
+  }
+
+  const anthropic = new Anthropic({ apiKey });
+  try {
+    const result = await anthropic.messages.create({
+      model: WHITEBOARD_EVALUATION_MODEL,
+      system: WHITEBOARD_EVALUATION_SYSTEM_PROMPT,
+      temperature: 0.2,
+      max_tokens: 1800,
+      messages: [
+        {
+          role: 'user',
+          content: buildPassTwoUserPrompt(body, transcription),
+        },
+      ],
+    });
+
+    const text = result.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join('')
+      .trim();
+
+    if (!text) {
+      throw toTutorPipelineError('Claude returned an empty response', {
+        statusCode: 502,
+        stage: 'evaluation',
+        provider: 'anthropic',
+        model: WHITEBOARD_EVALUATION_MODEL,
+      });
+    }
+
+    return parseJsonResponse(text, WhiteboardTutorEvaluationSchema, 'Pass 2 evaluation');
+  } catch (error) {
+    const summary = summarizeAnthropicError(error);
+    throw toTutorPipelineError(summary.message, {
+      statusCode: summary.statusCode,
+      stage: 'evaluation',
+      provider: 'anthropic',
+      model: WHITEBOARD_EVALUATION_MODEL,
+    });
+  }
+}
+
+async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<WhiteboardTutorEvaluation & { reply: string }> {
+  const transcription = await callWhiteboardTranscription(body);
+  const evaluation = await callWhiteboardEvaluation(body, transcription);
+  return {
+    ...evaluation,
+    reply: buildAssistantReply(evaluation),
+  };
 }
 
 async function deleteWhiteboardFromSupabase(boardId: string): Promise<boolean> {
@@ -1219,19 +1421,23 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         if (!boardId) return undefined;
 
         const body = req.body as WhiteboardTutorBody;
-        const reply = await callWhiteboardTutor(body);
-        const messages = [...(body.messages ?? []), { role: 'assistant', content: reply }];
+        const tutorResponse = await callWhiteboardTutor(body);
+        const messages = [...(body.messages ?? []), { role: 'assistant', content: tutorResponse.reply }];
 
-        return res.status(200).json({ reply, messages, boardId });
+        return res.status(200).json({ ...tutorResponse, messages, boardId });
       } catch (error) {
         const statusCode =
           error && typeof error === 'object' && 'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number'
             ? Number((error as { statusCode?: unknown }).statusCode)
             : 500;
         const message = error instanceof Error ? error.message : 'Internal server error';
+        const pipelineError = error as TutorPipelineError;
         console.error('[WB-TUTOR] request failed', {
           boardId: req.validated?.params?.boardId,
           statusCode,
+          stage: pipelineError?.stage ?? 'unknown',
+          provider: pipelineError?.provider ?? 'unknown',
+          model: pipelineError?.model ?? 'unknown',
           message,
         });
         return res.status(statusCode).json({ success: false, error: message });

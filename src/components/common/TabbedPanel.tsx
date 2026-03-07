@@ -54,8 +54,14 @@ function TabbedPanel<T extends string = string>({
   )
 
   const defaultContent = () => {
-    const activeTabConfig = tabs.find(tab => tab.id === activeTab)
-    return activeTabConfig?.content || null
+    return tabs.map((tab) => {
+      const isActive = tab.id === activeTab
+      return (
+        <div key={tab.id} className={`${isActive ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col`} aria-hidden={!isActive}>
+          {tab.content || null}
+        </div>
+      )
+    })
   }
 
   return (

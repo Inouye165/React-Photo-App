@@ -1,7 +1,7 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CheckCircle2, CircleX, SendHorizonal } from 'lucide-react'
 import type { WhiteboardTutorResponse } from '../../../types/whiteboard'
-import { formatTutorRichText, parseTutorListItems } from '../whiteboardTutor'
+import { formatTutorRichText } from '../whiteboardTutor'
 import PanelScrollArea from './PanelScrollArea'
 
 export interface AITutorTabProps {
@@ -24,23 +24,25 @@ export interface AITutorTabProps {
 function LoadingSkeleton(): React.JSX.Element {
   return (
     <div className="space-y-4">
+      <div className="space-y-3">
+        {[0, 1, 2, 3, 4].map((item) => (
+          <div key={item} className="tutor-skeleton-card rounded-[8px] border border-white/10 px-4 py-4">
+            <div className="flex items-start gap-3">
+              <div className="tutor-skeleton-line mt-1 h-4 w-4 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="tutor-skeleton-line h-4 w-24 rounded" />
+                <div className="tutor-skeleton-line h-4 w-full rounded" />
+                <div className="tutor-skeleton-line h-4 w-2/3 rounded" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
       <div className="flex items-center gap-1 text-[16px] font-semibold text-[#F0EDE8]">
         <span>Reading your homework</span>
         <span className="tutor-loading-dot">.</span>
         <span className="tutor-loading-dot" style={{ animationDelay: '0.15s' }}>.</span>
         <span className="tutor-loading-dot" style={{ animationDelay: '0.3s' }}>.</span>
-      </div>
-      <p className="text-[14px] leading-[1.6] text-[#c6b4a4]">Looking for what you already did well, where the work turns, and the clearest next fix.</p>
-      <div className="h-6 w-2/5 animate-pulse rounded bg-white/10" />
-      <div className="space-y-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="h-4 w-3/4 animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-full animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-5/6 animate-pulse rounded bg-white/10" />
-      </div>
-      <div className="space-y-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="h-4 w-1/2 animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-full animate-pulse rounded bg-white/10" />
-        <div className="h-4 w-2/3 animate-pulse rounded bg-white/10" />
       </div>
     </div>
   )
@@ -73,27 +75,35 @@ function StepCard({
   body,
   tone,
   detail,
+  stepNumber,
 }: {
   label: string
   body: string
   tone: 'correct' | 'incorrect' | 'neutral'
   detail?: string | null
+  stepNumber: number
 }): React.JSX.Element {
   const toneClass =
     tone === 'correct'
-      ? 'border-l-[4px] border-l-[#4CAF50] bg-[rgba(76,175,80,0.08)] hover:bg-[rgba(76,175,80,0.12)]'
+      ? 'tutor-step-card tutor-step-card--correct border-l-[4px] border-l-[#4CAF50] bg-[rgba(76,175,80,0.08)]'
       : tone === 'incorrect'
-        ? 'border-l-[4px] border-l-[#EF5350] bg-[rgba(239,83,80,0.08)] hover:bg-[rgba(239,83,80,0.12)]'
-        : 'border border-white/10 bg-white/[0.03] hover:bg-white/[0.06]'
+        ? 'tutor-step-card tutor-step-card--incorrect border-l-[4px] border-l-[#EF5350] bg-[rgba(239,83,80,0.08)]'
+        : 'tutor-step-card border-l-[4px] border-l-white/15 bg-white/[0.03]'
+
+  const statusLabel = tone === 'neutral' ? 'neutral' : tone
 
   return (
-    <article className={`rounded-[8px] p-3 transition-colors ${toneClass}`}>
+    <article
+      role="article"
+      aria-label={`Step ${stepNumber}: ${statusLabel}`}
+      className={`rounded-[8px] p-3 transition-colors ${toneClass}`}
+    >
       <div className="flex items-start gap-3">
-        {tone === 'correct' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#4CAF50]" /> : null}
-        {tone === 'incorrect' ? <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-[#EF5350]" /> : null}
+        {tone === 'correct' ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#4CAF50]" aria-label="Correct step" /> : null}
+        {tone === 'incorrect' ? <CircleX className="mt-0.5 h-4 w-4 shrink-0 text-[#EF5350]" aria-label="Incorrect step" /> : null}
         <div className="min-w-0 flex-1">
           <div className="text-[15px] font-semibold text-[#F0EDE8]">{label}</div>
-          <RichTextBlock value={body} className="mt-1" />
+          <RichTextBlock value={body} className="mt-1 overflow-visible" />
           {detail ? <RichTextBlock value={detail} className="mt-2 text-[#e7b274]" /> : null}
         </div>
       </div>
@@ -112,10 +122,11 @@ function StepsSection({ analysis }: { analysis: WhiteboardTutorResponse }): Reac
           ? analysis.steps.map((step) => (
               <StepCard
                 key={step.number}
-                label={`Step ${step.number}`}
-                body={step.description}
-                detail={step.errorExplanation}
-                tone={step.isCorrect ? 'correct' : 'incorrect'}
+                stepNumber={step.number}
+                label={step.label || `Step ${step.number}`}
+                body={step.studentWork}
+                detail={step.explanation}
+                tone={step.neutral ? 'neutral' : step.correct ? 'correct' : 'incorrect'}
               />
             ))
           : [<RichTextBlock key="fallback" value={analysis.sections.stepsAnalysis} />]}
@@ -125,38 +136,61 @@ function StepsSection({ analysis }: { analysis: WhiteboardTutorResponse }): Reac
 }
 
 function ScoreLine({ analysis }: { analysis: WhiteboardTutorResponse }): React.JSX.Element | null {
-  const totalSteps = analysis.steps.length
+  const [displayCount, setDisplayCount] = useState(0)
+  const totalSteps = analysis.scoreTotal
   if (totalSteps === 0) return null
 
-  const correctSteps = analysis.steps.filter((step) => step.isCorrect).length
-  const toneClass = correctSteps === totalSteps ? 'text-[#4CAF50]' : 'text-amber-300'
+  const correctSteps = analysis.scoreCorrect
+  const toneClass = correctSteps / totalSteps > 0.6 ? 'text-[#4CAF50]' : 'text-amber-300'
 
-  return <div className={`text-[15px] font-semibold ${toneClass}`}>You got {correctSteps} out of {totalSteps} steps correct!</div>
-}
+  useEffect(() => {
+    const target = correctSteps
+    let frameId = 0
+    let startTime: number | null = null
 
-function ErrorsSection({ analysis }: { analysis: WhiteboardTutorResponse }): React.JSX.Element | null {
-  const items = parseTutorListItems(analysis.sections.errorsFound)
-  if (!analysis.sections.errorsFound.trim()) return null
+    const tick = (timestamp: number) => {
+      if (startTime === null) startTime = timestamp
+      const progress = Math.min((timestamp - startTime) / 800, 1)
+      setDisplayCount(Math.round(target * progress))
+      if (progress < 1) {
+        frameId = window.requestAnimationFrame(tick)
+      }
+    }
+
+    setDisplayCount(0)
+    frameId = window.requestAnimationFrame(tick)
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [correctSteps])
 
   return (
-    <SurfaceCard>
-      <SectionHeading title="Errors Found" />
-      {/* Fix 3: the Errors Found content could end up hidden near the bottom, so it now renders as visible cards inside the panel scroll area. */}
-      <div className="mt-3 space-y-2">
-        {items.length > 0
-          ? items.map((item, index) => <StepCard key={`${item}-${index}`} label={`Issue ${index + 1}`} body={item} tone="incorrect" />)
-          : [<RichTextBlock key="errors-fallback" value={analysis.sections.errorsFound} />]}
-      </div>
-    </SurfaceCard>
+    <div>
+      <div className={`text-[15px] font-semibold ${toneClass}`}>You got {displayCount} out of {totalSteps} steps right! 🎉</div>
+      {analysis.closingEncouragement ? (
+        <p className="mt-2 text-[14px] italic leading-[1.6] text-amber-300" dangerouslySetInnerHTML={{ __html: formatTutorRichText(analysis.closingEncouragement) }} />
+      ) : null}
+    </div>
   )
 }
 
-function EncouragementSection({ value }: { value: string }): React.JSX.Element | null {
-  if (!value.trim()) return null
+function ErrorsSection({ analysis }: { analysis: WhiteboardTutorResponse }): React.JSX.Element | null {
+  if (analysis.errorsFound.length === 0) return null
+
   return (
-    <SurfaceCard className="bg-[rgba(201,130,43,0.08)]">
-      <SectionHeading title="Encouragement" />
-      <RichTextBlock value={value} className="mt-2" />
+    <SurfaceCard>
+      <SectionHeading title="Let's Fix These Together 🔧" />
+      <div className="mt-3 space-y-2">
+        {analysis.errorsFound.map((item) => (
+          <StepCard
+            key={`${item.stepNumber}-${item.issue}`}
+            stepNumber={item.stepNumber}
+            label={`Step ${item.stepNumber}`}
+            body={item.issue}
+            detail={item.correction}
+            tone="incorrect"
+          />
+        ))}
+      </div>
     </SurfaceCard>
   )
 }
@@ -188,40 +222,45 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
         ) : null}
 
         {hasPhoto && !analysis && !isLoading && !error ? (
-          <SurfaceCard>
-            <div className="text-[15px] font-semibold text-[#F0EDE8]">AI tutor is idle</div>
-            <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">
-              No model call is made when a photo is added. Start analysis only when the student asks for help.
-            </p>
-            <button
-              type="button"
-              onClick={onStartAnalysis}
-              disabled={responseAgeInvalid}
-              className="mt-4 rounded-[8px] bg-amber-500 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
-            >
-              Analyze photo
-            </button>
-          </SurfaceCard>
+          <div className="flex min-h-full items-center justify-center py-10">
+            <div className="max-w-[320px] text-center">
+              <div className="text-[48px] leading-none" aria-hidden="true">📚</div>
+              <h3 className="mt-4 text-[20px] font-semibold text-[#F0EDE8]">Ready to help you learn!</h3>
+              <p className="mt-3 text-[16px] font-semibold text-[#F0EDE8]">Ready when you are! 📚</p>
+              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">I'll analyze your homework and walk you through each step once you hit Analyze.</p>
+              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">Upload your homework photo and hit Analyze when you're ready.</p>
+              <button
+                type="button"
+                onClick={onStartAnalysis}
+                disabled={responseAgeInvalid}
+                aria-label="Analyze Photo"
+                className="tutor-analyze-idle mt-5 rounded-[8px] bg-amber-500 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+              >
+                Analyze Photo
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {hasPhoto && isLoading ? <LoadingSkeleton /> : null}
 
         {hasPhoto && !isLoading && error ? (
-          <SurfaceCard className="border-red-500/30 bg-red-500/10">
-            <div className="text-[15px] font-semibold text-red-100">The tutor hit a snag.</div>
-            <p className="mt-2 text-[14px] leading-[1.6] text-red-100/90">
-              Please try again. If the photo is blurry or cut off, retake it so the writing is easier to read.
-            </p>
-            <p className="mt-2 text-[13px] leading-[1.5] text-red-100/75">{error}</p>
+          <div className="flex min-h-[240px] items-center justify-center">
+            <div className="max-w-[320px] text-center">
+              <div className="text-[32px] leading-none" aria-hidden="true">📷</div>
+              <div className="mt-4 text-[18px] font-semibold text-[#F0EDE8]">Hmm, I couldn't read that clearly</div>
+              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">Try retaking the photo with better lighting and make sure all your work is fully in frame.</p>
             <button
               type="button"
               onClick={onRetryAnalysis}
               disabled={!hasPhoto || isLoading}
-              className="mt-4 rounded-[8px] bg-red-400 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-red-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+              aria-label="Retry photo analysis"
+              className="mt-4 rounded-[8px] bg-amber-500 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
             >
-              Try again
+              Try Again
             </button>
-          </SurfaceCard>
+            </div>
+          </div>
         ) : null}
 
         {analysis ? (
@@ -230,13 +269,12 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
             <StepsSection analysis={analysis} />
             <ScoreLine analysis={analysis} />
             <ErrorsSection analysis={analysis} />
-            <EncouragementSection value={analysis.sections.encouragement} />
           </>
         ) : null}
         </div>
       </PanelScrollArea>
 
-      <div className="border-t border-white/10 p-4">
+      <div className="sticky bottom-0 z-20 shrink-0 border-t border-white/10 bg-[#1c1c1e] p-4">
         <div className="mb-4">
           <label htmlFor="ai-tutor-response-age" className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#c6b4a4]">
             Response age (optional)
@@ -264,7 +302,7 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
         <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#c6b4a4]">
           Ask a follow-up
         </label>
-        <div className="relative w-full">
+        <div className="tutor-followup-shell relative w-full rounded-[24px] border border-white/10 bg-white/[0.03] px-3 py-2 transition focus-within:border-amber-400 focus-within:shadow-[0_0_0_3px_rgba(201,130,43,0.16)]">
           <input
             aria-label="Ask the AI tutor a follow-up question"
             type="text"
@@ -277,17 +315,18 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
               }
             }}
             disabled={!hasPhoto || isLoading || isSubmitting || !analysis}
-            className="min-w-0 w-full rounded-[24px] border border-white/10 bg-white/[0.03] px-4 py-3 pr-22 text-[14px] text-[#F0EDE8] outline-none transition placeholder:text-[14px] placeholder:text-[#c6b4a4] focus:border-amber-400 focus:shadow-[0_0_0_3px_rgba(201,130,43,0.16)]"
+            className="min-w-0 w-full border-none bg-transparent px-1 py-2 pr-[72px] text-[14px] text-[#F0EDE8] outline-none transition placeholder:text-[14px] placeholder:text-[#c6b4a4]"
             placeholder={!hasPhoto ? 'Import a photo first' : 'Ask a follow-up question...'}
           />
           <button
             type="button"
             onClick={onSubmitFollowUp}
             disabled={!hasPhoto || isLoading || isSubmitting || !analysis || !followUpDraft.trim() || responseAgeInvalid}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-[18px] bg-amber-500 px-3 py-1.5 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+            aria-label={isSubmitting ? 'Sending follow-up question' : 'Send follow-up question'}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[16px] bg-amber-500 px-3 py-1.5 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
           >
             <span className="flex items-center gap-1">
-              <SendHorizonal className="h-3.5 w-3.5" />
+              {isSubmitting ? <span className="h-3.5 w-3.5 rounded-full border-2 border-slate-950/25 border-t-slate-950 animate-spin" aria-hidden="true" /> : <SendHorizonal className="h-3.5 w-3.5" />}
               {isSubmitting ? 'Sending…' : 'Send'}
             </span>
           </button>

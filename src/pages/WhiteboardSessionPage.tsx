@@ -36,12 +36,12 @@ import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } fr
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
-import { buildChatSeed } from '../components/whiteboard/whiteboardTutor'
 import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 const WHITEBOARD_APP_NAME = 'HomeworkHelper'
+const PHOTO_GUIDANCE_DISMISSED_KEY = 'photoGuidanceDismissed'
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -148,14 +148,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [responseAge, setResponseAge] = useState('')
   const [tutorDraft, setTutorDraft] = useState('')
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
-  const [chatMessages, setChatMessages] = useState<WhiteboardTutorMessage[]>([])
-  const [chatDraft, setChatDraft] = useState('')
-  const [chatSubmitting, setChatSubmitting] = useState(false)
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
+  const [photoGuidanceFading, setPhotoGuidanceFading] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -390,9 +388,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setAnalysisLoading(false)
     setTutorDraft('')
     setTutorSubmitting(false)
-    setChatMessages([])
-    setChatDraft('')
-    setChatSubmitting(false)
     setAnnotationTool('pen')
   }, [])
 
@@ -448,7 +443,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         throw new Error('Whiteboard is not ready yet.')
       }
       await whiteboardPadRef.current.insertImageFile(file)
-      setPhotoGuidanceVisible(true)
+      if (window.localStorage.getItem(PHOTO_GUIDANCE_DISMISSED_KEY) !== 'true') {
+        setPhotoGuidanceFading(false)
+        setPhotoGuidanceVisible(true)
+      }
       handleAnnotationToolSelect('pen')
     } catch (error) {
       setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
@@ -461,11 +459,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setHasBackground(false)
     setConfirmRemovePhoto(false)
     setPhotoGuidanceVisible(false)
+    setPhotoGuidanceFading(false)
     resetTutorState()
   }, [resetTutorState])
 
   const handleRemovePhotoRequest = useCallback(() => {
-    // Fix 4: removing a learner's work was one click with no warning, so removal now requires explicit confirmation.
     setConfirmRemovePhoto(true)
   }, [])
 
@@ -478,10 +476,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setAnalysisLoading(true)
     setAnalysisError(null)
     setPhotoGuidanceVisible(false)
+    setPhotoGuidanceFading(false)
     try {
       const response = await runTutorRequest([], 'analysis')
       setAnalysis(response)
-      setChatMessages(buildChatSeed(response))
       handleAnnotationToolSelect('pen')
     } catch (error) {
       setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not read that photo yet. Please try again.'))
@@ -505,21 +503,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setTutorSubmitting(false)
     }
   }, [analysis, runTutorRequest, tutorDraft])
-
-  const handleChatSubmit = useCallback(async () => {
-    if (!chatDraft.trim()) return
-    const nextMessages = buildNextMessages(chatMessages, chatDraft)
-    setChatSubmitting(true)
-    try {
-      const response = await runTutorRequest(nextMessages, 'chat')
-      setChatMessages(response.messages)
-      setChatDraft('')
-    } catch (error) {
-      setAnalysisError(getFriendlyTutorErrorMessage(error, 'The helper chat could not send that message yet. Please try again.'))
-    } finally {
-      setChatSubmitting(false)
-    }
-  }, [chatDraft, chatMessages, runTutorRequest])
 
   useEffect(() => {
     if (!boardId) return
@@ -594,6 +577,34 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       document.documentElement.classList.remove('whiteboard-viewport-lock')
       document.body.classList.remove('whiteboard-viewport-lock')
     }
+  }, [])
+
+  useEffect(() => {
+    document.title = WHITEBOARD_APP_NAME
+  }, [])
+
+  useEffect(() => {
+    if (!photoGuidanceVisible) return
+
+    const timeout = window.setTimeout(() => {
+      setPhotoGuidanceFading(true)
+      window.setTimeout(() => {
+        window.localStorage.setItem(PHOTO_GUIDANCE_DISMISSED_KEY, 'true')
+        setPhotoGuidanceVisible(false)
+        setPhotoGuidanceFading(false)
+      }, 250)
+    }, 4000)
+
+    return () => window.clearTimeout(timeout)
+  }, [photoGuidanceVisible])
+
+  const handleDismissPhotoGuidance = useCallback(() => {
+    setPhotoGuidanceFading(true)
+    window.setTimeout(() => {
+      window.localStorage.setItem(PHOTO_GUIDANCE_DISMISSED_KEY, 'true')
+      setPhotoGuidanceVisible(false)
+      setPhotoGuidanceFading(false)
+    }, 250)
   }, [])
 
   if (!boardId) return <div>Missing board id</div>
@@ -697,16 +708,16 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <button
                 type="button"
                 onClick={handleRemovePhotoRequest}
-                className="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-[#c6b4a4] transition hover:bg-white/[0.06] hover:text-[#F0EDE8]"
+                className="rounded-[8px] px-2 py-1 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
               >
                 <span className="flex items-center gap-2">
-                  <ImageMinus className="h-4 w-4" />
+                  <ImageMinus className="h-3.5 w-3.5" />
                   Remove photo
                 </span>
               </button>
               {confirmRemovePhoto ? (
                 <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                  <span>Are you sure? This cannot be undone.</span>
+                  <span>Remove this photo? This can't be undone.</span>
                   <button
                     type="button"
                     onClick={handleRemovePhoto}
@@ -896,19 +907,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
-        {photoGuidanceVisible ? (
-          <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <span>Tip: Keep the whole problem in frame, use good light, and avoid blur so the tutor can read the work more accurately.</span>
-            <button
-              type="button"
-              onClick={() => setPhotoGuidanceVisible(false)}
-              className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
-            >
-              Got it
-            </button>
-          </div>
-        ) : null}
-
         {renameError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {renameError}
@@ -916,7 +914,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         ) : null}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
             <WhiteboardPad
               ref={whiteboardPadRef}
               boardId={boardId}
@@ -927,6 +925,21 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
               onAccessDenied={handleWhiteboardAccessDenied}
             />
+
+            {photoGuidanceVisible ? (
+              <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
+                <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
+                  <span>Make sure your work is well-lit and fully in frame 📸</span>
+                  <button
+                    type="button"
+                    onClick={handleDismissPhotoGuidance}
+                    className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
+                  >
+                    Got it
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <RightSidePanel
@@ -949,12 +962,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             onTutorSubmit={() => {
               void handleTutorFollowUp()
             }}
-            chatMessages={chatMessages}
-            chatDraft={chatDraft}
-            chatSubmitting={chatSubmitting}
-            onChatDraftChange={setChatDraft}
-            onChatSubmit={() => {
-              void handleChatSubmit()
+            onRequestHumanTutor={() => {
+              return undefined
             }}
             onTabChange={(_tab: TabType) => undefined}
           />
