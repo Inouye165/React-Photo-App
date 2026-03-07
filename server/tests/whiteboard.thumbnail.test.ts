@@ -601,7 +601,7 @@ describe('whiteboard thumbnail pipeline', () => {
       expect(res.body.excalidrawElements[0].id).toBe('visible')
     })
 
-    test('does not include excalidrawElements when legacy events exist', async () => {
+    test('includes excalidrawElements when legacy events exist', async () => {
       const strokeEvents = makeStrokeEvents({
         boardId,
         strokeId: 'stroke-legacy',
@@ -629,8 +629,8 @@ describe('whiteboard thumbnail pipeline', () => {
       const res = await request(app).get(`/api/whiteboard/${boardId}/snapshot`)
       expect(res.status).toBe(200)
       expect(res.body.events.length).toBe(2)
-      // excalidrawElements should not be present when legacy events exist
-      expect(res.body.excalidrawElements).toBeUndefined()
+      expect(res.body.excalidrawElements).toHaveLength(1)
+      expect(res.body.excalidrawElements[0].id).toBe('x')
     })
 
     test('returns empty snapshot when both legacy events and Yjs doc are empty', async () => {
