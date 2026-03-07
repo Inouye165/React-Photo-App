@@ -35,6 +35,7 @@ const WhiteboardTutorBodySchema = z.object({
   imageDataUrl: z.string().min(1).max(12_000_000),
   imageMimeType: z.string().max(128).optional(),
   imageName: z.string().max(255).optional(),
+  audienceAge: z.number().int().min(5).max(20).optional(),
   messages: z.array(WhiteboardTutorMessageSchema).max(40).optional(),
   mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
 });
@@ -42,9 +43,9 @@ const WhiteboardTutorBodySchema = z.object({
 const WHITEBOARD_TUTOR_MODEL = 'gemini-2.0-flash';
 const WHITEBOARD_TUTOR_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 const WHITEBOARD_TUTOR_SYSTEM_PROMPT =
-  'You are an AI tutor analyzing a student\'s handwritten math or science work. Identify the problem being solved, check each step for correctness, identify any errors, and provide clear, encouraging feedback. Format your response with: Problem, Steps Analysis (numbered), Errors Found, and Encouragement.';
+  'You are a warm, patient AI tutor helping with a learner\'s handwritten math or science work. Speak directly to the learner using second person. Start by noticing what they did well, then explain mistakes gently and clearly in active voice. Celebrate correct thinking when you see it. Use plain text only, with short sentences and concrete language. Never ask the learner for their age, grade, or personal details. Format your response with these exact headings: Problem, Steps Analysis, Errors Found, and Encouragement. End with one short encouraging closing line.';
 const WHITEBOARD_CHAT_SYSTEM_PROMPT =
-  'You are an AI tutor discussing a student\'s handwritten math or science work. Use the image and conversation history as context, answer conversationally, and stay encouraging and specific.';
+  'You are a warm, patient AI tutor discussing a learner\'s handwritten math or science work. Speak directly to the learner using second person, active voice, and encouraging language. Use the image and conversation history as context, celebrate correct thinking when it appears, answer conversationally in plain text, and never ask the learner for their age, grade, or personal details. End with a short encouraging closing when it fits naturally.';
 
 type AuthenticatedRequest = Request & {
   user?: {
@@ -162,18 +163,78 @@ function formatConversationTranscript(messages: WhiteboardTutorMessage[]): strin
     .join('\n\n');
 }
 
+function buildAudienceInstruction(body: WhiteboardTutorBody): string {
+  if (typeof body.audienceAge === 'number') {
+    return `Write for a learner around age ${body.audienceAge}. Match the vocabulary, tone, pacing, and examples to that age without sounding babyish.`;
+  }
+
+  return 'Write for a broad school-age audience from ages 5 to 20 using simple, welcoming language that can work for children, tweens, and teens.';
+}
+
+function buildToneInstruction(body: WhiteboardTutorBody): string {
+  const age = body.audienceAge;
+
+  if (typeof age !== 'number') {
+    return 'Use a friendly school-age tone: clear, warm, specific, and never babyish.';
+  }
+
+  if (age <= 8) {
+    return 'Use very simple vocabulary, short sentences, and concrete explanations that feel kind and confidence-building.';
+  }
+
+  if (age <= 12) {
+    return 'Use clear everyday vocabulary, short explanations, and a supportive tone that treats the learner with respect.';
+  }
+
+  if (age <= 15) {
+    return 'Use age-appropriate academic language, direct explanations, and an encouraging tone that sounds natural for a teen.';
+  }
+
+  return 'Use plain but mature language, direct explanations, and a respectful encouraging tone for an older teen or young adult learner.';
+}
+
 function buildTutorPrompt(body: WhiteboardTutorBody): string {
   const messages = body.messages ?? [];
+  const audienceInstruction = buildAudienceInstruction(body);
+  const toneInstruction = buildToneInstruction(body);
   if (messages.length === 0 || body.mode === 'analysis') {
-    return 'Analyze the uploaded student work using the required format.';
+    return [
+      audienceInstruction,
+      toneInstruction,
+      'Analyze the uploaded learner work using the required format.',
+      'Always use second person so the learner feels directly supported.',
+      'Start with something the learner did well before you explain a correction.',
+      'Keep the feedback encouraging, age-appropriate, and free of markdown syntax.',
+      'When possible, explain one fix at a time and celebrate correct steps explicitly.',
+      'Never ask the learner for their age, grade, or personal details.',
+    ].join('\n');
   }
 
   const transcript = formatConversationTranscript(messages);
   if (body.mode === 'chat') {
-    return `Use the uploaded work as context and continue this tutoring conversation.\n\nConversation so far:\n${transcript}`;
+    return [
+      audienceInstruction,
+      toneInstruction,
+      'Use the uploaded work as context and continue this tutoring conversation.',
+      'Always use second person, active voice, and an encouraging tone.',
+      'Keep the explanation encouraging, clear, and age-appropriate. Do not ask for the learner\'s age.',
+      'If the learner got part of the work right, say so plainly before guiding the next fix.',
+      '',
+      `Conversation so far:\n${transcript}`,
+    ].join('\n');
   }
 
-  return `Use the uploaded work as context and answer the student\'s follow-up. Keep the response structured with Problem, Steps Analysis (numbered), Errors Found, and Encouragement unless the student clearly asks for a short direct answer.\n\nConversation so far:\n${transcript}`;
+  return [
+    audienceInstruction,
+    toneInstruction,
+    'Use the uploaded work as context and answer the learner\'s follow-up.',
+    'Keep the response structured with Problem, Steps Analysis (numbered), Errors Found, and Encouragement unless the learner clearly asks for a short direct answer.',
+    'Always use second person, active voice, and an encouraging tone.',
+    'Keep the explanation encouraging, clear, and free of markdown syntax. Do not ask for the learner\'s age.',
+    'If the learner got part of the work right, say so plainly before guiding the next fix.',
+    '',
+    `Conversation so far:\n${transcript}`,
+  ].join('\n');
 }
 
 async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<string> {

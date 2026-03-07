@@ -16,6 +16,10 @@ export interface RightSidePanelProps {
   analysisLoading: boolean
   analysisError: string | null
   onStartAnalysis: () => void
+  onRetryAnalysis: () => void
+  responseAge: string
+  responseAgeInvalid: boolean
+  onResponseAgeChange: (value: string) => void
   tutorDraft: string
   tutorSubmitting: boolean
   onTutorDraftChange: (value: string) => void
@@ -30,14 +34,18 @@ export interface RightSidePanelProps {
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
   className = '',
   initialTab = 'ai-tutor',
-  width = '320px',
-  backgroundColor = '#161b22',
+  width = 'clamp(380px, 35vw, 560px)',
+  backgroundColor = '#1c1c1e',
   onTabChange,
   hasPhoto,
   analysis,
   analysisLoading,
   analysisError,
   onStartAnalysis,
+  onRetryAnalysis,
+  responseAge,
+  responseAgeInvalid,
+  onResponseAgeChange,
   tutorDraft,
   tutorSubmitting,
   onTutorDraftChange,
@@ -59,6 +67,10 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           isLoading={analysisLoading}
           error={analysisError}
           onStartAnalysis={onStartAnalysis}
+          onRetryAnalysis={onRetryAnalysis}
+          responseAge={responseAge}
+          responseAgeInvalid={responseAgeInvalid}
+          onResponseAgeChange={onResponseAgeChange}
           followUpDraft={tutorDraft}
           isSubmitting={tutorSubmitting}
           onFollowUpDraftChange={onTutorDraftChange}
@@ -66,30 +78,42 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         />
       )
     },
-    {
+  ]
+
+  if (hasPhoto && chatMessages.length > 0) {
+    tabs.push({
       id: 'chat',
-      label: 'Chat',
+      label: 'Helper Chat',
       content: (
         <ChatTab
           hasPhoto={hasPhoto}
           messages={chatMessages}
+          responseAge={responseAge}
+          responseAgeInvalid={responseAgeInvalid}
+          onResponseAgeChange={onResponseAgeChange}
           draft={chatDraft}
           isSubmitting={chatSubmitting}
           onDraftChange={onChatDraftChange}
           onSubmit={onChatSubmit}
         />
       )
-    },
-    {
+    })
+  }
+
+  if (hasPhoto && ((analysis?.steps?.length ?? 0) > 0 || analysisLoading)) {
+    tabs.push({
       id: 'steps',
       label: 'Steps',
       content: <StepsTab hasPhoto={hasPhoto} isLoading={analysisLoading} steps={analysis?.steps ?? []} />
-    }
-  ]
+    })
+  }
+
+  const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
 
   const panelStyle: React.CSSProperties = {
-    width: typeof width === 'number' ? `${width}px` : width,
-    minWidth: typeof width === 'number' ? `${width}px` : width,
+    // Fix 2: the tutor panel was too narrow, so it now reserves at least 380px and 35vw on wide screens.
+    width: resolvedWidth,
+    minWidth: '380px',
     backgroundColor,
     fontFamily: '"DM Sans", sans-serif'
   }
@@ -104,6 +128,20 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         tabs={tabs}
         initialTab={initialTab}
         onTabChange={onTabChange}
+        renderTabButton={(tab, isActive, onClick) => (
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={`${tab.label} tab`}
+            className={`flex w-full items-center justify-center rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+              isActive
+                ? 'border-amber-400 bg-amber-400/12 text-[#F0EDE8]'
+                : 'border-transparent text-[#c6b4a4] hover:border-amber-400/40 hover:bg-white/[0.04] hover:text-[#F0EDE8]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        )}
       />
     </div>
   )

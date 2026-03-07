@@ -66,61 +66,63 @@ function App() {
 
   return (
     <GlobalErrorBoundary>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
-          <Route path="/reset-password" element={<OnboardingPage />} />
-          <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
-            <Route path="/chat/:roomId/pad" element={<ChatPadPage />} />
-            <Route element={<MainLayout />}>
-              <Route index element={<HomePage />} />
+      <div className="flex h-full w-full flex-col overflow-hidden">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
+            <Route path="/reset-password" element={<OnboardingPage />} />
+            <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
+              <Route path="/chat/:roomId/pad" element={<ChatPadPage />} />
+              <Route element={<MainLayout />}>
+                <Route index element={<HomePage />} />
 
-              {/* Unified gallery view */}
-              <Route path="/gallery" element={<PhotoGalleryPage />} />
+                {/* Unified gallery view */}
+                <Route path="/gallery" element={<PhotoGalleryPage />} />
 
-              {/* Dedicated upload page */}
-              <Route path="/upload" element={<UploadPage />} />
+                {/* Dedicated upload page */}
+                <Route path="/upload" element={<UploadPage />} />
 
-              {/* Settings page */}
-              <Route path="/settings" element={<SettingsPage />} />
+                {/* Settings page */}
+                <Route path="/settings" element={<SettingsPage />} />
 
-              {/* Admin dashboard - protected route */}
-              <Route path="/admin" element={<AdminDashboard />} />
-              <Route path="/admin/assessments" element={<AdminAssessmentHistory />} />
-              <Route path="/admin/assessments/:id" element={<AssessmentReviewDetail />} />
+                {/* Admin dashboard - protected route */}
+                <Route path="/admin" element={<AdminDashboard />} />
+                <Route path="/admin/assessments" element={<AdminAssessmentHistory />} />
+                <Route path="/admin/assessments/:id" element={<AssessmentReviewDetail />} />
 
-              {/* Community chat */}
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/chat/:roomId" element={<ChatPage />} />
+                {/* Community chat */}
+                <Route path="/chat" element={<ChatPage />} />
+                <Route path="/chat/:roomId" element={<ChatPage />} />
 
-              {/* Games */}
-              <Route path="/chess" element={<ChessHub />} />
-              <Route path="/games" element={<GamesIndex />} />
-              <Route path="/games/chess" element={<ChessHub />} />
-              <Route path="/games/chess/gotw/:slug" element={<ChessGotwReplayPage />} />
-              <Route path="/games/:gameId" element={<ChessGame />} />
+                {/* Games */}
+                <Route path="/chess" element={<ChessHub />} />
+                <Route path="/games" element={<GamesIndex />} />
+                <Route path="/games/chess" element={<ChessHub />} />
+                <Route path="/games/chess/gotw/:slug" element={<ChessGotwReplayPage />} />
+                <Route path="/games/:gameId" element={<ChessGame />} />
 
-              {/* Whiteboards */}
-              <Route path="/whiteboards" element={<WhiteboardsHubPage />} />
-              <Route path="/whiteboards/join/:token" element={<WhiteboardJoinPage />} />
-              <Route path="/whiteboards/:boardId/join" element={<WhiteboardJoinPage />} />
-              <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+                {/* Whiteboards */}
+                <Route path="/whiteboards" element={<WhiteboardsHubPage />} />
+                <Route path="/whiteboards/join/:token" element={<WhiteboardJoinPage />} />
+                <Route path="/whiteboards/:boardId/join" element={<WhiteboardJoinPage />} />
+                <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
 
-              {/* Photo detail view */}
-              <Route path="/photos/:id" element={<PhotoDetailPage />} />
+                {/* Photo detail view */}
+                <Route path="/photos/:id" element={<PhotoDetailPage />} />
 
-              {/* Photo edit view */}
-              <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
+                {/* Photo edit view */}
+                <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
 
-              {/* Collectible detail view (main + reference carousel) */}
-              <Route path="/collectibles/photos/:id" element={<CollectiblePhotoPage />} />
+                {/* Collectible detail view (main + reference carousel) */}
+                <Route path="/collectibles/photos/:id" element={<CollectiblePhotoPage />} />
 
-              {/* Catch-all redirect to Home */}
-              <Route path="*" element={<Navigate to="/" replace />} />
+                {/* Catch-all redirect to Home */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
-      </BrowserRouter>
+          </Routes>
+        </BrowserRouter>
+      </div>
     </GlobalErrorBoundary>
   );
 }

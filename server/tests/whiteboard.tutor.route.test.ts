@@ -120,6 +120,32 @@ describe('whiteboard tutor route', () => {
     expect(mockGenerateContent).toHaveBeenCalledTimes(1)
   })
 
+  test('includes the requested response age in the tutor prompt', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+        audienceAge: 8,
+      })
+
+    expect(res.status).toBe(200)
+
+    const modelPayload = mockGenerateContent.mock.calls[0]?.[0]
+    const promptText = modelPayload?.contents?.[0]?.parts?.[1]?.text
+
+    expect(typeof promptText).toBe('string')
+    expect(promptText).toContain('Write for a learner around age 8.')
+    expect(promptText).toContain('Always use second person')
+    expect(promptText).toContain('Never ask the learner for their age')
+    expect(promptText).toContain('free of markdown syntax')
+  })
+
   test('denies tutor requests to non-members', async () => {
     const db = createMockDb({ roomMembers: [] })
     const app = createTestApp({ db, authMode: 'ok' })

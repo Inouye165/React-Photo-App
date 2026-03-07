@@ -76,7 +76,7 @@ function TabbedPanel<T extends string = string>({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="min-h-0 flex-1 overflow-hidden">
         {renderContent ? renderContent(activeTab) : defaultContent()}
       </div>
     </div>

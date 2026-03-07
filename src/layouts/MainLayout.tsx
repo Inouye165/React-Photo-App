@@ -125,17 +125,11 @@ export default function MainLayout(): React.ReactElement {
   const isChatRoute = location.pathname.startsWith('/chat');
   const isHomeRoute = location.pathname === '/';
   const isChessImmersiveRoute = /^\/games\/(?:chess|[^/]+)$/.test(location.pathname);
-  const contentOverflowClass = isHomeRoute
-    ? 'overflow-hidden'
-    : isChatRoute
-    ? 'overflow-hidden'
-    : isChessImmersiveRoute
-      ? 'overflow-auto lg:overflow-hidden'
-      : 'overflow-auto';
+  const contentOverflowClass = 'min-h-0 overflow-hidden';
 
   return (
     <div
-      className="flex flex-col font-body"
+      className="flex h-full w-full min-h-0 flex-col overflow-hidden font-body"
       id="main-app-container"
       data-theme={isChatRoute ? 'chat' : 'chess'}
       style={{
@@ -183,7 +177,7 @@ export default function MainLayout(): React.ReactElement {
 
       {/* Main content area with consistent padding */}
       <div
-        className={`flex-1 ${contentOverflowClass}`}
+        className={`min-h-0 flex-1 ${contentOverflowClass}`}
         style={isChatRoute || isChessImmersiveRoute || isHomeRoute ? undefined : { padding: '12px' }}
       >
         <Outlet context={{ 

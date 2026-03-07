@@ -41,6 +41,7 @@ import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/w
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
+const WHITEBOARD_APP_NAME = 'HomeworkHelper'
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -68,6 +69,32 @@ function buildNextMessages(messages: WhiteboardTutorMessage[], draft: string): W
   return [...messages, { role: 'user', content: draft.trim() }]
 }
 
+function parseAudienceAge(value: string): number | undefined {
+  const trimmed = value.trim()
+  if (!trimmed) return undefined
+
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed < 5 || parsed > 20) {
+    return undefined
+  }
+
+  return parsed
+}
+
+function getFriendlyTutorErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    const lowerMessage = error.message.toLowerCase()
+    if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
+      return 'The tutor could not connect just now. Please try again.'
+    }
+    if (lowerMessage.includes('too large') || lowerMessage.includes('payload')) {
+      return 'That photo was a little too large to read safely. Try a smaller or clearer image.'
+    }
+  }
+
+  return fallback
+}
+
 function ToolButton({
   active,
   label,
@@ -83,8 +110,8 @@ function ToolButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
-        active ? 'bg-amber-500 text-slate-950' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'
+      className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
+        active ? 'bg-amber-500 text-slate-950' : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
       }`}
     >
       <span className="flex items-center gap-2">
@@ -100,7 +127,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
-  const [boardName, setBoardName] = useState<string>('Untitled')
+  const [boardName, setBoardName] = useState<string>(WHITEBOARD_APP_NAME)
   const [members, setMembers] = useState<RoomMemberSummary[]>([])
   const [inviteOpen, setInviteOpen] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
@@ -109,7 +136,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [photoUploadError, setPhotoUploadError] = useState<string | null>(null)
   const [renameError, setRenameError] = useState<string | null>(null)
   const [isRenaming, setIsRenaming] = useState(false)
-  const [renameDraft, setRenameDraft] = useState('Untitled')
+  const [renameDraft, setRenameDraft] = useState(WHITEBOARD_APP_NAME)
   const [isSavingRename, setIsSavingRename] = useState(false)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
@@ -118,6 +145,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [responseAge, setResponseAge] = useState('')
   const [tutorDraft, setTutorDraft] = useState('')
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
   const [chatMessages, setChatMessages] = useState<WhiteboardTutorMessage[]>([])
@@ -126,6 +154,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
+  const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
+  const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -136,6 +166,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
+  const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
+  const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
+  const displayBoardName = useMemo(() => boardName.trim() || WHITEBOARD_APP_NAME, [boardName])
 
   const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
@@ -152,7 +185,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
     const [room, memberRows] = await Promise.all([getWhiteboardSessionDetails(boardId), listRoomMembers(boardId)])
     const createdBy = typeof room?.created_by === 'string' ? room.created_by : null
-    const resolvedName = typeof room?.name === 'string' && room.name.trim() ? room.name.trim() : 'Untitled'
+    const resolvedName = typeof room?.name === 'string' && room.name.trim() ? room.name.trim() : WHITEBOARD_APP_NAME
 
     setBoardName(resolvedName)
     setRenameDraft(resolvedName)
@@ -180,12 +213,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         imageDataUrl: backgroundImageAsset.dataUrl,
         imageMimeType: backgroundImageAsset.mimeType,
         imageName: backgroundImageAsset.name,
+        audienceAge,
         messages,
         mode,
       })
     },
-    [backgroundImageAsset, boardId],
+    [audienceAge, backgroundImageAsset, boardId],
   )
+
+  const handleResponseAgeChange = useCallback((value: string) => {
+    const normalized = value.replace(/[^\d]/g, '').slice(0, 2)
+    setResponseAge(normalized)
+  }, [])
 
   const handleAnnotationToolSelect = useCallback((tool: AnnotationTool) => {
     setAnnotationTool(tool)
@@ -317,7 +356,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
 
     const trimmed = renameDraft.trim()
-    const currentTitle = boardName.trim() || 'Untitled'
+    const currentTitle = boardName.trim() || WHITEBOARD_APP_NAME
 
     if (!trimmed) {
       setRenameError('Whiteboard name cannot be empty')
@@ -376,6 +415,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
       if (!value) {
         setBackgroundImageAsset(null)
+        setConfirmRemovePhoto(false)
         resetTutorState()
       }
     },
@@ -408,6 +448,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         throw new Error('Whiteboard is not ready yet.')
       }
       await whiteboardPadRef.current.insertImageFile(file)
+      setPhotoGuidanceVisible(true)
       handleAnnotationToolSelect('pen')
     } catch (error) {
       setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
@@ -418,20 +459,32 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     whiteboardPadRef.current?.clearBackground()
     setBackgroundImageAsset(null)
     setHasBackground(false)
+    setConfirmRemovePhoto(false)
+    setPhotoGuidanceVisible(false)
     resetTutorState()
   }, [resetTutorState])
+
+  const handleRemovePhotoRequest = useCallback(() => {
+    // Fix 4: removing a learner's work was one click with no warning, so removal now requires explicit confirmation.
+    setConfirmRemovePhoto(true)
+  }, [])
+
+  const handleCancelRemovePhoto = useCallback(() => {
+    setConfirmRemovePhoto(false)
+  }, [])
 
   const handleStartAnalysis = useCallback(async () => {
     if (!backgroundImageAsset) return
     setAnalysisLoading(true)
     setAnalysisError(null)
+    setPhotoGuidanceVisible(false)
     try {
       const response = await runTutorRequest([], 'analysis')
       setAnalysis(response)
       setChatMessages(buildChatSeed(response))
       handleAnnotationToolSelect('pen')
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : 'Unable to analyze the photo.')
+      setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not read that photo yet. Please try again.'))
     } finally {
       setAnalysisLoading(false)
     }
@@ -447,7 +500,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setAnalysis(response)
       setTutorDraft('')
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : 'Unable to send follow-up question.')
+      setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not answer that follow-up yet. Please try again.'))
     } finally {
       setTutorSubmitting(false)
     }
@@ -462,7 +515,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setChatMessages(response.messages)
       setChatDraft('')
     } catch (error) {
-      setAnalysisError(error instanceof Error ? error.message : 'Unable to continue the chat.')
+      setAnalysisError(getFriendlyTutorErrorMessage(error, 'The helper chat could not send that message yet. Please try again.'))
     } finally {
       setChatSubmitting(false)
     }
@@ -532,6 +585,17 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [])
 
+  useEffect(() => {
+    // Fix viewport scroll: the whiteboard should stay fixed in the viewport while only the tutor panel scrolls internally.
+    document.documentElement.classList.add('whiteboard-viewport-lock')
+    document.body.classList.add('whiteboard-viewport-lock')
+
+    return () => {
+      document.documentElement.classList.remove('whiteboard-viewport-lock')
+      document.body.classList.remove('whiteboard-viewport-lock')
+    }
+  }, [])
+
   if (!boardId) return <div>Missing board id</div>
 
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
@@ -571,7 +635,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             />
           ) : (
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate text-xl font-semibold font-display">{boardName}</h1>
+              <h1 className="truncate text-xl font-semibold font-display">{displayBoardName}</h1>
               {isOwner ? (
                 <button
                   type="button"
@@ -589,7 +653,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
         <div className="order-3 flex w-full justify-center md:order-2 md:flex-1">
           {hasBackground ? (
-            <div className="flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.04] px-3 py-2">
               <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
               <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
               <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
@@ -598,10 +662,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => setShapeMenuOpen((prev) => !prev)}
-                  className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
                     ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
                       ? 'bg-amber-500 text-slate-950'
-                      : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'
+                      : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
                   }`}
                 >
                   <span className="flex items-center gap-2">
@@ -611,7 +675,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   </span>
                 </button>
                 {shapeMenuOpen ? (
-                  <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl">
+                  <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
                     {([
                       ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
                       ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
@@ -621,7 +685,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                         key={tool}
                         type="button"
                         onClick={() => handleAnnotationToolSelect(tool)}
-                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-white/10"
+                        className="flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-sm text-white transition hover:bg-amber-500/12 hover:text-chess-accentSoft"
                       >
                         {icon}
                         {label}
@@ -632,14 +696,33 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               </div>
               <button
                 type="button"
-                onClick={handleRemovePhoto}
-                className="rounded-xl border border-amber-500/40 px-3 py-2 text-sm font-medium text-amber-300 transition hover:bg-amber-500/10"
+                onClick={handleRemovePhotoRequest}
+                className="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-medium text-[#c6b4a4] transition hover:bg-white/[0.06] hover:text-[#F0EDE8]"
               >
                 <span className="flex items-center gap-2">
                   <ImageMinus className="h-4 w-4" />
                   Remove photo
                 </span>
               </button>
+              {confirmRemovePhoto ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  <span>Are you sure? This cannot be undone.</span>
+                  <button
+                    type="button"
+                    onClick={handleRemovePhoto}
+                    className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
+                  >
+                    Yes, Remove
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCancelRemovePhoto}
+                    className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <button
@@ -813,6 +896,19 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
+        {photoGuidanceVisible ? (
+          <div className="flex items-center justify-between gap-3 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <span>Tip: Keep the whole problem in frame, use good light, and avoid blur so the tutor can read the work more accurately.</span>
+            <button
+              type="button"
+              onClick={() => setPhotoGuidanceVisible(false)}
+              className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
+            >
+              Got it
+            </button>
+          </div>
+        ) : null}
+
         {renameError ? (
           <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {renameError}
@@ -841,6 +937,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             onStartAnalysis={() => {
               void handleStartAnalysis()
             }}
+            onRetryAnalysis={() => {
+              void handleStartAnalysis()
+            }}
+            responseAge={responseAge}
+            responseAgeInvalid={responseAgeInvalid}
+            onResponseAgeChange={handleResponseAgeChange}
             tutorDraft={tutorDraft}
             tutorSubmitting={tutorSubmitting}
             onTutorDraftChange={setTutorDraft}
@@ -862,7 +964,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       <RoomMembersModal
         isOpen={inviteOpen}
         onClose={() => setInviteOpen(false)}
-        roomTitle={boardName}
+        roomTitle={displayBoardName}
         currentUserId={currentUserId}
         canInvite={isOwner}
         members={members}

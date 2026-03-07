@@ -153,6 +153,7 @@ export type WhiteboardTutorRequest = {
   imageDataUrl: string
   imageMimeType?: string
   imageName?: string
+  audienceAge?: number
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'
 }
