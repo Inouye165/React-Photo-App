@@ -1,9 +1,8 @@
 // server/db/migrations/20260305000001_add_rooms_updated_at_and_whiteboard_segment_index.js
 /**
- * Add missing `updated_at` column to `rooms` and `segment_index` to `whiteboard_events`.
- * This migration is idempotent and will only add the columns if they don't exist.
+ * Add missing `updated_at` to `rooms` and `segment_index` to `whiteboard_events`.
+ * The migration is idempotent and only adds columns that do not already exist.
  */
-
 exports.up = async function up(knex) {
   const hasRooms = await knex.schema.hasTable('rooms');
   if (hasRooms) {

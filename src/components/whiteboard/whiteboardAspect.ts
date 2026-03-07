@@ -1,4 +1,6 @@
-export const BOARD_ASPECT = 4 / 3
+export const US_LETTER_WIDTH_IN = 8.5
+export const US_LETTER_HEIGHT_IN = 11
+export const BOARD_ASPECT = US_LETTER_WIDTH_IN / US_LETTER_HEIGHT_IN
 
 export type ContainedRect = {
   left: number
@@ -36,4 +38,20 @@ export function computeContainedRect(
     width,
     height,
   }
+}
+
+export function resolveWhiteboardAspect(backgroundAspect?: number | null): number {
+  if (typeof backgroundAspect === 'number' && Number.isFinite(backgroundAspect) && backgroundAspect > 0) {
+    return backgroundAspect
+  }
+
+  return BOARD_ASPECT
+}
+
+export function computeWhiteboardFrameRect(
+  wrapperWidth: number,
+  wrapperHeight: number,
+  backgroundAspect?: number | null,
+): ContainedRect {
+  return computeContainedRect(wrapperWidth, wrapperHeight, resolveWhiteboardAspect(backgroundAspect))
 }

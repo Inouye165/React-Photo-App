@@ -389,6 +389,17 @@ type ExcalidrawSnapshotElement = {
   fontSize?: number;
   fontFamily?: string;
   textColor?: string;
+  fileId?: string;
+  scale?: [number, number];
+  status?: string;
+};
+
+type ExcalidrawSnapshotFile = {
+  id: string;
+  dataURL?: string;
+  mimeType?: string;
+  created?: number;
+  lastRetrieved?: number;
 };
 
 function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array {
@@ -400,7 +411,10 @@ function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array 
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
-async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<ExcalidrawSnapshotElement[] | null> {
+async function fetchExcalidrawScene(
+  db: Knex,
+  boardId: string,
+): Promise<{ elements: ExcalidrawSnapshotElement[]; files: Record<string, ExcalidrawSnapshotFile> } | null> {
   try {
     const hasTable = await db.schema.hasTable(WHITEBOARD_DOC_TABLE);
     if (!hasTable) return null;
@@ -418,12 +432,15 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
     Y.applyUpdate(doc, update);
     const map = doc.getMap('excalidraw');
     const rawElements = map.get('elements');
-    doc.destroy();
+    const rawFiles = map.get('files');
 
-    if (!Array.isArray(rawElements)) return null;
+    if (!Array.isArray(rawElements)) {
+      doc.destroy();
+      return null;
+    }
 
     // Filter to visible, non-deleted elements with valid coordinates
-    return rawElements
+    const elements = rawElements
       .filter((el: any) => {
         if (!el || typeof el !== 'object') return false;
         if (el.isDeleted) return false;
@@ -453,9 +470,39 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         fontFamily: typeof el.fontFamily === 'string' ? el.fontFamily : undefined,
         // Prefer strokeColor for text color if available
         textColor: typeof el.strokeColor === 'string' ? el.strokeColor : undefined,
+        fileId: typeof el.fileId === 'string' ? el.fileId : undefined,
+        scale: Array.isArray(el.scale) && el.scale.length >= 2 && el.scale.every((value: unknown) => typeof value === 'number')
+          ? [el.scale[0], el.scale[1]]
+          : undefined,
+        status: typeof el.status === 'string' ? el.status : undefined,
       }));
+
+    const referencedFileIds = new Set(
+      elements
+        .filter((el) => el.type === 'image' && typeof el.fileId === 'string')
+        .map((el) => String(el.fileId)),
+    );
+
+    const files: Record<string, ExcalidrawSnapshotFile> = {};
+    if (rawFiles && typeof rawFiles === 'object') {
+      for (const [id, value] of Object.entries(rawFiles as Record<string, unknown>)) {
+        if (!referencedFileIds.has(id)) continue;
+        if (!value || typeof value !== 'object') continue;
+        const candidate = value as Record<string, unknown>;
+        files[id] = {
+          id,
+          dataURL: typeof candidate.dataURL === 'string' ? candidate.dataURL : undefined,
+          mimeType: typeof candidate.mimeType === 'string' ? candidate.mimeType : undefined,
+          created: typeof candidate.created === 'number' ? candidate.created : undefined,
+          lastRetrieved: typeof candidate.lastRetrieved === 'number' ? candidate.lastRetrieved : undefined,
+        };
+      }
+    }
+
+    doc.destroy();
+    return { elements, files };
   } catch (err) {
-    console.warn('[WB-HTTP] fetchExcalidrawElements error', { boardId, error: err instanceof Error ? err.message : String(err) });
+    console.warn('[WB-HTTP] fetchExcalidrawScene error', { boardId, error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
@@ -464,6 +511,94 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   if (!db) throw new Error('db is required');
 
   const router = express.Router();
+  let roomsUpdatedAtColumnPromise: Promise<boolean> | null = null;
+
+  const hasRoomsUpdatedAtColumn = () => {
+    if (!roomsUpdatedAtColumnPromise) {
+      roomsUpdatedAtColumnPromise = db.schema.hasColumn('rooms', 'updated_at').catch(() => false);
+    }
+    return roomsUpdatedAtColumnPromise;
+  };
+
+  const normalizeTimestamp = (value: unknown): string | null => {
+    if (typeof value === 'string') return value;
+    if (value instanceof Date) return value.toISOString();
+    return null;
+  };
+
+  const normalizeRoomSnapshot = (room: Record<string, unknown> | null | undefined) => {
+    if (!room || typeof room.id !== 'string') {
+      return null;
+    }
+
+    return {
+      id: room.id,
+      name: typeof room.name === 'string' ? room.name : null,
+      created_by: typeof room.created_by === 'string' ? room.created_by : null,
+      created_at: normalizeTimestamp(room.created_at),
+      updated_at: normalizeTimestamp(room.updated_at),
+      type: typeof room.type === 'string' ? room.type : null,
+      metadata: room.metadata ?? null,
+      is_group: typeof room.is_group === 'boolean' ? room.is_group : null,
+    };
+  };
+
+  const mergeRoomSnapshot = (
+    primary: ReturnType<typeof normalizeRoomSnapshot>,
+    secondary: ReturnType<typeof normalizeRoomSnapshot>,
+  ) => {
+    const base = secondary ?? primary;
+    if (!base) return null;
+
+    return {
+      id: base.id,
+      name: secondary?.name ?? primary?.name ?? null,
+      created_by: secondary?.created_by ?? primary?.created_by ?? null,
+      created_at: secondary?.created_at ?? primary?.created_at ?? null,
+      updated_at: secondary?.updated_at ?? primary?.updated_at ?? null,
+      type: secondary?.type ?? primary?.type ?? null,
+      metadata: secondary?.metadata ?? primary?.metadata ?? null,
+      is_group: secondary?.is_group ?? primary?.is_group ?? null,
+    };
+  };
+
+  const fetchSupabaseRoomSnapshots = async (roomIds: string[]) => {
+    const snapshots = new Map<string, NonNullable<ReturnType<typeof normalizeRoomSnapshot>>>();
+
+    if (process.env.NODE_ENV === 'test' || roomIds.length === 0) {
+      return snapshots;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('id, name, created_by, created_at, updated_at, type, metadata, is_group')
+        .in('id', roomIds);
+
+      if (error) {
+        console.warn('[WB-HTTP] room-snapshot:fallback-failed', {
+          roomIds,
+          code: error.code,
+          message: error.message,
+        });
+        return snapshots;
+      }
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const snapshot = normalizeRoomSnapshot(row as Record<string, unknown>);
+        if (snapshot) {
+          snapshots.set(snapshot.id, snapshot);
+        }
+      }
+    } catch (error) {
+      console.warn('[WB-HTTP] room-snapshot:fallback-error', {
+        roomIds,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return snapshots;
+  };
 
   const buildPayload = async (boardId: string) => {
     const { events, cursor } = await fetchHistory(db, boardId);
@@ -490,17 +625,22 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       })
       .filter((evt): evt is NonNullable<typeof evt> => Boolean(evt));
 
-    // If no legacy stroke events, try to read from the Yjs document
+    // Excalidraw scene data can contain text and image elements that are not present
+    // in the legacy stroke history, so always include the latest scene layer.
     let excalidrawElements: ExcalidrawSnapshotElement[] | undefined;
-    if (mapped.length === 0) {
-      const elements = await fetchExcalidrawElements(db, boardId);
-      if (elements && elements.length > 0) {
-        excalidrawElements = elements;
-        console.log('[WB-HTTP] excalidraw elements from ydoc', { boardId, count: elements.length });
-      }
+    let excalidrawFiles: Record<string, ExcalidrawSnapshotFile> | undefined;
+    const scene = await fetchExcalidrawScene(db, boardId);
+    if (scene?.elements.length) {
+      excalidrawElements = scene.elements;
+      excalidrawFiles = Object.keys(scene.files).length > 0 ? scene.files : undefined;
+      console.log('[WB-HTTP] excalidraw scene from ydoc', {
+        boardId,
+        elementCount: scene.elements.length,
+        fileCount: excalidrawFiles ? Object.keys(excalidrawFiles).length : 0,
+      });
     }
 
-    return { boardId, events: mapped, cursor, excalidrawElements };
+    return { boardId, events: mapped, cursor, excalidrawElements, excalidrawFiles };
   };
 
   const handleRequest = async (req: AuthenticatedRequest, res: Response): Promise<string | null> => {
@@ -525,6 +665,39 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
     return boardId;
   };
+
+  const buildRoomDetails = async (boardId: string) => {
+    const hasUpdatedAt = await hasRoomsUpdatedAtColumn();
+    const columns = hasUpdatedAt
+      ? ['id', 'name', 'created_by', 'created_at', 'updated_at']
+      : ['id', 'name', 'created_by', 'created_at'];
+
+    const room = await db('rooms').select(columns).where({ id: boardId }).first();
+    const primaryRoom = normalizeRoomSnapshot((room as Record<string, unknown> | undefined) ?? null);
+    const supabaseRooms = await fetchSupabaseRoomSnapshots([boardId]);
+    return mergeRoomSnapshot(primaryRoom, supabaseRooms.get(boardId) ?? null);
+  };
+
+  router.get(
+    '/:boardId',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const room = await buildRoomDetails(boardId);
+        if (!room) {
+          return res.status(404).json({ success: false, error: 'Not found' });
+        }
+
+        return res.status(200).json(room);
+      } catch (error) {
+        console.error('[WB-HTTP] details failed', { error });
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    }
+  );
 
   router.get(
     '/:boardId/history',
@@ -848,6 +1021,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           .select('id', 'name', 'is_group', 'created_at', db.raw('created_at as updated_at'), 'type', 'metadata', 'created_by')
           .whereIn('id', roomIds as string[]);
       }
+      const supabaseRoomsById = await fetchSupabaseRoomSnapshots(roomIds as string[]);
 
       // Fetch all members for these rooms in one query to avoid N+1
       const allMembers = await db('room_members').select('room_id', 'user_id', 'is_owner').whereIn('room_id', roomIds as string[]);
@@ -875,10 +1049,14 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       const hubItems = (rooms as Array<any>)
         .map((r) => {
           const roomId = String(r.id);
+          const roomSnapshot = mergeRoomSnapshot(
+            normalizeRoomSnapshot(r as Record<string, unknown>),
+            supabaseRoomsById.get(roomId) ?? null,
+          );
           const members = membersByRoom.get(roomId) ?? [];
           // Determine owner: prefer explicit is_owner flag, fall back to created_by
           const ownerMember = members.find((m) => m.is_owner) ?? null;
-          const ownerId = ownerMember ? ownerMember.user_id : (typeof r.created_by === 'string' ? r.created_by : null);
+          const ownerId = ownerMember ? ownerMember.user_id : roomSnapshot?.created_by ?? null;
           const ownerProfile = ownerId ? usersById.get(ownerId) ?? { id: ownerId, username: null, avatar_url: null } : null;
 
           const participants = members
@@ -890,11 +1068,11 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
           return {
             id: roomId,
-            name: typeof r.name === 'string' ? r.name : null,
-            created_at: r.created_at,
-            updated_at: r.updated_at ?? r.created_at,
-            type: r.type,
-            metadata: r.metadata ?? null,
+            name: roomSnapshot?.name ?? null,
+            created_at: roomSnapshot?.created_at ?? null,
+            updated_at: roomSnapshot?.updated_at ?? roomSnapshot?.created_at ?? null,
+            type: roomSnapshot?.type ?? null,
+            metadata: roomSnapshot?.metadata ?? null,
             owner: ownerProfile ? { id: ownerProfile.id, username: ownerProfile.username, avatar_url: ownerProfile.avatar_url } : null,
             participants,
           };
@@ -930,16 +1108,34 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
 
       const updatedAt = new Date().toISOString();
+      const hasUpdatedAt = await hasRoomsUpdatedAtColumn();
 
       let updated: unknown;
       try {
-        updated = await db('rooms').where({ id: boardId }).update({
-          name: trimmedName,
-          updated_at: updatedAt,
-        });
+        updated = await db('rooms').where({ id: boardId }).update(
+          hasUpdatedAt
+            ? { name: trimmedName, updated_at: updatedAt }
+            : { name: trimmedName }
+        );
       } catch (error) {
         if (!isMissingColumnError(error, 'updated_at')) throw error;
         updated = await db('rooms').where({ id: boardId }).update({ name: trimmedName });
+      }
+
+      if (process.env.NODE_ENV !== 'test') {
+        const { error } = await supabase
+          .from('rooms')
+          .update({ name: trimmedName, updated_at: updatedAt })
+          .eq('id', boardId);
+
+        if (error) {
+          console.warn('[WB-HTTP] rename:supabase-sync-failed', {
+            boardId,
+            userId,
+            code: error.code,
+            message: error.message,
+          });
+        }
       }
 
       if (toAffectedRows(updated) === 0) {
@@ -947,7 +1143,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         // In that case, persist rename directly to Supabase instead of returning false success.
         const { data: fallbackRow, error: fallbackError } = await supabase
           .from('rooms')
-          .update({ name: trimmedName })
+          .update({ name: trimmedName, updated_at: updatedAt })
           .eq('id', boardId)
           .select('id')
           .maybeSingle();
