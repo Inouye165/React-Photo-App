@@ -164,9 +164,11 @@ export type WhiteboardTutorResponse = {
 }
 
 export type WhiteboardTutorRequest = {
-  imageDataUrl: string
+  imageDataUrl?: string
   imageMimeType?: string
   imageName?: string
+  inputMode?: 'photo' | 'text'
+  textContent?: string
   audienceAge?: number
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'

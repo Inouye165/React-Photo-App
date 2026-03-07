@@ -33,12 +33,33 @@ const WhiteboardTutorMessageSchema = z.object({
 });
 
 const WhiteboardTutorBodySchema = z.object({
-  imageDataUrl: z.string().min(1).max(12_000_000),
+  imageDataUrl: z.string().min(1).max(12_000_000).optional(),
   imageMimeType: z.string().max(128).optional(),
   imageName: z.string().max(255).optional(),
+  inputMode: z.enum(['photo', 'text']).optional(),
+  textContent: z.string().trim().max(12_000).optional(),
   audienceAge: z.number().int().min(5).max(20).optional(),
   messages: z.array(WhiteboardTutorMessageSchema).max(40).optional(),
   mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
+}).superRefine((value, ctx) => {
+  if (value.inputMode === 'text') {
+    if (!value.textContent?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['textContent'],
+        message: 'Text content is required in text mode',
+      });
+    }
+    return;
+  }
+
+  if (!value.imageDataUrl?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['imageDataUrl'],
+      message: 'Image data is required in photo mode',
+    });
+  }
 });
 
 const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
@@ -342,6 +363,30 @@ function parseJsonResponse<T>(rawText: string, schema: z.ZodType<T>, label: stri
 }
 
 function buildPassTwoUserPrompt(body: WhiteboardTutorBody, transcription: WhiteboardTutorTranscription): string {
+  if (body.inputMode === 'text' && body.textContent?.trim()) {
+    const basePrompt = `The student has typed their problem as text. 
+There is no photo. The problem is:
+
+${body.textContent.trim()}
+
+First solve this problem yourself completely.
+Then identify what steps a student would need to take 
+to solve it, and evaluate whether the student has 
+shown their work or just stated the problem.
+If no work is shown, identify the steps needed 
+and mark them as guidance rather than grading.
+Use the same warm second-person voice as always.
+
+The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}`;
+
+    const transcript = formatConversationTranscript(body.messages ?? []);
+    if (!transcript) {
+      return basePrompt;
+    }
+
+    return `${basePrompt}\n\nConversation so far:\n${transcript}`;
+  }
+
   const basePrompt = `The problem is: ${transcription.problem}
 The student's steps are: ${JSON.stringify(transcription.steps)}
 The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}
@@ -374,6 +419,13 @@ function buildAssistantReply(evaluation: WhiteboardTutorEvaluation): string {
 }
 
 async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<WhiteboardTutorTranscription> {
+  if (body.inputMode === 'text' && body.textContent?.trim()) {
+    return {
+      problem: body.textContent.trim(),
+      steps: [],
+    };
+  }
+
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
     throw toTutorPipelineError('GEMINI_API_KEY is not configured', {
@@ -469,6 +521,9 @@ async function callWhiteboardEvaluation(
     const result = await anthropic.messages.create({
       model: WHITEBOARD_EVALUATION_MODEL,
       system: WHITEBOARD_EVALUATION_SYSTEM_PROMPT,
+      metadata: {
+        user_id: `whiteboard-${body.inputMode === 'text' ? 'text' : 'photo'}-mode`,
+      },
       temperature: 0.2,
       max_tokens: 1800,
       messages: [

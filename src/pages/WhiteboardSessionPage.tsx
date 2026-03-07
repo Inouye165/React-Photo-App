@@ -12,6 +12,7 @@ import {
   Eraser,
   Highlighter,
   ImageMinus,
+  MoreVertical,
   PenTool,
   Share2,
   Square,
@@ -24,7 +25,8 @@ import type {
   BackgroundImageAsset,
   WhiteboardCanvasHandle,
 } from '../components/whiteboard/WhiteboardCanvas'
-import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
+import RightSidePanel from '../components/whiteboard/RightSidePanel'
+import { AITutorTab, ChatTab } from '../components/whiteboard/tabs'
 import {
   analyzeWhiteboardPhoto,
   createWhiteboardInvite,
@@ -40,8 +42,34 @@ import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/w
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
+type MobileWhiteboardTab = 'homework' | 'ai-tutor' | 'chat'
+type HomeworkInputMode = 'photo' | 'text'
+type FormattedProblemLineType = 'question' | 'data' | 'section' | 'context' | 'empty'
+type PhotoTransformState = {
+  rotation: 0 | 90 | 180 | 270
+  scale: number
+  flipX: boolean
+  flipY: boolean
+  panX: number
+  panY: number
+}
 const WHITEBOARD_APP_NAME = 'HomeworkHelper'
 const PHOTO_GUIDANCE_DISMISSED_KEY = 'photoGuidanceDismissed'
+const DEFAULT_PHOTO_TRANSFORM: PhotoTransformState = {
+  rotation: 0,
+  scale: 1,
+  flipX: false,
+  flipY: false,
+  panX: 0,
+  panY: 0,
+}
+const TEXT_MODE_PLACEHOLDER = 'The Weekend Problem\n\nSara has 3 apples...\n\nHow many apples does she have left?'
+
+type FormattedProblemLine = {
+  id: string
+  type: FormattedProblemLineType
+  text: string
+}
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
   if (!error || typeof error !== 'object') {
@@ -81,6 +109,34 @@ function parseAudienceAge(value: string): number | undefined {
   return parsed
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max)
+}
+
+function classifyProblemLine(line: string): FormattedProblemLineType {
+  const trimmed = line.trim()
+  if (!trimmed) return 'empty'
+  if (trimmed.endsWith('?')) return 'question'
+
+  const hasCurrency = trimmed.includes('$')
+  const hasNumberWithUnit = /\b\d+(?:\.\d+)?\s?(?:cm|mm|m|km|kg|g|lb|lbs|oz|hour|hours|hr|hrs|minute|minutes|min|mins|day|days|week|weeks|month|months|year|years|apple|apples|orange|oranges|dollar|dollars|cent|cents|meter|meters|mile|miles|ft|feet|inch|inches|%|mph|km\/h)\b/i.test(trimmed)
+  const hasDataKeyword = /\b(costs|sells|has|buys)\b/i.test(trimmed)
+  if (hasCurrency || hasNumberWithUnit || hasDataKeyword) return 'data'
+
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length
+  if (wordCount > 0 && wordCount < 6 && !/\d/.test(trimmed)) return 'section'
+
+  return 'context'
+}
+
+function buildFormattedProblemLines(rawText: string): FormattedProblemLine[] {
+  return rawText.split(/\r?\n/).map((line, index) => ({
+    id: `${index}-${line}`,
+    type: classifyProblemLine(line),
+    text: line,
+  }))
+}
+
 function getFriendlyTutorErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim()) {
     const lowerMessage = error.message.toLowerCase()
@@ -100,17 +156,21 @@ function ToolButton({
   label,
   onClick,
   icon,
+  compact = false,
+  className = '',
 }: {
   active: boolean
   label: string
   onClick: () => void
   icon: React.JSX.Element
+  compact?: boolean
+  className?: string
 }): React.JSX.Element {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
+      className={`rounded-[8px] font-medium transition ${compact ? 'px-2.5 py-2 text-[13px]' : 'px-3 py-2 text-sm'} ${className} ${
         active ? 'bg-amber-500 text-slate-950' : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
       }`}
     >
@@ -122,10 +182,43 @@ function ToolButton({
   )
 }
 
+function useIsMobileWhiteboardLayout(): boolean {
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.innerWidth < 768
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const mediaQuery = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 767px)')
+      : null
+
+    const updateLayout = () => {
+      setIsMobileLayout(mediaQuery ? mediaQuery.matches : window.innerWidth < 768)
+    }
+
+    updateLayout()
+
+    if (mediaQuery) {
+      const onChange = () => updateLayout()
+      mediaQuery.addEventListener('change', onChange)
+      return () => mediaQuery.removeEventListener('change', onChange)
+    }
+
+    window.addEventListener('resize', updateLayout)
+    return () => window.removeEventListener('resize', updateLayout)
+  }, [])
+
+  return isMobileLayout
+}
+
 export default function WhiteboardSessionPage(): React.JSX.Element {
   const { boardId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const isMobileLayout = useIsMobileWhiteboardLayout()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const [boardName, setBoardName] = useState<string>(WHITEBOARD_APP_NAME)
   const [members, setMembers] = useState<RoomMemberSummary[]>([])
@@ -140,8 +233,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isSavingRename, setIsSavingRename] = useState(false)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
+  const [inputMode, setInputMode] = useState<HomeworkInputMode>('photo')
+  const [textContent, setTextContent] = useState('')
+  const [formattedProblemLines, setFormattedProblemLines] = useState<FormattedProblemLine[]>([])
   const [hasBackground, setHasBackground] = useState(false)
   const [backgroundImageAsset, setBackgroundImageAsset] = useState<BackgroundImageAsset | null>(null)
+  const [mobilePhotoObjectUrl, setMobilePhotoObjectUrl] = useState<string | null>(null)
+  const [mobilePhotoVersion, setMobilePhotoVersion] = useState(0)
+  const [mobilePhotoContainerHeight, setMobilePhotoContainerHeight] = useState<number | null>(null)
+  const [photoTransform, setPhotoTransform] = useState<PhotoTransformState>(DEFAULT_PHOTO_TRANSFORM)
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
@@ -151,22 +251,37 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
+  const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false)
+  const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
+  const [mobileActiveTab, setMobileActiveTab] = useState<MobileWhiteboardTab>('homework')
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
   const [photoGuidanceFading, setPhotoGuidanceFading] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
+  const mobilePhotoContainerRef = useRef<HTMLDivElement | null>(null)
+  const mobileTextInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const desktopTextInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const mobileFormattedOverlayRef = useRef<HTMLDivElement | null>(null)
+  const desktopFormattedOverlayRef = useRef<HTMLDivElement | null>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const shareMenuRef = useRef<HTMLDivElement | null>(null)
+  const mobileOverflowRef = useRef<HTMLDivElement | null>(null)
   const shapeMenuRef = useRef<HTMLDivElement | null>(null)
   const hasBackgroundRef = useRef(false)
+  const lastBackgroundAssetSignatureRef = useRef<string | null>(null)
+  const mobileToolbarHideTimeoutRef = useRef<number | null>(null)
+  const formatProblemTextTimeoutRef = useRef<number | null>(null)
+  const touchPanStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
   const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
   const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
   const displayBoardName = useMemo(() => boardName.trim() || WHITEBOARD_APP_NAME, [boardName])
+  const hasTextInput = textContent.trim().length > 0
+  const hasTutorInput = inputMode === 'text' ? hasTextInput : hasBackground
 
   const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
@@ -205,9 +320,22 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const runTutorRequest = useCallback(
     async (messages: WhiteboardTutorMessage[] = [], mode: 'analysis' | 'tutor' | 'chat' = 'analysis') => {
       if (!boardId) throw new Error('Missing board id')
+      if (inputMode === 'text') {
+        if (!textContent.trim()) throw new Error('Type or paste a problem first.')
+
+        return analyzeWhiteboardPhoto(boardId, {
+          inputMode: 'text',
+          textContent: textContent.trim(),
+          audienceAge,
+          messages,
+          mode,
+        })
+      }
+
       if (!backgroundImageAsset) throw new Error('Import a photo first.')
 
       return analyzeWhiteboardPhoto(boardId, {
+        inputMode: 'photo',
         imageDataUrl: backgroundImageAsset.dataUrl,
         imageMimeType: backgroundImageAsset.mimeType,
         imageName: backgroundImageAsset.name,
@@ -216,19 +344,115 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         mode,
       })
     },
-    [audienceAge, backgroundImageAsset, boardId],
+    [audienceAge, backgroundImageAsset, boardId, inputMode, textContent],
   )
+
+  const resetPhotoTransform = useCallback(() => {
+    setPhotoTransform(DEFAULT_PHOTO_TRANSFORM)
+  }, [])
+
+  const clampPhotoPan = useCallback((panX: number, panY: number, nextScale: number) => {
+    const container = mobilePhotoContainerRef.current
+    if (!container || nextScale <= 1) {
+      return { panX: 0, panY: 0 }
+    }
+
+    const maxOffsetX = Math.max(0, ((container.clientWidth * nextScale) - container.clientWidth) / 2)
+    const maxOffsetY = Math.max(0, ((container.clientHeight * nextScale) - container.clientHeight) / 2)
+
+    return {
+      panX: clampNumber(panX, -maxOffsetX, maxOffsetX),
+      panY: clampNumber(panY, -maxOffsetY, maxOffsetY),
+    }
+  }, [])
+
+  const updateMobilePhotoContainerHeight = useCallback(() => {
+    const container = mobilePhotoContainerRef.current
+    if (!container || !isMobileLayout || mobileActiveTab !== 'homework' || inputMode !== 'photo') return
+
+    const headerHeight = document.querySelector('header')?.getBoundingClientRect().height ?? 52
+    const tabBarHeight = document.querySelector('.tab-bar')?.getBoundingClientRect().height ?? 60
+    const availableHeight = window.innerHeight - headerHeight - tabBarHeight
+
+    container.style.height = `${availableHeight}px`
+    setMobilePhotoContainerHeight(availableHeight)
+  }, [inputMode, isMobileLayout, mobileActiveTab])
 
   const handleResponseAgeChange = useCallback((value: string) => {
     const normalized = value.replace(/[^\d]/g, '').slice(0, 2)
     setResponseAge(normalized)
   }, [])
 
+  const formatProblemText = useCallback((rawText: string) => {
+    const trimmed = rawText.trim()
+    if (!trimmed) {
+      setFormattedProblemLines([])
+      return
+    }
+
+    setFormattedProblemLines(buildFormattedProblemLines(rawText))
+  }, [])
+
+  const scheduleFormatProblemText = useCallback((rawText: string) => {
+    if (formatProblemTextTimeoutRef.current !== null) {
+      window.clearTimeout(formatProblemTextTimeoutRef.current)
+    }
+
+    formatProblemTextTimeoutRef.current = window.setTimeout(() => {
+      formatProblemText(rawText)
+      formatProblemTextTimeoutRef.current = null
+    }, 300)
+  }, [formatProblemText])
+
+  const syncFormattedOverlayScroll = useCallback((scrollTop: number) => {
+    if (mobileFormattedOverlayRef.current) {
+      mobileFormattedOverlayRef.current.scrollTop = scrollTop
+    }
+    if (desktopFormattedOverlayRef.current) {
+      desktopFormattedOverlayRef.current.scrollTop = scrollTop
+    }
+  }, [])
+
+  const scheduleMobileToolbarHide = useCallback(() => {
+    if (mobileToolbarHideTimeoutRef.current) {
+      window.clearTimeout(mobileToolbarHideTimeoutRef.current)
+    }
+
+    mobileToolbarHideTimeoutRef.current = window.setTimeout(() => {
+      setMobileToolbarVisible(false)
+    }, 4000)
+  }, [])
+
   const handleAnnotationToolSelect = useCallback((tool: AnnotationTool) => {
     setAnnotationTool(tool)
     setShapeMenuOpen(false)
     whiteboardPadRef.current?.setAnnotationTool(tool)
-  }, [])
+    if (isMobileLayout) {
+      scheduleMobileToolbarHide()
+    }
+  }, [isMobileLayout, scheduleMobileToolbarHide])
+
+  const applyAnalysisResponse = useCallback((response: WhiteboardTutorResponse) => {
+    setAnalysis(response)
+    handleAnnotationToolSelect('pen')
+  }, [handleAnnotationToolSelect])
+
+  const analyzeText = useCallback(async (rawText: string) => {
+    if (!boardId) throw new Error('Missing board id')
+
+    const trimmedText = rawText.trim()
+    if (!trimmedText) throw new Error('Type or paste a problem first.')
+
+    const response = await analyzeWhiteboardPhoto(boardId, {
+      inputMode: 'text',
+      textContent: trimmedText,
+      audienceAge,
+      messages: [],
+      mode: 'analysis',
+    })
+
+    applyAnalysisResponse(response)
+  }, [applyAnalysisResponse, audienceAge, boardId])
 
   const handleCopyBoardLink = useCallback(async () => {
     try {
@@ -418,8 +642,16 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   )
 
   const handleBackgroundImageAssetChange = useCallback((asset: BackgroundImageAsset | null) => {
+    const nextSignature = asset ? `${asset.name}:${asset.mimeType}:${asset.dataUrl.length}` : null
+    if (lastBackgroundAssetSignatureRef.current === nextSignature) {
+      return
+    }
+
+    lastBackgroundAssetSignatureRef.current = nextSignature
     setBackgroundImageAsset(asset)
-  }, [])
+    setMobilePhotoVersion(Date.now())
+    resetPhotoTransform()
+  }, [resetPhotoTransform])
 
   const handleWhiteboardAccessDenied = useCallback(() => {
     setAccessState('denied')
@@ -430,13 +662,41 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     photoUploadInputRef.current?.click()
   }, [])
 
+  const handleTextContentChange = useCallback((value: string) => {
+    setTextContent(value)
+    scheduleFormatProblemText(value)
+  }, [scheduleFormatProblemText])
+
+  const handleTextInputBlur = useCallback((value: string) => {
+    formatProblemText(value)
+  }, [formatProblemText])
+
+  const handleTextInputPaste = useCallback(() => {
+    window.setTimeout(() => {
+      const activeValue = isMobileLayout
+        ? (mobileTextInputRef.current?.value ?? '')
+        : (desktopTextInputRef.current?.value ?? '')
+      scheduleFormatProblemText(activeValue)
+    }, 0)
+  }, [isMobileLayout, scheduleFormatProblemText])
+
   const handlePhotoFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
 
+    if (mobilePhotoObjectUrl) {
+      URL.revokeObjectURL(mobilePhotoObjectUrl)
+    }
+
+    const nextObjectUrl = URL.createObjectURL(file)
+    setMobilePhotoObjectUrl(nextObjectUrl)
+    setMobilePhotoVersion(Date.now())
+
     setPhotoUploadError(null)
+    setInputMode('photo')
     resetTutorState()
+    resetPhotoTransform()
 
     try {
       if (!whiteboardPadRef.current) {
@@ -451,42 +711,106 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     } catch (error) {
       setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
     }
-  }, [handleAnnotationToolSelect, resetTutorState])
+  }, [handleAnnotationToolSelect, mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
 
   const handleRemovePhoto = useCallback(() => {
     whiteboardPadRef.current?.clearBackground()
+    if (mobilePhotoObjectUrl) {
+      URL.revokeObjectURL(mobilePhotoObjectUrl)
+    }
+    lastBackgroundAssetSignatureRef.current = null
+    setMobilePhotoObjectUrl(null)
     setBackgroundImageAsset(null)
     setHasBackground(false)
     setConfirmRemovePhoto(false)
+    setMobileToolbarVisible(false)
     setPhotoGuidanceVisible(false)
     setPhotoGuidanceFading(false)
+    resetPhotoTransform()
     resetTutorState()
-  }, [resetTutorState])
+  }, [mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
 
   const handleRemovePhotoRequest = useCallback(() => {
     setConfirmRemovePhoto(true)
-  }, [])
+    if (isMobileLayout) {
+      scheduleMobileToolbarHide()
+    }
+  }, [isMobileLayout, scheduleMobileToolbarHide])
 
   const handleCancelRemovePhoto = useCallback(() => {
     setConfirmRemovePhoto(false)
-  }, [])
+    if (isMobileLayout) {
+      scheduleMobileToolbarHide()
+    }
+  }, [isMobileLayout, scheduleMobileToolbarHide])
+
+  const switchToTextMode = useCallback(() => {
+    if (inputMode === 'text') return
+    if (hasBackground && !window.confirm('Switch to text mode? Your photo will be cleared.')) {
+      return
+    }
+
+    if (hasBackground) {
+      handleRemovePhoto()
+    }
+
+    setInputMode('text')
+    setMobileToolbarVisible(false)
+    resetPhotoTransform()
+  }, [handleRemovePhoto, hasBackground, inputMode, resetPhotoTransform])
+
+  const switchToPhotoMode = useCallback(() => {
+    if (inputMode === 'photo') return
+    if (hasTextInput && !window.confirm('Switch to photo mode? Your typed problem will be cleared.')) {
+      return
+    }
+
+    setTextContent('')
+    setFormattedProblemLines([])
+    setInputMode('photo')
+    resetPhotoTransform()
+    resetTutorState()
+  }, [hasTextInput, inputMode, resetPhotoTransform, resetTutorState])
 
   const handleStartAnalysis = useCallback(async () => {
-    if (!backgroundImageAsset) return
+    if (!boardId || (inputMode === 'photo' && !backgroundImageAsset) || (inputMode === 'text' && !textContent.trim())) return
     setAnalysisLoading(true)
     setAnalysisError(null)
     setPhotoGuidanceVisible(false)
     setPhotoGuidanceFading(false)
     try {
-      const response = await runTutorRequest([], 'analysis')
-      setAnalysis(response)
-      handleAnnotationToolSelect('pen')
+      if (inputMode === 'text') {
+        await analyzeText(textContent)
+        return
+      }
+
+      const photoAsset = backgroundImageAsset
+      if (!photoAsset) {
+        return
+      }
+
+      const response = await analyzeWhiteboardPhoto(boardId, {
+        inputMode: 'photo',
+        imageDataUrl: photoAsset.dataUrl,
+        imageMimeType: photoAsset.mimeType,
+        imageName: photoAsset.name,
+        audienceAge,
+        messages: [],
+        mode: 'analysis',
+      })
+      applyAnalysisResponse(response)
     } catch (error) {
       setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not read that photo yet. Please try again.'))
     } finally {
       setAnalysisLoading(false)
     }
-  }, [backgroundImageAsset, handleAnnotationToolSelect, runTutorRequest])
+  }, [analyzeText, applyAnalysisResponse, audienceAge, backgroundImageAsset, boardId, inputMode, textContent])
+
+  const handleMobileAnalyze = useCallback(() => {
+    if (!hasTutorInput || analysisLoading || responseAgeInvalid) return
+    setMobileActiveTab('ai-tutor')
+    void handleStartAnalysis()
+  }, [analysisLoading, handleStartAnalysis, hasTutorInput, responseAgeInvalid])
 
   const handleTutorFollowUp = useCallback(async () => {
     if (!analysis || !tutorDraft.trim()) return
@@ -503,6 +827,75 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setTutorSubmitting(false)
     }
   }, [analysis, runTutorRequest, tutorDraft])
+
+  const handleRotatePhoto = useCallback((direction: 'left' | 'right') => {
+    setPhotoTransform((current) => ({
+      ...current,
+      rotation: (direction === 'left'
+        ? ((current.rotation + 270) % 360)
+        : ((current.rotation + 90) % 360)) as PhotoTransformState['rotation'],
+    }))
+  }, [])
+
+  const handleScalePhoto = useCallback((direction: 'in' | 'out') => {
+    setPhotoTransform((current) => {
+      const nextScale = clampNumber(direction === 'in' ? current.scale + 0.1 : current.scale - 0.1, 0.5, 3)
+      const nextPan = clampPhotoPan(current.panX, current.panY, nextScale)
+      return {
+        ...current,
+        scale: Math.round(nextScale * 10) / 10,
+        ...nextPan,
+      }
+    })
+  }, [clampPhotoPan])
+
+  const handleFlipPhoto = useCallback((axis: 'x' | 'y') => {
+    setPhotoTransform((current) => ({
+      ...current,
+      flipX: axis === 'x' ? !current.flipX : current.flipX,
+      flipY: axis === 'y' ? !current.flipY : current.flipY,
+    }))
+  }, [])
+
+  const handleFitPhotoToScreen = useCallback(() => {
+    resetPhotoTransform()
+  }, [resetPhotoTransform])
+
+  const handlePhotoTouchStart = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (photoTransform.scale <= 1) return
+    const touch = event.touches[0]
+    if (!touch) return
+
+    touchPanStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      panX: photoTransform.panX,
+      panY: photoTransform.panY,
+    }
+  }, [photoTransform.panX, photoTransform.panY, photoTransform.scale])
+
+  const handlePhotoTouchMove = useCallback((event: React.TouchEvent<HTMLDivElement>) => {
+    if (photoTransform.scale <= 1 || !touchPanStartRef.current) return
+    const touch = event.touches[0]
+    if (!touch) return
+
+    const deltaX = touch.clientX - touchPanStartRef.current.x
+    const deltaY = touch.clientY - touchPanStartRef.current.y
+    const nextPan = clampPhotoPan(
+      touchPanStartRef.current.panX + deltaX,
+      touchPanStartRef.current.panY + deltaY,
+      photoTransform.scale,
+    )
+
+    setPhotoTransform((current) => ({
+      ...current,
+      ...nextPan,
+    }))
+  }, [clampPhotoPan, photoTransform.scale])
+
+  const handlePhotoTouchEnd = useCallback(() => {
+    touchPanStartRef.current = null
+  }, [])
 
   useEffect(() => {
     if (!boardId) return
@@ -559,6 +952,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       if (shareMenuRef.current && !shareMenuRef.current.contains(target)) {
         setShareMenuOpen(false)
       }
+      if (mobileOverflowRef.current && !mobileOverflowRef.current.contains(target)) {
+        setMobileOverflowOpen(false)
+      }
       if (shapeMenuRef.current && !shapeMenuRef.current.contains(target)) {
         setShapeMenuOpen(false)
       }
@@ -582,6 +978,71 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   useEffect(() => {
     document.title = WHITEBOARD_APP_NAME
   }, [])
+
+  useEffect(() => {
+    return () => {
+      if (mobilePhotoObjectUrl) {
+        URL.revokeObjectURL(mobilePhotoObjectUrl)
+      }
+    }
+  }, [mobilePhotoObjectUrl])
+
+  useEffect(() => {
+    if (!hasTextInput) {
+      setFormattedProblemLines([])
+    }
+  }, [hasTextInput])
+
+  useEffect(() => {
+    return () => {
+      if (formatProblemTextTimeoutRef.current !== null) {
+        window.clearTimeout(formatProblemTextTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setMobileOverflowOpen(false)
+      setMobileToolbarVisible(false)
+      return
+    }
+
+    if (!hasBackground || mobileActiveTab !== 'homework') {
+      setMobileToolbarVisible(false)
+      setConfirmRemovePhoto(false)
+    }
+  }, [hasBackground, isMobileLayout, mobileActiveTab])
+
+  useEffect(() => {
+    if (!isMobileLayout || !mobileToolbarVisible || !hasBackground || mobileActiveTab !== 'homework') {
+      if (mobileToolbarHideTimeoutRef.current) {
+        window.clearTimeout(mobileToolbarHideTimeoutRef.current)
+        mobileToolbarHideTimeoutRef.current = null
+      }
+      return undefined
+    }
+
+    scheduleMobileToolbarHide()
+
+    return () => {
+      if (mobileToolbarHideTimeoutRef.current) {
+        window.clearTimeout(mobileToolbarHideTimeoutRef.current)
+        mobileToolbarHideTimeoutRef.current = null
+      }
+    }
+  }, [hasBackground, isMobileLayout, mobileActiveTab, mobileToolbarVisible, scheduleMobileToolbarHide])
+
+  useEffect(() => {
+    if (!isMobileLayout || mobileActiveTab !== 'homework' || inputMode !== 'photo') return undefined
+
+    updateMobilePhotoContainerHeight()
+    window.addEventListener('resize', updateMobilePhotoContainerHeight)
+
+    return () => {
+      window.removeEventListener('resize', updateMobilePhotoContainerHeight)
+    }
+  }, [inputMode, isMobileLayout, mobileActiveTab, updateMobilePhotoContainerHeight])
 
   useEffect(() => {
     if (!photoGuidanceVisible) return
@@ -610,8 +1071,193 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   if (!boardId) return <div>Missing board id</div>
 
   const pageClassName = 'h-[100dvh] w-full bg-chess-bg font-body text-chess-text'
+  const mobilePhotoSceneStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    transform: `translate(${photoTransform.panX}px, ${photoTransform.panY}px) rotate(${photoTransform.rotation}deg) scale(${photoTransform.scale}) scaleX(${photoTransform.flipX ? -1 : 1}) scaleY(${photoTransform.flipY ? -1 : 1})`,
+    transformOrigin: 'center center',
+    transition: 'transform 180ms ease',
+  }
+  const renderFormattedProblemContent = (lines: FormattedProblemLine[]) => (
+    <div className="min-h-full whitespace-pre-wrap break-words px-4 py-4">
+      {lines.map((line) => {
+        if (line.type === 'empty') {
+          return <div key={line.id} className="h-[14px]" aria-hidden="true" />
+        }
 
-  const renderHeader = () => (
+        if (line.type === 'question') {
+          return (
+            <div key={line.id} className="mt-4 first:mt-0">
+              <div className="mb-3 h-px w-full bg-[#F59E0B]/45" />
+              <div className="text-[17px] font-semibold leading-[1.6] text-[#F59E0B]">{line.text}</div>
+            </div>
+          )
+        }
+
+        if (line.type === 'data') {
+          return (
+            <div key={line.id} className="border-l border-[#86EFAC]/35 pl-4 font-mono text-[14px] leading-[1.7] text-[#86EFAC]">
+              {line.text}
+            </div>
+          )
+        }
+
+        if (line.type === 'section') {
+          return (
+            <div key={line.id} className="mt-4 text-[13px] uppercase tracking-[0.16em] text-white/70 first:mt-0">
+              {line.text}
+            </div>
+          )
+        }
+
+        return (
+          <div key={line.id} className="text-[15px] leading-[1.7] text-[#F0EDE8]">
+            {line.text}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  const renderMobileToolbar = () => (
+    <div
+      className={`fixed inset-x-0 top-[52px] z-40 overflow-hidden border-b border-white/10 bg-[#1c1c1e] transition-all duration-200 ${mobileToolbarVisible && hasBackground && mobileActiveTab === 'homework' ? 'max-h-11 opacity-100' : 'max-h-0 opacity-0'}`}
+      aria-hidden={!mobileToolbarVisible || !hasBackground || mobileActiveTab !== 'homework'}
+    >
+      <div className="overflow-x-auto px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex h-11 min-w-max items-center gap-2 whitespace-nowrap">
+          <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} compact className="shrink-0" />
+          <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} compact className="shrink-0" />
+          <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} compact className="shrink-0" />
+          <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} compact className="shrink-0" />
+          <div className="relative" ref={shapeMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setShapeMenuOpen((prev) => !prev)
+                scheduleMobileToolbarHide()
+              }}
+              className={`shrink-0 rounded-[8px] px-2.5 py-2 text-[13px] font-medium transition ${['arrow', 'rectangle', 'ellipse'].includes(annotationTool) ? 'bg-amber-500 text-slate-950' : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'}`}
+            >
+              <span className="flex items-center gap-2">
+                {annotationTool === 'arrow' ? <ArrowRight className="h-4 w-4" /> : annotationTool === 'rectangle' ? <Square className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                Shapes
+                <ChevronDown className="h-4 w-4" />
+              </span>
+            </button>
+            {shapeMenuOpen ? (
+              <div className="absolute right-0 top-full z-20 mt-2 w-40 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
+                {([
+                  ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
+                  ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
+                  ['ellipse', <Circle className="h-4 w-4" />, 'Circle'],
+                ] as [ShapeTool, React.JSX.Element, string][]).map(([tool, icon, label]) => (
+                  <button
+                    key={tool}
+                    type="button"
+                    onClick={() => handleAnnotationToolSelect(tool)}
+                    className="flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-sm text-white transition hover:bg-amber-500/12 hover:text-chess-accentSoft"
+                  >
+                    {icon}
+                    {label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  const renderMobileHeader = () => (
+    <>
+      <header className="border-b border-white/12 px-3">
+        <div className="flex h-[52px] items-center gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/whiteboards')}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-chess-surface text-white transition-colors hover:bg-chess-surfaceSoft"
+            aria-label="Back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+
+          <div className="min-w-0 flex-1 text-center">
+            <h1 className="mx-auto max-w-[160px] overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-semibold font-display text-white">{displayBoardName}</h1>
+          </div>
+
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            <div className="relative" ref={mobileOverflowRef}>
+              <button
+                type="button"
+                onClick={() => setMobileOverflowOpen((prev) => !prev)}
+                className="flex h-9 w-9 items-center justify-center rounded-lg bg-chess-surface text-white transition-colors hover:bg-chess-surfaceSoft"
+                aria-label="More actions"
+                aria-expanded={mobileOverflowOpen}
+                aria-haspopup="menu"
+              >
+                <MoreVertical className="h-4 w-4" />
+              </button>
+
+              {mobileOverflowOpen ? (
+                <div className="absolute right-0 top-full z-30 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl" role="menu" aria-label="More actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileOverflowOpen(false)
+                      handleOpenInvite()
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                    role="menuitem"
+                  >
+                    <Users className="h-4 w-4" />
+                    Invite
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileOverflowOpen(false)
+                      void handleCopyBoardLink()
+                    }}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                    role="menuitem"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy board link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileOverflowOpen(false)
+                      void handleCreateJoinLink()
+                    }}
+                    disabled={isCreatingJoinLink}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                    role="menuitem"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {isCreatingJoinLink ? 'Creating join link…' : 'Create join link'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
+            />
+          </div>
+        </div>
+      </header>
+
+      {renderMobileToolbar()}
+    </>
+  )
+
+  const renderDesktopHeader = () => (
     <div className="border-b border-white/12 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
         <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[30%]">
@@ -748,16 +1394,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         </div>
 
         <div className="flex flex-1 items-center justify-end gap-2 md:max-w-[30%]">
-          <input
-            ref={photoUploadInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={handlePhotoFileChange}
-            aria-hidden="true"
-            tabIndex={-1}
-          />
           <button
             onClick={handleOpenInvite}
             className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
@@ -814,6 +1450,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       </div>
     </div>
   )
+
+  const renderHeader = () => (isMobileLayout ? renderMobileHeader() : renderDesktopHeader())
 
   if (accessState === 'checking') {
     return (
@@ -913,61 +1551,414 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="relative min-w-0 flex-1">
-            <WhiteboardPad
-              ref={whiteboardPadRef}
-              boardId={boardId}
-              className="h-full"
-              annotationMode={hasBackground}
-              onRealtimeStatusChange={handleRealtimeStatusChange}
-              onHasBackgroundChange={handleBackgroundChange}
-              onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
-              onAccessDenied={handleWhiteboardAccessDenied}
-            />
+        <input
+          ref={photoUploadInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handlePhotoFileChange}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
 
-            {photoGuidanceVisible ? (
-              <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
-                <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
-                  <span>Make sure your work is well-lit and fully in frame 📸</span>
-                  <button
-                    type="button"
-                    onClick={handleDismissPhotoGuidance}
-                    className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
-                  >
-                    Got it
-                  </button>
-                </div>
-              </div>
-            ) : null}
+        {isMobileLayout && confirmRemovePhoto ? (
+          <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>Remove this photo? This can't be undone.</span>
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
+              >
+                Yes, Remove
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelRemovePhoto}
+                className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
+        ) : null}
 
-          <RightSidePanel
-            hasPhoto={hasBackground}
-            analysis={analysis}
-            analysisLoading={analysisLoading}
-            analysisError={analysisError}
-            onStartAnalysis={() => {
-              void handleStartAnalysis()
-            }}
-            onRetryAnalysis={() => {
-              void handleStartAnalysis()
-            }}
-            responseAge={responseAge}
-            responseAgeInvalid={responseAgeInvalid}
-            onResponseAgeChange={handleResponseAgeChange}
-            tutorDraft={tutorDraft}
-            tutorSubmitting={tutorSubmitting}
-            onTutorDraftChange={setTutorDraft}
-            onTutorSubmit={() => {
-              void handleTutorFollowUp()
-            }}
-            onRequestHumanTutor={() => {
-              return undefined
-            }}
-            onTabChange={(_tab: TabType) => undefined}
-          />
-        </div>
+        {isMobileLayout ? (
+          <div className="relative min-h-0 flex-1 overflow-hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom, 12px)' }}>
+            {hasBackground && mobileActiveTab === 'homework' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileToolbarVisible((prev) => {
+                    const nextVisible = !prev
+                    if (nextVisible) {
+                      scheduleMobileToolbarHide()
+                    }
+                    return nextVisible
+                  })
+                }}
+                className={`fixed right-3 top-[60px] z-50 flex h-10 w-10 items-center justify-center rounded-full transition-colors ${mobileToolbarVisible ? 'bg-amber-500 text-slate-950' : 'bg-[rgba(0,0,0,0.6)] text-white hover:bg-[rgba(0,0,0,0.72)]'}`}
+                aria-label={mobileToolbarVisible ? 'Hide toolbar' : 'Show toolbar'}
+                aria-pressed={mobileToolbarVisible}
+              >
+                <PenTool className="h-4.5 w-4.5" />
+              </button>
+            ) : null}
+
+            <div className="absolute inset-0" style={mobileActiveTab === 'homework' ? undefined : { paddingBottom: 'calc(60px + env(safe-area-inset-bottom))' }}>
+              {mobileActiveTab === 'homework' ? (
+                <motion.div
+                  key={inputMode}
+                  ref={inputMode === 'photo' ? mobilePhotoContainerRef : undefined}
+                  initial={{ opacity: 0, y: inputMode === 'text' ? 0 : -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, ease: 'easeOut' }}
+                  className="relative m-0 flex min-h-0 w-full items-center justify-center overflow-hidden bg-[#111111] p-0"
+                  style={{
+                    width: '100%',
+                    height: mobilePhotoContainerHeight ? `${mobilePhotoContainerHeight}px` : 'calc(100dvh - 52px - 60px)',
+                    margin: 0,
+                    padding: 0,
+                    marginTop: 0,
+                    paddingTop: 0,
+                    paddingBottom: 'env(safe-area-inset-bottom, 8px)',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  {inputMode === 'photo' ? (
+                    <>
+                      {hasBackground ? (
+                        <div className="absolute left-1/2 top-2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full bg-[rgba(0,0,0,0.7)] px-3 py-1.5" style={{ backdropFilter: 'blur(8px)' }}>
+                          {([
+                            ['Rotate left', '↺', () => handleRotatePhoto('left')],
+                            ['Rotate right', '↻', () => handleRotatePhoto('right')],
+                            ['Zoom in', '+', () => handleScalePhoto('in')],
+                            ['Zoom out', '-', () => handleScalePhoto('out')],
+                            ['Fit to screen', '⤢', handleFitPhotoToScreen],
+                            ['Flip vertical', '↕', () => handleFlipPhoto('y')],
+                            ['Flip horizontal', '↔', () => handleFlipPhoto('x')],
+                          ] as [string, string, () => void][]).map(([label, icon, onClick]) => (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={onClick}
+                              className="flex h-8 w-8 items-center justify-center rounded-full text-sm text-white transition hover:bg-white/10"
+                              aria-label={label}
+                            >
+                              {icon}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className="relative m-0 flex h-full w-full items-center justify-center overflow-hidden bg-[#111111] p-0" style={{ margin: 0, padding: 0, marginTop: 0, paddingTop: 0 }}>
+                        {hasBackground ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handlePhotoUploadClick}
+                              className="absolute left-[12px] top-[12px] z-30 inline-flex items-center gap-1 rounded-full bg-[rgba(0,0,0,0.6)] px-3 py-1.5 text-[11px] font-medium text-white transition hover:bg-[rgba(0,0,0,0.72)]"
+                              style={{ touchAction: 'manipulation' }}
+                            >
+                              <span aria-hidden="true">📷</span>
+                              <span>Change Photo</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={switchToTextMode}
+                              className="absolute left-3 top-11 z-30 text-[12px] text-white/70 transition hover:text-white"
+                              style={{ touchAction: 'manipulation' }}
+                            >
+                              📝 Type or paste instead
+                            </button>
+                          </>
+                        ) : null}
+
+                        <div
+                          className={`flex h-full w-full items-center justify-center overflow-hidden ${!hasBackground ? 'pointer-events-none' : ''}`}
+                          style={mobilePhotoSceneStyle}
+                          onTouchStart={handlePhotoTouchStart}
+                          onTouchMove={handlePhotoTouchMove}
+                          onTouchEnd={handlePhotoTouchEnd}
+                        >
+                          <WhiteboardPad
+                            ref={whiteboardPadRef}
+                            boardId={boardId}
+                            className="m-0 h-full w-full p-0"
+                            annotationMode={hasBackground}
+                            onRealtimeStatusChange={handleRealtimeStatusChange}
+                            onHasBackgroundChange={handleBackgroundChange}
+                            onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+                            onAccessDenied={handleWhiteboardAccessDenied}
+                          />
+                        </div>
+
+                        {mobilePhotoObjectUrl ? <img key={mobilePhotoVersion} src={mobilePhotoObjectUrl} alt="" className="hidden" /> : null}
+
+                        {!hasBackground ? (
+                          <div className="absolute inset-0 z-30 flex items-center justify-center px-6">
+                            <div className="w-full max-w-[320px] text-center text-[#F0EDE8]">
+                              <div className="text-[48px] leading-none" aria-hidden="true">📷</div>
+                              <h2 className="mt-4 text-[24px] font-semibold">Add Your Homework</h2>
+                              <p className="mt-3 text-[14px] leading-[1.6] text-[#c6b4a4]">Take a photo or upload from your camera roll</p>
+                              <button
+                                type="button"
+                                onClick={handlePhotoUploadClick}
+                                className="mt-5 inline-flex min-w-[128px] items-center justify-center rounded-full bg-amber-500 px-5 py-3 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                                style={{ touchAction: 'manipulation' }}
+                              >
+                                Add Photo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={switchToTextMode}
+                                className="mt-4 block w-full text-[12px] text-white/70 transition hover:text-white"
+                                style={{ touchAction: 'manipulation' }}
+                              >
+                                📝 Type or paste instead
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {photoGuidanceVisible ? (
+                          <div className="pointer-events-none absolute left-1/2 top-20 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
+                            <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
+                              <span>Make sure your work is well-lit and fully in frame 📸</span>
+                              <button
+                                type="button"
+                                onClick={handleDismissPhotoGuidance}
+                                className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
+                              >
+                                Got it
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center px-4">
+                      <div className="w-full max-w-[720px]">
+                        <label htmlFor="mobile-homework-text" className="block text-[14px] font-semibold text-[#F0EDE8]">Your Problem</label>
+                        <div className="relative mt-3">
+                          {formattedProblemLines.length > 0 ? (
+                            <div
+                              ref={mobileFormattedOverlayRef}
+                              className="pointer-events-none absolute inset-0 z-10 overflow-y-auto rounded-[12px] border border-white/15 bg-[#1e1e1e]"
+                              aria-hidden="true"
+                            >
+                              {renderFormattedProblemContent(formattedProblemLines)}
+                            </div>
+                          ) : null}
+                          <textarea
+                            ref={mobileTextInputRef}
+                            id="mobile-homework-text"
+                            value={textContent}
+                            onChange={(event) => handleTextContentChange(event.target.value)}
+                            onBlur={(event) => handleTextInputBlur(event.target.value)}
+                            onPaste={handleTextInputPaste}
+                            onScroll={(event) => syncFormattedOverlayScroll(event.currentTarget.scrollTop)}
+                            placeholder={TEXT_MODE_PLACEHOLDER}
+                            className={`w-full rounded-[12px] border border-white/15 bg-[#1e1e1e] p-4 text-[16px] outline-none transition focus:border-amber-400 ${formattedProblemLines.length > 0 ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
+                            style={{ height: `${Math.max(180, Math.round((mobilePhotoContainerHeight ?? 420) * 0.4))}px`, resize: 'none' }}
+                          />
+                        </div>
+                        <div className="mt-2 text-right text-[12px] text-white/60">{textContent.length} characters</div>
+                        <button
+                          type="button"
+                          onClick={switchToPhotoMode}
+                          className="mt-4 text-[12px] text-white/70 transition hover:text-white"
+                          style={{ touchAction: 'manipulation' }}
+                        >
+                          📷 Use photo instead
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {hasTutorInput ? (
+                    <button
+                      type="button"
+                      onClick={handleMobileAnalyze}
+                      disabled={analysisLoading || responseAgeInvalid}
+                      className="absolute right-4 z-20 inline-flex min-w-[128px] items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-[14px] font-semibold text-slate-950 shadow-[0_16px_36px_rgba(0,0,0,0.28)] transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+                      style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}
+                      aria-label={analysisLoading ? 'Analyzing homework' : inputMode === 'text' ? 'Analyze problem' : 'Analyze photo'}
+                    >
+                      <span aria-hidden="true">{inputMode === 'text' ? '🧠' : '📷'}</span>
+                      {analysisLoading ? 'Analyzing…' : inputMode === 'text' ? 'Analyze Problem' : 'Analyze Photo'}
+                    </button>
+                  ) : null}
+                </motion.div>
+              ) : null}
+
+              {mobileActiveTab === 'ai-tutor' ? (
+                <div className="flex h-full min-h-0 flex-col bg-[#1c1c1e]">
+                  <div className="shrink-0 border-b border-white/10 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setMobileActiveTab('homework')}
+                      className="inline-flex items-center gap-2 text-sm font-medium text-amber-300 transition hover:text-amber-200"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      <span>See Homework</span>
+                    </button>
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <AITutorTab
+                      hasPhoto={hasBackground}
+                      hasInput={hasTutorInput}
+                      inputMode={inputMode}
+                      analysis={analysis}
+                      isLoading={analysisLoading}
+                      error={analysisError}
+                      onStartAnalysis={() => {
+                        void handleStartAnalysis()
+                      }}
+                      onRetryAnalysis={() => {
+                        void handleStartAnalysis()
+                      }}
+                      responseAge={responseAge}
+                      responseAgeInvalid={responseAgeInvalid}
+                      onResponseAgeChange={handleResponseAgeChange}
+                      followUpDraft={tutorDraft}
+                      isSubmitting={tutorSubmitting}
+                      onFollowUpDraftChange={setTutorDraft}
+                      onSubmitFollowUp={() => {
+                        void handleTutorFollowUp()
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {mobileActiveTab === 'chat' ? (
+                <ChatTab
+                  className="h-full"
+                  onRequestHumanTutor={() => {
+                    return undefined
+                  }}
+                />
+              ) : null}
+            </div>
+
+            <div className="tab-bar absolute inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#1c1c1e]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', minHeight: 'calc(60px + env(safe-area-inset-bottom, 0px))' }}>
+              <div className="grid h-[60px] grid-cols-3">
+                {([
+                  ['homework', '📋', 'Homework'],
+                  ['ai-tutor', '🤖', 'AI Tutor'],
+                  ['chat', '💬', 'Chat'],
+                ] as [MobileWhiteboardTab, string, string][]).map(([tabId, icon, label]) => {
+                  const isActive = mobileActiveTab === tabId
+                  return (
+                    <button
+                      key={tabId}
+                      type="button"
+                      onClick={() => setMobileActiveTab(tabId)}
+                      className={`flex h-full flex-col items-center justify-center gap-0.5 border-t-2 text-[11px] font-medium transition-all active:scale-95 ${isActive ? 'border-[#F59E0B] text-[#F59E0B]' : 'border-transparent text-white/50 hover:text-white/80'}`}
+                      aria-label={label}
+                      aria-pressed={isActive}
+                    >
+                      <span aria-hidden="true" className="text-[24px] leading-none">{icon}</span>
+                      <span>{label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <div className="relative min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={inputMode === 'text' ? switchToPhotoMode : switchToTextMode}
+                className="absolute left-4 top-4 z-20 rounded-full bg-[rgba(0,0,0,0.65)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[rgba(0,0,0,0.78)]"
+              >
+                {inputMode === 'text' ? '📷 Use photo instead' : '📝 Switch to text input'}
+              </button>
+
+              {inputMode === 'text' ? (
+                <div className="relative h-full w-full bg-[#1a1a1a] p-6 pt-20">
+                  {formattedProblemLines.length > 0 ? (
+                    <div
+                      ref={desktopFormattedOverlayRef}
+                      className="pointer-events-none absolute inset-x-6 bottom-6 top-20 z-10 overflow-y-auto rounded-[16px] border border-white/10 bg-[#1a1a1a]"
+                      aria-hidden="true"
+                    >
+                      {renderFormattedProblemContent(formattedProblemLines)}
+                    </div>
+                  ) : null}
+                  <textarea
+                    ref={desktopTextInputRef}
+                    value={textContent}
+                    onChange={(event) => handleTextContentChange(event.target.value)}
+                    onBlur={(event) => handleTextInputBlur(event.target.value)}
+                    onPaste={handleTextInputPaste}
+                    onScroll={(event) => syncFormattedOverlayScroll(event.currentTarget.scrollTop)}
+                    placeholder={TEXT_MODE_PLACEHOLDER}
+                    className={`h-full w-full resize-none rounded-[16px] border border-white/10 bg-[#1a1a1a] p-4 text-[16px] outline-none ${formattedProblemLines.length > 0 ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
+                  />
+                </div>
+              ) : (
+                <WhiteboardPad
+                  ref={whiteboardPadRef}
+                  boardId={boardId}
+                  className="h-full"
+                  annotationMode={hasBackground}
+                  onRealtimeStatusChange={handleRealtimeStatusChange}
+                  onHasBackgroundChange={handleBackgroundChange}
+                  onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+                  onAccessDenied={handleWhiteboardAccessDenied}
+                />
+              )}
+
+              {inputMode !== 'text' && photoGuidanceVisible ? (
+                <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
+                  <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
+                    <span>Make sure your work is well-lit and fully in frame 📸</span>
+                    <button
+                      type="button"
+                      onClick={handleDismissPhotoGuidance}
+                      className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
+                    >
+                      Got it
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <RightSidePanel
+              hasPhoto={hasBackground}
+              hasInput={hasTutorInput}
+              inputMode={inputMode}
+              analysis={analysis}
+              analysisLoading={analysisLoading}
+              analysisError={analysisError}
+              onStartAnalysis={() => {
+                void handleStartAnalysis()
+              }}
+              onRetryAnalysis={() => {
+                void handleStartAnalysis()
+              }}
+              responseAge={responseAge}
+              responseAgeInvalid={responseAgeInvalid}
+              onResponseAgeChange={handleResponseAgeChange}
+              tutorDraft={tutorDraft}
+              tutorSubmitting={tutorSubmitting}
+              onTutorDraftChange={setTutorDraft}
+              onTutorSubmit={() => {
+                void handleTutorFollowUp()
+              }}
+              onRequestHumanTutor={() => {
+                return undefined
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <RoomMembersModal
