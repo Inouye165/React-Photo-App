@@ -7,6 +7,8 @@ import PanelScrollArea from './PanelScrollArea'
 export interface AITutorTabProps {
   className?: string
   hasPhoto: boolean
+  hasInput?: boolean
+  inputMode?: 'photo' | 'text'
   analysis: WhiteboardTutorResponse | null
   isLoading: boolean
   error: string | null
@@ -198,6 +200,8 @@ function ErrorsSection({ analysis }: { analysis: WhiteboardTutorResponse }): Rea
 const AITutorTab: React.FC<AITutorTabProps> = ({
   className = '',
   hasPhoto,
+  hasInput,
+  inputMode = 'photo',
   analysis,
   isLoading,
   error,
@@ -211,50 +215,67 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
   onFollowUpDraftChange,
   onSubmitFollowUp,
 }) => {
+  const resolvedHasInput = hasInput ?? hasPhoto
+  const analyzeLabel = inputMode === 'text' ? 'Analyze Problem' : 'Analyze Photo'
+  const emptyStateSubtext = inputMode === 'text'
+    ? "Type or paste your homework problem and tap Analyze when you're ready."
+    : "Add your homework photo and tap Analyze when you're ready."
+  const missingInputMessage = inputMode === 'text'
+    ? 'Type or paste a problem, then ask the tutor to analyze it.'
+    : 'Import a photo, then ask the tutor to analyze it.'
+  const analyzeIcon = inputMode === 'text' ? '🧠' : '📷'
+  const errorIcon = inputMode === 'text' ? '🧠' : '📷'
+  const errorTitle = inputMode === 'text' ? "Hmm, I couldn't parse that clearly" : "Hmm, I couldn't read that clearly"
+  const errorBody = inputMode === 'text'
+    ? 'Try separating the title, story details, and question into shorter lines, then analyze it again.'
+    : 'Try retaking the photo with better lighting and make sure all your work is fully in frame.'
+  const retryLabel = inputMode === 'text' ? 'Retry problem analysis' : 'Retry photo analysis'
+
   return (
     <div className={`flex h-full min-h-0 flex-col bg-[#1c1c1e] text-[#F0EDE8] ${className}`}>
       <PanelScrollArea className="flex-1" contentClassName="h-full px-4 py-4">
         <div className="space-y-4 pb-6">
-        {!hasPhoto ? (
+        {!resolvedHasInput ? (
           <div className="flex h-full min-h-40 items-center justify-center rounded-[8px] border border-dashed border-white/15 bg-white/[0.03] p-6 text-center text-[14px] leading-[1.6] text-[#c6b4a4]">
-            Import a photo, then ask the tutor to analyze it.
+            {missingInputMessage}
           </div>
         ) : null}
 
-        {hasPhoto && !analysis && !isLoading && !error ? (
+        {resolvedHasInput && !analysis && !isLoading && !error ? (
           <div className="flex min-h-full items-center justify-center py-10">
             <div className="max-w-[320px] text-center">
               <div className="text-[48px] leading-none" aria-hidden="true">📚</div>
-              <h3 className="mt-4 text-[20px] font-semibold text-[#F0EDE8]">Ready to help you learn!</h3>
-              <p className="mt-3 text-[16px] font-semibold text-[#F0EDE8]">Ready when you are! 📚</p>
-              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">I'll analyze your homework and walk you through each step once you hit Analyze.</p>
-              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">Upload your homework photo and hit Analyze when you're ready.</p>
+              <h3 className="mt-4 text-[20px] font-semibold text-[#F0EDE8]">Ready to help you learn! 📚</h3>
+              <p className="mt-3 text-[14px] leading-[1.6] text-[#c6b4a4]">{emptyStateSubtext}</p>
               <button
                 type="button"
                 onClick={onStartAnalysis}
                 disabled={responseAgeInvalid}
-                aria-label="Analyze Photo"
+                aria-label={analyzeLabel}
                 className="tutor-analyze-idle mt-5 rounded-[8px] bg-amber-500 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
               >
-                Analyze Photo
+                <span className="flex items-center gap-2">
+                  <span aria-hidden="true">{analyzeIcon}</span>
+                  <span>{analyzeLabel}</span>
+                </span>
               </button>
             </div>
           </div>
         ) : null}
 
-        {hasPhoto && isLoading ? <LoadingSkeleton /> : null}
+        {resolvedHasInput && isLoading ? <LoadingSkeleton /> : null}
 
-        {hasPhoto && !isLoading && error ? (
+        {resolvedHasInput && !isLoading && error ? (
           <div className="flex min-h-[240px] items-center justify-center">
             <div className="max-w-[320px] text-center">
-              <div className="text-[32px] leading-none" aria-hidden="true">📷</div>
-              <div className="mt-4 text-[18px] font-semibold text-[#F0EDE8]">Hmm, I couldn't read that clearly</div>
-              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">Try retaking the photo with better lighting and make sure all your work is fully in frame.</p>
+              <div className="text-[32px] leading-none" aria-hidden="true">{errorIcon}</div>
+              <div className="mt-4 text-[18px] font-semibold text-[#F0EDE8]">{errorTitle}</div>
+              <p className="mt-2 text-[14px] leading-[1.6] text-[#c6b4a4]">{errorBody}</p>
             <button
               type="button"
               onClick={onRetryAnalysis}
-              disabled={!hasPhoto || isLoading}
-              aria-label="Retry photo analysis"
+              disabled={!resolvedHasInput || isLoading}
+              aria-label={retryLabel}
               className="mt-4 rounded-[8px] bg-amber-500 px-4 py-2 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
             >
               Try Again
@@ -314,14 +335,14 @@ const AITutorTab: React.FC<AITutorTabProps> = ({
                 onSubmitFollowUp()
               }
             }}
-            disabled={!hasPhoto || isLoading || isSubmitting || !analysis}
+            disabled={!resolvedHasInput || isLoading || isSubmitting || !analysis}
             className="min-w-0 w-full border-none bg-transparent px-1 py-2 pr-[72px] text-[14px] text-[#F0EDE8] outline-none transition placeholder:text-[14px] placeholder:text-[#c6b4a4]"
-            placeholder={!hasPhoto ? 'Import a photo first' : 'Ask a follow-up question...'}
+            placeholder={!resolvedHasInput ? (inputMode === 'text' ? 'Type a problem first' : 'Import a photo first') : 'Ask a follow-up question...'}
           />
           <button
             type="button"
             onClick={onSubmitFollowUp}
-            disabled={!hasPhoto || isLoading || isSubmitting || !analysis || !followUpDraft.trim() || responseAgeInvalid}
+            disabled={!resolvedHasInput || isLoading || isSubmitting || !analysis || !followUpDraft.trim() || responseAgeInvalid}
             aria-label={isSubmitting ? 'Sending follow-up question' : 'Send follow-up question'}
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[16px] bg-amber-500 px-3 py-1.5 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
           >

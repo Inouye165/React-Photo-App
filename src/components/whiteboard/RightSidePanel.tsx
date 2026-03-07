@@ -12,6 +12,8 @@ export interface RightSidePanelProps {
   backgroundColor?: string
   onTabChange?: (tab: TabType) => void
   hasPhoto: boolean
+  hasInput?: boolean
+  inputMode?: 'photo' | 'text'
   analysis: WhiteboardTutorResponse | null
   analysisLoading: boolean
   analysisError: string | null
@@ -34,6 +36,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   backgroundColor = '#1c1c1e',
   onTabChange,
   hasPhoto,
+  hasInput,
+  inputMode = 'photo',
   analysis,
   analysisLoading,
   analysisError,
@@ -55,6 +59,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       content: (
         <AITutorTab
           hasPhoto={hasPhoto}
+          hasInput={hasInput ?? hasPhoto}
+          inputMode={inputMode}
           analysis={analysis}
           isLoading={analysisLoading}
           error={analysisError}

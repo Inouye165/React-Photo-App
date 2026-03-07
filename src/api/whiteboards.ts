@@ -361,7 +361,11 @@ export async function analyzeWhiteboardPhoto(
   payload: WhiteboardTutorRequest,
 ): Promise<WhiteboardTutorResponse> {
   if (!boardId) throw new Error('Missing board id')
-  if (!payload.imageDataUrl.trim()) throw new Error('Missing image data')
+  if (payload.inputMode === 'text') {
+    if (!payload.textContent?.trim()) throw new Error('Missing problem text')
+  } else if (!payload.imageDataUrl?.trim()) {
+    throw new Error('Missing image data')
+  }
 
   const response = await request<Omit<WhiteboardTutorResponse, 'messages'> & { messages: WhiteboardTutorResponse['messages'] }>({
     path: `/api/whiteboards/${boardId}/tutor`,
