@@ -130,9 +130,17 @@ export type WhiteboardTutorMessage = {
 
 export type WhiteboardTutorStep = {
   number: number
-  description: string
-  isCorrect: boolean
-  errorExplanation: string | null
+  label: string
+  studentWork: string
+  correct: boolean
+  neutral: boolean
+  explanation: string
+}
+
+export type WhiteboardTutorErrorItem = {
+  stepNumber: number
+  issue: string
+  correction: string
 }
 
 export type WhiteboardTutorSections = {
@@ -146,13 +154,20 @@ export type WhiteboardTutorResponse = {
   reply: string
   messages: WhiteboardTutorMessage[]
   sections: WhiteboardTutorSections
+  problem: string
+  correctSolution: string
+  scoreCorrect: number
+  scoreTotal: number
   steps: WhiteboardTutorStep[]
+  errorsFound: WhiteboardTutorErrorItem[]
+  closingEncouragement: string
 }
 
 export type WhiteboardTutorRequest = {
   imageDataUrl: string
   imageMimeType?: string
   imageName?: string
+  audienceAge?: number
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'
 }

@@ -33,6 +33,7 @@
     "prepare": ""
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@google/generative-ai": "^0.24.1",
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.1",

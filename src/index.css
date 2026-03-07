@@ -18,9 +18,152 @@
   --shadow-chess-card: 0 18px 40px -22px rgba(0, 0, 0, 0.85), 0 8px 20px -16px rgba(0, 0, 0, 0.75);
 }
 
-/* UI: slightly smaller base font for denser list view */
-html, body {
+/* UI: the app must stay locked to the browser viewport so only designated inner panels can scroll. */
+html,
+body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
   font-size: 13px;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+html.whiteboard-viewport-lock,
+body.whiteboard-viewport-lock {
+  overflow: hidden;
+}
+
+@keyframes tutorDotsPulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateY(-1px);
+  }
+}
+
+.tutor-loading-dot {
+  animation: tutorDotsPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tutorScrollChevronBounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@keyframes tutorAnalyzePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(201, 130, 43, 0.18);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(201, 130, 43, 0.04);
+  }
+}
+
+@keyframes tutorStepCorrectPulse {
+  0% {
+    transform: scale(0.985);
+    box-shadow: 0 0 0 rgba(76, 175, 80, 0);
+  }
+
+  55% {
+    transform: scale(1.01);
+    box-shadow: 0 14px 28px rgba(76, 175, 80, 0.16);
+  }
+
+  100% {
+    transform: scale(1);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+  }
+}
+
+@keyframes tutorStepIncorrectShake {
+  0% {
+    transform: translateX(0);
+  }
+
+  25% {
+    transform: translateX(-2px);
+  }
+
+  50% {
+    transform: translateX(2px);
+  }
+
+  75% {
+    transform: translateX(-1px);
+  }
+
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes tutorSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.tutor-scroll-chevron {
+  opacity: 0.5;
+  animation: tutorScrollChevronBounce 1.3s ease-in-out infinite;
+}
+
+.tutor-analyze-idle {
+  animation: tutorAnalyzePulse 2s ease-in-out infinite;
+}
+
+.tutor-step-card {
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
+  overflow: visible;
+  transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.tutor-step-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
+}
+
+.tutor-step-card--correct {
+  animation: tutorStepCorrectPulse 620ms ease-out 1;
+}
+
+.tutor-step-card--incorrect {
+  animation: tutorStepIncorrectShake 420ms ease-out 1;
+}
+
+.tutor-skeleton-card,
+.tutor-skeleton-line {
+  background: linear-gradient(90deg, rgba(198, 180, 164, 0.08) 0%, rgba(231, 178, 116, 0.16) 50%, rgba(198, 180, 164, 0.08) 100%);
+  background-size: 200% 100%;
+  animation: tutorSkeletonShimmer 1.5s linear infinite;
 }
 
 @keyframes pageEnterFade {
@@ -323,15 +466,17 @@ a:hover,
    ======================================== */
 
 .whiteboard-shell {
+  height: 100%;
   max-width: 100%;
   margin: 0 auto;
 }
 
 .whiteboard-stage {
+  height: 100%;
   flex: 1;
   min-height: 0;
   background: #f8fafc;
-  padding: 16px 88px 16px 24px;
+  padding: 0 88px 0 24px;
 }
 
 .whiteboard-page {
@@ -389,7 +534,7 @@ a:hover,
 
 @media (max-width: 768px) {
   .whiteboard-stage {
-    padding: 12px;
+    padding: 0;
   }
 
   .excalidraw-menu-logo,

@@ -6,12 +6,22 @@ import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
 
 const mockGenerateContent = jest.fn()
+const mockAnthropicCreate = jest.fn()
 
 jest.mock('@google/generative-ai', () => ({
   GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
     getGenerativeModel: jest.fn().mockImplementation(() => ({
       generateContent: mockGenerateContent,
     })),
+  })),
+}))
+
+jest.mock('@anthropic-ai/sdk', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => ({
+    messages: {
+      create: mockAnthropicCreate,
+    },
   })),
 }))
 
@@ -67,15 +77,56 @@ function createTestApp({ db, authMode }: { db: ReturnType<typeof createMockDb>; 
 describe('whiteboard tutor route', () => {
   const boardId = '11111111-1111-4111-8111-111111111111'
   const originalGeminiKey = process.env.GEMINI_API_KEY
-  const originalWhiteboardTutorModel = process.env.WHITEBOARD_TUTOR_MODEL
+  const originalAnthropicKey = process.env.ANTHROPIC_API_KEY
+  const originalWhiteboardTranscriptionModel = process.env.WHITEBOARD_TRANSCRIPTION_MODEL
 
   beforeEach(() => {
     process.env.GEMINI_API_KEY = 'test-gemini-key'
-    process.env.WHITEBOARD_TUTOR_MODEL = 'gemini-2.0-flash'
+    process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
+    process.env.WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash'
     mockGenerateContent.mockResolvedValue({
       response: {
-        text: () => 'Problem: 2x = 10\n\nSteps Analysis:\n1. Divide by 2.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
+        text: () => JSON.stringify({
+          problem: 'Solve 2x = 10',
+          steps: [
+            { stepNumber: 1, content: '2x = 10' },
+            { stepNumber: 2, content: 'x = 5' },
+          ],
+        }),
       },
+    })
+    mockAnthropicCreate.mockResolvedValue({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            problem: 'Solve 2x = 10',
+            correctSolution: 'Divide both sides by 2 to get x = 5.',
+            scoreCorrect: 2,
+            scoreTotal: 2,
+            steps: [
+              {
+                stepNumber: 1,
+                label: 'Step 1',
+                studentWork: '2x = 10',
+                correct: true,
+                neutral: true,
+                explanation: 'Great start! You copied the problem clearly, and that is a helpful first step.',
+              },
+              {
+                stepNumber: 2,
+                label: 'Step 2',
+                studentWork: 'x = 5',
+                correct: true,
+                neutral: false,
+                explanation: 'Great job! You nailed this step ✓',
+              },
+            ],
+            errorsFound: [],
+            closingEncouragement: 'You solved it well, and you should feel proud of that progress!',
+          }),
+        },
+      ],
     })
   })
 
@@ -86,13 +137,20 @@ describe('whiteboard tutor route', () => {
       process.env.GEMINI_API_KEY = originalGeminiKey
     }
 
-    if (originalWhiteboardTutorModel === undefined) {
-      delete process.env.WHITEBOARD_TUTOR_MODEL
+    if (originalAnthropicKey === undefined) {
+      delete process.env.ANTHROPIC_API_KEY
     } else {
-      process.env.WHITEBOARD_TUTOR_MODEL = originalWhiteboardTutorModel
+      process.env.ANTHROPIC_API_KEY = originalAnthropicKey
+    }
+
+    if (originalWhiteboardTranscriptionModel === undefined) {
+      delete process.env.WHITEBOARD_TRANSCRIPTION_MODEL
+    } else {
+      process.env.WHITEBOARD_TRANSCRIPTION_MODEL = originalWhiteboardTranscriptionModel
     }
 
     mockGenerateContent.mockReset()
+    mockAnthropicCreate.mockReset()
   })
 
   test('returns tutor response for authenticated members', async () => {
@@ -110,14 +168,43 @@ describe('whiteboard tutor route', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.boardId).toBe(boardId)
-    expect(res.body.reply).toContain('Problem: 2x = 10')
+    expect(res.body.reply).toContain('Problem: Solve 2x = 10')
+    expect(res.body.correctSolution).toContain('x = 5')
+    expect(res.body.steps[0]).toMatchObject({ neutral: true, correct: true })
     expect(res.body.messages).toEqual([
       {
         role: 'assistant',
-        content: expect.stringContaining('Problem: 2x = 10'),
+        content: expect.stringContaining('Problem: Solve 2x = 10'),
       },
     ])
     expect(mockGenerateContent).toHaveBeenCalledTimes(1)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
+    expect(mockGenerateContent.mock.invocationCallOrder[0]).toBeLessThan(mockAnthropicCreate.mock.invocationCallOrder[0])
+  })
+
+  test('includes the requested response age in the tutor prompt', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+        audienceAge: 8,
+      })
+
+    expect(res.status).toBe(200)
+
+    const anthropicPayload = mockAnthropicCreate.mock.calls[0]?.[0]
+    const promptText = anthropicPayload?.messages?.[0]?.content
+
+    expect(typeof promptText).toBe('string')
+    expect(promptText).toContain("The student's age is: 8")
+    expect(promptText).toContain('First solve this problem yourself')
+    expect(promptText).toContain('The student\'s steps are:')
   })
 
   test('denies tutor requests to non-members', async () => {
@@ -133,5 +220,6 @@ describe('whiteboard tutor route', () => {
 
     expect(res.status).toBe(404)
     expect(mockGenerateContent).not.toHaveBeenCalled()
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
   })
 })

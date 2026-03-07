@@ -26,6 +26,7 @@ const {
 const whiteboardPadState = vi.hoisted(() => ({
   hasBackground: false,
   asset: null as null | { dataUrl: string; mimeType: string; name: string },
+  clearBackground: vi.fn(),
 }))
 
 vi.mock('../api/whiteboards', () => ({
@@ -57,17 +58,34 @@ vi.mock('../components/rooms/RoomMembersModal', () => ({
 }))
 
 vi.mock('../components/whiteboard/RightSidePanel', () => ({
-  default: () => <div data-testid="right-side-panel" />,
+  default: (props: any) => (
+    <div data-testid="right-side-panel">
+      <input
+        aria-label="Response age"
+        value={props.responseAge ?? ''}
+        onChange={(event) => props.onResponseAgeChange?.(event.target.value)}
+      />
+      <button type="button" onClick={() => props.onStartAnalysis?.()}>
+        Start analysis
+      </button>
+    </div>
+  ),
 }))
 
 vi.mock('../components/whiteboard/WhiteboardPad', async () => {
   const ReactModule = await import('react')
   return {
-    default: ReactModule.forwardRef((props: any, _ref) => {
+    default: ReactModule.forwardRef((props: any, ref) => {
       ReactModule.useEffect(() => {
         props.onHasBackgroundChange?.(whiteboardPadState.hasBackground)
         props.onBackgroundImageAssetChange?.(whiteboardPadState.asset)
       }, [])
+
+      ReactModule.useImperativeHandle(ref, () => ({
+        clearBackground: whiteboardPadState.clearBackground,
+        insertImageFile: vi.fn(),
+        setAnnotationTool: vi.fn(),
+      }))
 
       return <div data-testid="whiteboard-pad" />
     }),
@@ -79,6 +97,7 @@ describe('WhiteboardSessionPage', () => {
     vi.clearAllMocks()
     whiteboardPadState.hasBackground = false
     whiteboardPadState.asset = null
+    whiteboardPadState.clearBackground.mockReset()
 
     analyzeWhiteboardPhoto.mockResolvedValue({
       reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
@@ -193,5 +212,76 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByText('Highlighter')).toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+  })
+
+  it('passes the optional response age to the tutor request', async () => {
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Response age' }), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          audienceAge: 8,
+          imageDataUrl: 'data:image/png;base64,AAAA',
+          imageMimeType: 'image/png',
+          imageName: 'math.png',
+          mode: 'analysis',
+        }),
+      )
+    })
+  })
+
+  it('requires confirmation before removing the photo', async () => {
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /remove photo/i }))
+
+    expect(screen.getByText("Remove this photo? This can't be undone.")).toBeInTheDocument()
+    expect(whiteboardPadState.clearBackground).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText("Remove this photo? This can't be undone.")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /remove photo/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Yes, Remove' }))
+
+    expect(whiteboardPadState.clearBackground).toHaveBeenCalledTimes(1)
   })
 })
