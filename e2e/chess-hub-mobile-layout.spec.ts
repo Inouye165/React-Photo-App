@@ -4,7 +4,7 @@ import { acceptDisclaimer } from './helpers/disclaimer'
 import { mockCoreApi } from './helpers/mockCoreApi'
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+  'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info, prefer',
@@ -261,7 +261,7 @@ async function setupChessHubMobilePage(page: Page, scenario: ChessMobileScenario
     })
   })
 
-  await page.goto('http://127.0.0.1:5173/games/chess', { waitUntil: 'networkidle' })
+  await page.goto('http://127.0.0.1:4173/games/chess', { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)
 
   await page.evaluate(async ({ userId }) => {

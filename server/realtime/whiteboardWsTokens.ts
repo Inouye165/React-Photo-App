@@ -47,6 +47,5 @@ export function consumeWhiteboardWsToken(options: { token: string; boardId: stri
     wsTokens.delete(options.token)
     return { ok: false as const }
   }
-  wsTokens.delete(options.token)
   return { ok: true as const, userId: entry.userId }
 }

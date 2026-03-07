@@ -1,9 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
-import { generateNKeysBetween } from 'fractional-indexing'
-import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
-import 'react-image-crop/dist/ReactCrop.css'
 import type {
   AppState,
   BinaryFileData,
@@ -12,8 +9,16 @@ import type {
   ExcalidrawInitialDataState,
 } from '@excalidraw/excalidraw/types'
 import '@excalidraw/excalidraw/index.css'
+import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import * as Y from 'yjs'
-import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardServerError, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type {
+  WhiteboardEvent,
+  WhiteboardHistoryCursor,
+  WhiteboardServerError,
+  WhiteboardStrokeAck,
+  WhiteboardStrokeEvent,
+} from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { API_BASE_URL } from '../../api'
 import { fetchWhiteboardSnapshot, fetchWhiteboardWsToken } from '../../api/whiteboard'
@@ -703,6 +708,8 @@ type ExcalidrawWhiteboardCanvasProps = {
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
+  onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
+  annotationMode?: boolean
 }
 
 type PersistedAppState = Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'>
@@ -711,9 +718,15 @@ type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>
 const isBackgroundElement = (element: { type?: string; locked?: boolean }) =>
   element.type === 'image' && element.locked === true
 
-const isActiveElement = (element: { isDeleted?: boolean | null }) => element.isDeleted !== true
-
 type BackgroundFitMode = 'width' | 'contain'
+
+export type AnnotationTool = 'pen' | 'highlighter' | 'text' | 'eraser' | 'arrow' | 'rectangle' | 'ellipse'
+
+export type BackgroundImageAsset = {
+  dataUrl: string
+  mimeType: string
+  name: string
+}
 
 export type BackgroundInfo = {
   name: string
@@ -735,6 +748,7 @@ export type WhiteboardCanvasHandle = {
   clearBackground: () => void
   toggleBackgroundFitMode: () => void
   toggleViewMode: () => void
+  setAnnotationTool: (tool: AnnotationTool) => void
 }
 
 function resolveAppState(value: unknown): PersistedAppState {
@@ -917,6 +931,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       onBackgroundFitModeChange,
       onHasBackgroundChange,
       onBackgroundInfoChange,
+      onBackgroundImageAssetChange,
+      annotationMode = false,
     },
     ref,
   ) => {
@@ -927,7 +943,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [stageRect, setStageRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const [boardRect, setBoardRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
-  const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('width')
+  const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('contain')
 
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null)
   const yjsProviderRef = useRef<WhiteboardYjsProvider | null>(null)
@@ -975,6 +991,11 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundSaving, setBackgroundSaving] = useState(false)
   const onAccessDeniedRef = useRef(onAccessDenied)
   const onRealtimeStatusChangeRef = useRef(onRealtimeStatusChange)
+  const onViewModeChangeRef = useRef(onViewModeChange)
+  const onBackgroundFitModeChangeRef = useRef(onBackgroundFitModeChange)
+  const onHasBackgroundChangeRef = useRef(onHasBackgroundChange)
+  const onBackgroundInfoChangeRef = useRef(onBackgroundInfoChange)
+  const onBackgroundImageAssetChangeRef = useRef(onBackgroundImageAssetChange)
 
   useEffect(() => {
     onAccessDeniedRef.current = onAccessDenied
@@ -983,6 +1004,26 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onRealtimeStatusChangeRef.current = onRealtimeStatusChange
   }, [onRealtimeStatusChange])
+
+  useEffect(() => {
+    onViewModeChangeRef.current = onViewModeChange
+  }, [onViewModeChange])
+
+  useEffect(() => {
+    onBackgroundFitModeChangeRef.current = onBackgroundFitModeChange
+  }, [onBackgroundFitModeChange])
+
+  useEffect(() => {
+    onHasBackgroundChangeRef.current = onHasBackgroundChange
+  }, [onHasBackgroundChange])
+
+  useEffect(() => {
+    onBackgroundInfoChangeRef.current = onBackgroundInfoChange
+  }, [onBackgroundInfoChange])
+
+  useEffect(() => {
+    onBackgroundImageAssetChangeRef.current = onBackgroundImageAssetChange
+  }, [onBackgroundImageAssetChange])
 
   const updateStageRect = useCallback(() => {
     const stage = stageViewportRef.current
@@ -1074,20 +1115,26 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   }, [viewModeEnabled])
 
   useEffect(() => {
-    onViewModeChange?.(viewModeEnabled)
-  }, [onViewModeChange, viewModeEnabled])
+    onViewModeChangeRef.current?.(viewModeEnabled)
+  }, [viewModeEnabled])
 
   useEffect(() => {
-    onBackgroundFitModeChange?.(backgroundFitMode)
-  }, [backgroundFitMode, onBackgroundFitModeChange])
+    onBackgroundFitModeChangeRef.current?.(backgroundFitMode)
+  }, [backgroundFitMode])
 
   useEffect(() => {
-    onHasBackgroundChange?.(hasBackground)
-  }, [hasBackground, onHasBackgroundChange])
+    onHasBackgroundChangeRef.current?.(hasBackground)
+  }, [hasBackground])
 
   useEffect(() => {
-    onBackgroundInfoChange?.(backgroundInfo)
-  }, [backgroundInfo, onBackgroundInfoChange])
+    onBackgroundInfoChangeRef.current?.(backgroundInfo)
+  }, [backgroundInfo])
+
+  useEffect(() => {
+    if (!hasBackground) {
+      onBackgroundImageAssetChangeRef.current?.(null)
+    }
+  }, [hasBackground])
 
   const updateBoardRect = useCallback(() => {
     const frame = boardFrameRef.current
@@ -1209,6 +1256,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     const hasBackgroundElement = elements.some(isBackgroundElement)
     setHasBackground(hasBackgroundElement)
     setBackgroundInfo(hasBackgroundElement ? nextBackgroundInfo : null)
+    if (hasBackgroundElement && nextBackgroundInfo?.fileId) {
+      const file = files[nextBackgroundInfo.fileId]
+      if (file?.dataURL) {
+        onBackgroundImageAssetChangeRef.current?.({
+          dataUrl: file.dataURL,
+          mimeType: file.mimeType || 'image/webp',
+          name: nextBackgroundInfo.convertedName || nextBackgroundInfo.name,
+        })
+      }
+    }
     whiteboardDebugLog('whiteboard:remote:apply', {
       boardId,
       elements: elements.length,
@@ -1425,7 +1482,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
         api.updateScene({
           elements: [imageElement, ...elementsToKeep],
-          appState: api.getAppState(),
+          appState: {
+            ...api.getAppState(),
+            selectedElementIds: {},
+          },
         })
         setHasBackground(true)
         const nextBackgroundInfo: BackgroundInfo = {
@@ -1450,6 +1510,11 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           }),
         }
         setBackgroundInfo(nextBackgroundInfo)
+        onBackgroundImageAssetChangeRef.current?.({
+          dataUrl,
+          mimeType: convertedType,
+          name: convertedName,
+        })
 
         const doc = docRef.current
         const map = mapRef.current
@@ -1489,7 +1554,15 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         throw error instanceof Error ? error : new Error(message)
       }
     },
-    [applySceneFromYjs, backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
+    [
+      applySceneFromYjs,
+      backgroundFitMode,
+      boardId,
+      computeBackgroundRect,
+      generateId,
+      loadImageDimensions,
+      readFileAsDataUrl,
+    ],
   )
 
   const backgroundAspectValue = useMemo(() => {
@@ -1671,6 +1744,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     lastNonEmptySceneRef.current = elementsToKeep.length > 0
     setHasBackground(false)
     setBackgroundInfo(null)
+    onBackgroundImageAssetChangeRef.current?.(null)
 
     const doc = docRef.current
     const map = mapRef.current
@@ -1762,6 +1836,59 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     ),
     [backgroundFitMode, backgroundInfo, handleBackgroundClear, hasBackground, viewModeEnabled],
   )
+
+  const setAnnotationTool = useCallback((tool: AnnotationTool) => {
+    const api = excalidrawApiRef.current
+    if (!api) return
+
+    const currentState = api.getAppState()
+    const nextAppState: Partial<AppState> = {
+      viewModeEnabled: false,
+      zenModeEnabled: false,
+    }
+
+    let excalidrawTool: 'freedraw' | 'text' | 'eraser' | 'arrow' | 'rectangle' | 'ellipse' = 'freedraw'
+
+    switch (tool) {
+      case 'pen':
+        nextAppState.currentItemStrokeColor = '#111827'
+        nextAppState.currentItemStrokeWidth = 2
+        nextAppState.currentItemOpacity = 100
+        excalidrawTool = 'freedraw'
+        break
+      case 'highlighter':
+        nextAppState.currentItemStrokeColor = '#F59E0B'
+        nextAppState.currentItemStrokeWidth = 12
+        nextAppState.currentItemOpacity = 40
+        excalidrawTool = 'freedraw'
+        break
+      case 'text':
+        nextAppState.currentItemStrokeColor = '#111827'
+        nextAppState.currentItemOpacity = 100
+        excalidrawTool = 'text'
+        break
+      case 'eraser':
+        nextAppState.currentItemOpacity = 100
+        excalidrawTool = 'eraser'
+        break
+      case 'arrow':
+      case 'rectangle':
+      case 'ellipse':
+        nextAppState.currentItemStrokeColor = '#111827'
+        nextAppState.currentItemStrokeWidth = 2
+        nextAppState.currentItemOpacity = 100
+        excalidrawTool = tool
+        break
+    }
+
+    api.setActiveTool({ type: excalidrawTool })
+    api.updateScene({
+      appState: {
+        ...currentState,
+        ...nextAppState,
+      },
+    })
+  }, [])
 
   const flushSceneToYjs = useCallback(
     (scene: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles }) => {
@@ -2287,115 +2414,17 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
   const insertImageFile = useCallback(
     async (file: File) => {
-      const api = excalidrawApiRef.current
-      if (!api) {
+      if (!excalidrawApiRef.current) {
         throw new Error('Whiteboard is not ready yet.')
       }
       if (!file.type.startsWith('image/')) {
         throw new Error('Please choose an image file.')
       }
-
-      const existingElements = api.getSceneElements().filter(isActiveElement)
-      const hasNonBackgroundContent = existingElements.some((element) => !isBackgroundElement(element))
-
-      if (!hasNonBackgroundContent) {
-        await applyBackgroundFile(file)
-        return
-      }
-
-      const dataUrl = await readFileAsDataUrl(file)
-      const dimensions = await loadImageDimensions(dataUrl)
-      const rawWidth = Math.max(1, dimensions.width)
-      const rawHeight = Math.max(1, dimensions.height)
-      const currentAppState = api.getAppState()
-      const zoom = currentAppState.zoom.value || 1
-      const viewportWidth = Math.max(240, currentAppState.width / zoom)
-      const viewportHeight = Math.max(240, currentAppState.height / zoom)
-      const scale = Math.min(1, 800 / rawWidth, (viewportWidth * 0.8) / rawWidth, (viewportHeight * 0.8) / rawHeight)
-      const width = Math.max(1, Math.round(rawWidth * scale))
-      const height = Math.max(1, Math.round(rawHeight * scale))
-      // Translate the viewport center into scene coordinates so the inserted image lands in view.
-      const centerX = (currentAppState.width / 2 - currentAppState.scrollX) / zoom
-      const centerY = (currentAppState.height / 2 - currentAppState.scrollY) / zoom
-      const x = Math.round(centerX - width / 2)
-      const y = Math.round(centerY - height / 2)
-      const now = Date.now()
-      const fileId = generateId() as BinaryFileData['id']
-      const elementId = generateId()
-      const fileData: BinaryFileData = {
-        id: fileId,
-        dataURL: dataUrl as BinaryFileData['dataURL'],
-        mimeType: (file.type || 'image/*') as BinaryFileData['mimeType'],
-        created: now,
-        lastRetrieved: now,
-      }
-
-      await Promise.resolve(api.addFiles([fileData]))
-      if (typeof window !== 'undefined') {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      }
-
-      const lastElementIndex = [...existingElements]
-        .reverse()
-        .find((element) => typeof element.index === 'string')?.index
-      const nextIndex = generateNKeysBetween(lastElementIndex, undefined, 1)[0] as ExcalidrawElement['index']
-      const imageElement = {
-        id: elementId,
-        type: 'image',
-        x,
-        y,
-        width,
-        height,
-        angle: 0,
-        strokeColor: 'transparent',
-        backgroundColor: 'transparent',
-        fillStyle: 'solid',
-        strokeWidth: 1,
-        strokeStyle: 'solid',
-        roughness: 0,
-        opacity: 100,
-        groupIds: [],
-        frameId: null,
-        roundness: null,
-        seed: Math.floor(Math.random() * 2 ** 31),
-        version: 1,
-        versionNonce: Math.floor(Math.random() * 2 ** 31),
-        index: nextIndex,
-        isDeleted: false,
-        boundElements: null,
-        updated: now,
-        link: null,
-        locked: false,
-        fileId,
-        scale: [1, 1],
-        crop: null,
-        status: 'saved',
-      } as ExcalidrawElement
-      const nextElements = [...existingElements, imageElement]
-      const nextAppState = {
-        ...currentAppState,
-        selectedElementIds: { [elementId]: true } as Record<string, true>,
-      }
-      const nextFiles = {
-        ...resolveFiles(mapRef.current?.get('files')),
-        [fileId]: fileData,
-      } as BinaryFiles
-
-      suppressSyncRef.current = true
-      api.updateScene({
-        elements: nextElements,
-        appState: nextAppState,
-      })
-      requestAnimationFrame(() => {
-        suppressSyncRef.current = false
-      })
-      commitPendingLocalScene({
-        elements: nextElements,
-        appState: nextAppState,
-        files: nextFiles,
-      })
+      await applyBackgroundFile(file)
+      setBackgroundFitMode('contain')
+      setAnnotationTool('pen')
     },
-    [commitPendingLocalScene, generateId, loadImageDimensions, readFileAsDataUrl],
+    [applyBackgroundFile, setAnnotationTool],
   )
 
   useImperativeHandle(
@@ -2414,8 +2443,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       toggleViewMode: () => {
         setViewModeEnabled((prev) => !prev)
       },
+      setAnnotationTool,
     }),
-    [handleBackgroundClear, insertImageFile],
+    [handleBackgroundClear, insertImageFile, setAnnotationTool],
   )
 
   return (
@@ -2614,7 +2644,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           aria-hidden="true"
           tabIndex={-1}
         />
-        <div ref={stageViewportRef} className="whiteboard-stage relative min-h-0 flex-1">
+        <div
+          ref={stageViewportRef}
+          className={`whiteboard-stage relative min-h-0 flex-1 ${annotationMode ? 'whiteboard-annotation-mode' : ''}`}
+        >
           <div
             ref={boardFrameRef}
             className="whiteboard-page absolute"
@@ -2644,7 +2677,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                 viewModeEnabled={viewModeEnabled}
                 zenModeEnabled={false}
                 onChange={handleChange}
-                renderTopRightUI={renderTopRightUI}
+                renderTopRightUI={annotationMode ? undefined : renderTopRightUI}
               >
                 <MainMenu>
                   <MainMenu.DefaultItems.LoadScene />

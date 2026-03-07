@@ -120,3 +120,39 @@ export type WhiteboardSessionDetails = {
   created_at: string | null
   updated_at: string | null
 }
+
+export type WhiteboardTutorRole = 'user' | 'assistant'
+
+export type WhiteboardTutorMessage = {
+  role: WhiteboardTutorRole
+  content: string
+}
+
+export type WhiteboardTutorStep = {
+  number: number
+  description: string
+  isCorrect: boolean
+  errorExplanation: string | null
+}
+
+export type WhiteboardTutorSections = {
+  problem: string
+  stepsAnalysis: string
+  errorsFound: string
+  encouragement: string
+}
+
+export type WhiteboardTutorResponse = {
+  reply: string
+  messages: WhiteboardTutorMessage[]
+  sections: WhiteboardTutorSections
+  steps: WhiteboardTutorStep[]
+}
+
+export type WhiteboardTutorRequest = {
+  imageDataUrl: string
+  imageMimeType?: string
+  imageName?: string
+  messages?: WhiteboardTutorMessage[]
+  mode?: 'analysis' | 'tutor' | 'chat'
+}
