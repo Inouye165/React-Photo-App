@@ -74,10 +74,26 @@ export type ExcalidrawSnapshotElement = {
   points?: number[][]
   isDeleted?: boolean
   customData?: Record<string, unknown>
+  text?: string
+  fontSize?: number
+  fontFamily?: string
+  textColor?: string
+  fileId?: string
+  scale?: [number, number]
+  status?: string
+}
+
+export type ExcalidrawSnapshotFile = {
+  id: string
+  dataURL?: string
+  mimeType?: string
+  created?: number
+  lastRetrieved?: number
 }
 
 export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse & {
   excalidrawElements?: ExcalidrawSnapshotElement[]
+  excalidrawFiles?: Record<string, ExcalidrawSnapshotFile>
 }
 
 export type WhiteboardHubUser = {

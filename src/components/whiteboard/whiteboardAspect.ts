@@ -1,4 +1,6 @@
-export const BOARD_ASPECT = 4 / 3
+export const US_LETTER_WIDTH_IN = 8.5
+export const US_LETTER_HEIGHT_IN = 11
+export const BOARD_ASPECT = US_LETTER_WIDTH_IN / US_LETTER_HEIGHT_IN
 
 export type ContainedRect = {
   left: number

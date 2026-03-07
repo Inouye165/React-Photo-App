@@ -13,6 +13,7 @@ import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
 import { normalizeHistoryEvents } from '../realtime/whiteboardReplay'
+import type { ExcalidrawSnapshotFile } from '../types/whiteboard'
 
 // ─── Module-level pure helpers — never re-created on render ──────────────────
 
@@ -394,6 +395,15 @@ interface WhiteboardThumbnailProps {
   boardName: string
 }
 
+function loadThumbnailImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('Failed to load image for thumbnail'))
+    image.src = src
+  })
+}
+
 const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
   boardId,
   boardName,
@@ -468,12 +478,14 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
             && Number.isFinite(event.y),
         )
         const excalidrawElements = Array.isArray(snapshot.excalidrawElements) ? snapshot.excalidrawElements : []
+        const excalidrawFiles = snapshot.excalidrawFiles ?? {}
         // eslint-disable-next-line no-console
         console.log('[WB-THUMB] events counts', {
           boardId,
           normalized: events.length,
           drawable: drawableEvents.length,
           excalidraw: excalidrawElements.length,
+          excalidrawFiles: Object.keys(excalidrawFiles).length,
         })
         // Helpful debug for text rendering issues
         // eslint-disable-next-line no-console
@@ -484,117 +496,64 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
           })
         }
 
-        if (drawableEvents.length > 0) {
+        const hasDrawableEvents = drawableEvents.length > 0
+        const hasExcalidrawElements = excalidrawElements.length > 0
+
+        if (hasDrawableEvents || hasExcalidrawElements) {
           emptySnapshotAttemptsRef.current = 0
-          const usesNormalizedCoords = drawableEvents.every(
+
+          const usesNormalizedCoords = hasDrawableEvents && drawableEvents.every(
             (event) => event.x >= -0.01 && event.x <= 1.01 && event.y >= -0.01 && event.y <= 1.01,
           )
           // eslint-disable-next-line no-console
           console.log('[WB-THUMB] usesNormalizedCoords', { boardId, usesNormalizedCoords })
-
-          let minX = 0
-          let maxX = 1
-          let minY = 0
-          let maxY = 1
-
-          if (!usesNormalizedCoords) {
-            minX = Math.min(...drawableEvents.map((event) => event.x))
-            maxX = Math.max(...drawableEvents.map((event) => event.x))
-            minY = Math.min(...drawableEvents.map((event) => event.y))
-            maxY = Math.max(...drawableEvents.map((event) => event.y))
-          }
-
-          const padding = 10
-          const spanX = Math.max(0.0001, maxX - minX)
-          const spanY = Math.max(0.0001, maxY - minY)
-          const scaleX = (canvas.width - padding * 2) / spanX
-          const scaleY = (canvas.height - padding * 2) / spanY
-          const absoluteScale = Math.min(scaleX, scaleY)
-
-          const toCanvasPoint = (x: number, y: number): { x: number; y: number } => {
-            if (usesNormalizedCoords) {
-              return { x: x * canvas.width, y: y * canvas.height }
-            }
-            return {
-              x: padding + (x - minX) * absoluteScale,
-              y: padding + (y - minY) * absoluteScale,
-            }
-          }
-
-          const activeStrokes = new Map<string, { x: number; y: number; color: string; width: number }>()
-
-          for (const event of drawableEvents) {
-            const strokeKey = event.strokeId || '__thumbnail_stroke__'
-            const color = event.color || '#000000'
-            const baseWidth = event.width || 2
-            const width = usesNormalizedCoords ? baseWidth : Math.max(1, Math.min(8, baseWidth * absoluteScale))
-            const point = toCanvasPoint(event.x, event.y)
-
-            ctx.lineCap = 'round'
-            ctx.lineJoin = 'round'
-
-            if (event.type === 'stroke:start') {
-              activeStrokes.set(strokeKey, { x: event.x, y: event.y, color, width })
-              ctx.strokeStyle = color
-              ctx.lineWidth = width
-              ctx.beginPath()
-              ctx.moveTo(point.x, point.y)
-              ctx.lineTo(point.x, point.y)
-              ctx.stroke()
-              continue
-            }
-
-            const previous = activeStrokes.get(strokeKey) || { x: event.x, y: event.y, color, width }
-            const previousPoint = toCanvasPoint(previous.x, previous.y)
-            ctx.strokeStyle = previous.color
-            ctx.lineWidth = previous.width
-            ctx.beginPath()
-            ctx.moveTo(previousPoint.x, previousPoint.y)
-            ctx.lineTo(point.x, point.y)
-            ctx.stroke()
-            activeStrokes.set(strokeKey, { x: event.x, y: event.y, color: previous.color, width: previous.width })
-
-            if (event.type === 'stroke:end') {
-              activeStrokes.delete(strokeKey)
-            }
-          }
-
-          if (!cancelled) {
-            setIsLoading(false)
-            setHasLoaded(true)
-          }
-          return
-        } else if (excalidrawElements.length > 0) {
-          emptySnapshotAttemptsRef.current = 0
 
           let minX = Infinity
           let maxX = -Infinity
           let minY = Infinity
           let maxY = -Infinity
 
-          for (const el of excalidrawElements) {
-            const elMinX = el.x
-            const elMinY = el.y
-            let elMaxX = el.x + (el.width || 0)
-            let elMaxY = el.y + (el.height || 0)
+          if (hasExcalidrawElements) {
+            for (const el of excalidrawElements) {
+              const elMinX = el.x
+              const elMinY = el.y
+              let elMaxX = el.x + (el.width || 0)
+              let elMaxY = el.y + (el.height || 0)
 
-            if (Array.isArray(el.points)) {
-              for (const pt of el.points) {
-                if (Array.isArray(pt) && pt.length >= 2) {
-                  const px = el.x + pt[0]
-                  const py = el.y + pt[1]
-                  if (px < minX) minX = px
-                  if (px > maxX) maxX = px
-                  if (py < minY) minY = py
-                  if (py > maxY) maxY = py
+              if (Array.isArray(el.points)) {
+                for (const pt of el.points) {
+                  if (Array.isArray(pt) && pt.length >= 2) {
+                    const px = el.x + pt[0]
+                    const py = el.y + pt[1]
+                    if (px < minX) minX = px
+                    if (px > maxX) maxX = px
+                    if (py < minY) minY = py
+                    if (py > maxY) maxY = py
+                  }
                 }
               }
-            }
 
-            if (elMinX < minX) minX = elMinX
-            if (elMaxX > maxX) maxX = elMaxX
-            if (elMinY < minY) minY = elMinY
-            if (elMaxY > maxY) maxY = elMaxY
+              if (elMinX < minX) minX = elMinX
+              if (elMaxX > maxX) maxX = elMaxX
+              if (elMinY < minY) minY = elMinY
+              if (elMaxY > maxY) maxY = elMaxY
+            }
+          }
+
+          if (hasDrawableEvents && !usesNormalizedCoords) {
+            for (const event of drawableEvents) {
+              if (event.x < minX) minX = event.x
+              if (event.x > maxX) maxX = event.x
+              if (event.y < minY) minY = event.y
+              if (event.y > maxY) maxY = event.y
+            }
+          }
+
+          if (!Number.isFinite(minX) || !Number.isFinite(maxX) || !Number.isFinite(minY) || !Number.isFinite(maxY)) {
+            minX = 0
+            maxX = 1
+            minY = 0
+            maxY = 1
           }
 
           const padding = 10
@@ -612,95 +571,169 @@ const WhiteboardThumbnail = React.memo(function WhiteboardThumbnail({
           ctx.lineCap = 'round'
           ctx.lineJoin = 'round'
 
-          for (const el of excalidrawElements) {
-            const color = el.strokeColor || '#000000'
-            const lineWidth = Math.max(1, (el.strokeWidth || 2) * scale)
-            const opacity = typeof el.opacity === 'number' ? el.opacity / 100 : 1
-            ctx.globalAlpha = opacity
-            ctx.strokeStyle = color
-            ctx.lineWidth = lineWidth
+          if (hasExcalidrawElements) {
+            for (const el of excalidrawElements) {
+              const color = el.strokeColor || '#000000'
+              const lineWidth = Math.max(1, (el.strokeWidth || 2) * scale)
+              const opacity = typeof el.opacity === 'number' ? el.opacity / 100 : 1
+              ctx.globalAlpha = opacity
+              ctx.strokeStyle = color
+              ctx.lineWidth = lineWidth
 
-            if ((el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') && Array.isArray(el.points) && el.points.length >= 2) {
-              ctx.beginPath()
-              const first = toCanvas(el.x + el.points[0][0], el.y + el.points[0][1])
-              ctx.moveTo(first.x, first.y)
-              for (let i = 1; i < el.points.length; i++) {
-                const pt = el.points[i]
-                if (Array.isArray(pt) && pt.length >= 2) {
-                  const cp = toCanvas(el.x + pt[0], el.y + pt[1])
-                  ctx.lineTo(cp.x, cp.y)
+              if ((el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') && Array.isArray(el.points) && el.points.length >= 2) {
+                ctx.beginPath()
+                const first = toCanvas(el.x + el.points[0][0], el.y + el.points[0][1])
+                ctx.moveTo(first.x, first.y)
+                for (let i = 1; i < el.points.length; i++) {
+                  const pt = el.points[i]
+                  if (Array.isArray(pt) && pt.length >= 2) {
+                    const cp = toCanvas(el.x + pt[0], el.y + pt[1])
+                    ctx.lineTo(cp.x, cp.y)
+                  }
                 }
-              }
-              ctx.stroke()
-            } else if (el.type === 'rectangle') {
-              const tl = toCanvas(el.x, el.y)
-              const w = el.width * scale
-              const h = el.height * scale
-              if (el.backgroundColor && el.backgroundColor !== 'transparent') {
-                ctx.fillStyle = el.backgroundColor
-                ctx.fillRect(tl.x, tl.y, w, h)
-              }
-              ctx.strokeRect(tl.x, tl.y, w, h)
-            } else if (el.type === 'ellipse') {
-              const cx = el.x + el.width / 2
-              const cy = el.y + el.height / 2
-              const center = toCanvas(cx, cy)
-              const rx = (el.width / 2) * scale
-              const ry = (el.height / 2) * scale
-              ctx.beginPath()
-              ctx.ellipse(center.x, center.y, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2)
-              if (el.backgroundColor && el.backgroundColor !== 'transparent') {
-                ctx.fillStyle = el.backgroundColor
-                ctx.fill()
-              }
-              ctx.stroke()
-            } else if (el.type === 'diamond') {
-              const tl = toCanvas(el.x, el.y)
-              const w = el.width * scale
-              const h = el.height * scale
-              ctx.beginPath()
-              ctx.moveTo(tl.x + w / 2, tl.y)
-              ctx.lineTo(tl.x + w, tl.y + h / 2)
-              ctx.lineTo(tl.x + w / 2, tl.y + h)
-              ctx.lineTo(tl.x, tl.y + h / 2)
-              ctx.closePath()
-              if (el.backgroundColor && el.backgroundColor !== 'transparent') {
-                ctx.fillStyle = el.backgroundColor
-                ctx.fill()
-              }
-              ctx.stroke()
-            } else if (el.type === 'text' || typeof (el as any).text === 'string') {
-              const anyEl = el as any
-              const rawText = typeof anyEl.text === 'string' ? anyEl.text : ''
-              const trimmed = rawText.trim()
-              if (trimmed) {
+                ctx.stroke()
+              } else if (el.type === 'rectangle') {
                 const tl = toCanvas(el.x, el.y)
                 const w = el.width * scale
                 const h = el.height * scale
-                const baseFontSize =
-                  typeof anyEl.fontSize === 'number' && Number.isFinite(anyEl.fontSize)
-                    ? anyEl.fontSize
-                    : h
-                const fontSize = Math.max(8, Math.min(48, baseFontSize * scale * 0.6))
-                const fontFamily =
-                  typeof anyEl.fontFamily === 'string' && anyEl.fontFamily.trim().length > 0
-                    ? anyEl.fontFamily
-                    : 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
-                ctx.font = `${fontSize}px ${fontFamily}`
-                ctx.textAlign = 'center'
-                ctx.textBaseline = 'middle'
-                ctx.fillStyle = anyEl.textColor || color
-                const cx = tl.x + w / 2
-                const cy = tl.y + h / 2
-                const text = trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed
-                if (typeof ctx.fillText === 'function') {
-                  ctx.fillText(text, cx, cy)
-                } else if (typeof ctx.strokeText === 'function') {
-                  ctx.strokeText(text, cx, cy)
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fillRect(tl.x, tl.y, w, h)
+                }
+                ctx.strokeRect(tl.x, tl.y, w, h)
+              } else if (el.type === 'ellipse') {
+                const cx = el.x + el.width / 2
+                const cy = el.y + el.height / 2
+                const center = toCanvas(cx, cy)
+                const rx = (el.width / 2) * scale
+                const ry = (el.height / 2) * scale
+                ctx.beginPath()
+                ctx.ellipse(center.x, center.y, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2)
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fill()
+                }
+                ctx.stroke()
+              } else if (el.type === 'diamond') {
+                const tl = toCanvas(el.x, el.y)
+                const w = el.width * scale
+                const h = el.height * scale
+                ctx.beginPath()
+                ctx.moveTo(tl.x + w / 2, tl.y)
+                ctx.lineTo(tl.x + w, tl.y + h / 2)
+                ctx.lineTo(tl.x + w / 2, tl.y + h)
+                ctx.lineTo(tl.x, tl.y + h / 2)
+                ctx.closePath()
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fill()
+                }
+                ctx.stroke()
+              } else if (el.type === 'text' || typeof el.text === 'string') {
+                const rawText = typeof el.text === 'string' ? el.text : ''
+                const trimmed = rawText.trim()
+                if (trimmed) {
+                  const tl = toCanvas(el.x, el.y)
+                  const w = el.width * scale
+                  const h = el.height * scale
+                  const baseFontSize =
+                    typeof el.fontSize === 'number' && Number.isFinite(el.fontSize)
+                      ? el.fontSize
+                      : h
+                  const fontSize = Math.max(8, Math.min(48, baseFontSize * scale * 0.6))
+                  const fontFamily =
+                    typeof el.fontFamily === 'string' && el.fontFamily.trim().length > 0
+                      ? el.fontFamily
+                      : 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif'
+                  ctx.font = `${fontSize}px ${fontFamily}`
+                  ctx.textAlign = 'center'
+                  ctx.textBaseline = 'middle'
+                  ctx.fillStyle = el.textColor || color
+                  const cx = tl.x + w / 2
+                  const cy = tl.y + h / 2
+                  const text = trimmed.length > 120 ? `${trimmed.slice(0, 117)}…` : trimmed
+                  if (typeof ctx.fillText === 'function') {
+                    ctx.fillText(text, cx, cy)
+                  } else if (typeof ctx.strokeText === 'function') {
+                    ctx.strokeText(text, cx, cy)
+                  }
+                }
+              } else if (el.type === 'image' && typeof el.fileId === 'string') {
+                const file = excalidrawFiles[el.fileId] as ExcalidrawSnapshotFile | undefined
+                if (file?.dataURL) {
+                  try {
+                    const image = await loadThumbnailImage(file.dataURL)
+                    const topLeft = toCanvas(el.x, el.y)
+                    const width = Math.max(1, el.width * scale)
+                    const height = Math.max(1, el.height * scale)
+                    const scaleX = Array.isArray(el.scale) && typeof el.scale[0] === 'number' ? el.scale[0] : 1
+                    const scaleY = Array.isArray(el.scale) && typeof el.scale[1] === 'number' ? el.scale[1] : 1
+
+                    ctx.save()
+                    ctx.translate(topLeft.x + width / 2, topLeft.y + height / 2)
+                    if (el.angle) {
+                      ctx.rotate(el.angle)
+                    }
+                    ctx.scale(scaleX < 0 ? -1 : 1, scaleY < 0 ? -1 : 1)
+                    ctx.drawImage(image, -width / 2, -height / 2, width, height)
+                    ctx.restore()
+                  } catch (imageError) {
+                    console.warn('[WB-THUMB] failed to render image element', {
+                      boardId,
+                      fileId: el.fileId,
+                      message: imageError instanceof Error ? imageError.message : String(imageError),
+                    })
+                  }
                 }
               }
             }
-            // Skip image elements for thumbnail
+          }
+
+          if (hasDrawableEvents) {
+            const activeStrokes = new Map<string, { x: number; y: number; color: string; width: number }>()
+
+            const toStrokePoint = (x: number, y: number): { x: number; y: number } => {
+              if (usesNormalizedCoords) {
+                return { x: x * canvas.width, y: y * canvas.height }
+              }
+              return toCanvas(x, y)
+            }
+
+            for (const event of drawableEvents) {
+              const strokeKey = event.strokeId || '__thumbnail_stroke__'
+              const color = event.color || '#000000'
+              const baseWidth = event.width || 2
+              const width = usesNormalizedCoords ? baseWidth : Math.max(1, Math.min(8, baseWidth * scale))
+              const point = toStrokePoint(event.x, event.y)
+
+              ctx.lineCap = 'round'
+              ctx.lineJoin = 'round'
+
+              if (event.type === 'stroke:start') {
+                activeStrokes.set(strokeKey, { x: event.x, y: event.y, color, width })
+                ctx.strokeStyle = color
+                ctx.lineWidth = width
+                ctx.beginPath()
+                ctx.moveTo(point.x, point.y)
+                ctx.lineTo(point.x, point.y)
+                ctx.stroke()
+                continue
+              }
+
+              const previous = activeStrokes.get(strokeKey) || { x: event.x, y: event.y, color, width }
+              const previousPoint = toStrokePoint(previous.x, previous.y)
+              ctx.strokeStyle = previous.color
+              ctx.lineWidth = previous.width
+              ctx.beginPath()
+              ctx.moveTo(previousPoint.x, previousPoint.y)
+              ctx.lineTo(point.x, point.y)
+              ctx.stroke()
+              activeStrokes.set(strokeKey, { x: event.x, y: event.y, color: previous.color, width: previous.width })
+
+              if (event.type === 'stroke:end') {
+                activeStrokes.delete(strokeKey)
+              }
+            }
           }
 
           ctx.globalAlpha = 1

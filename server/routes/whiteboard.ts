@@ -389,6 +389,17 @@ type ExcalidrawSnapshotElement = {
   fontSize?: number;
   fontFamily?: string;
   textColor?: string;
+  fileId?: string;
+  scale?: [number, number];
+  status?: string;
+};
+
+type ExcalidrawSnapshotFile = {
+  id: string;
+  dataURL?: string;
+  mimeType?: string;
+  created?: number;
+  lastRetrieved?: number;
 };
 
 function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array {
@@ -400,7 +411,10 @@ function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array 
   return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 }
 
-async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<ExcalidrawSnapshotElement[] | null> {
+async function fetchExcalidrawScene(
+  db: Knex,
+  boardId: string,
+): Promise<{ elements: ExcalidrawSnapshotElement[]; files: Record<string, ExcalidrawSnapshotFile> } | null> {
   try {
     const hasTable = await db.schema.hasTable(WHITEBOARD_DOC_TABLE);
     if (!hasTable) return null;
@@ -418,12 +432,15 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
     Y.applyUpdate(doc, update);
     const map = doc.getMap('excalidraw');
     const rawElements = map.get('elements');
-    doc.destroy();
+    const rawFiles = map.get('files');
 
-    if (!Array.isArray(rawElements)) return null;
+    if (!Array.isArray(rawElements)) {
+      doc.destroy();
+      return null;
+    }
 
     // Filter to visible, non-deleted elements with valid coordinates
-    return rawElements
+    const elements = rawElements
       .filter((el: any) => {
         if (!el || typeof el !== 'object') return false;
         if (el.isDeleted) return false;
@@ -453,9 +470,39 @@ async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<Excal
         fontFamily: typeof el.fontFamily === 'string' ? el.fontFamily : undefined,
         // Prefer strokeColor for text color if available
         textColor: typeof el.strokeColor === 'string' ? el.strokeColor : undefined,
+        fileId: typeof el.fileId === 'string' ? el.fileId : undefined,
+        scale: Array.isArray(el.scale) && el.scale.length >= 2 && el.scale.every((value: unknown) => typeof value === 'number')
+          ? [el.scale[0], el.scale[1]]
+          : undefined,
+        status: typeof el.status === 'string' ? el.status : undefined,
       }));
+
+    const referencedFileIds = new Set(
+      elements
+        .filter((el) => el.type === 'image' && typeof el.fileId === 'string')
+        .map((el) => String(el.fileId)),
+    );
+
+    const files: Record<string, ExcalidrawSnapshotFile> = {};
+    if (rawFiles && typeof rawFiles === 'object') {
+      for (const [id, value] of Object.entries(rawFiles as Record<string, unknown>)) {
+        if (!referencedFileIds.has(id)) continue;
+        if (!value || typeof value !== 'object') continue;
+        const candidate = value as Record<string, unknown>;
+        files[id] = {
+          id,
+          dataURL: typeof candidate.dataURL === 'string' ? candidate.dataURL : undefined,
+          mimeType: typeof candidate.mimeType === 'string' ? candidate.mimeType : undefined,
+          created: typeof candidate.created === 'number' ? candidate.created : undefined,
+          lastRetrieved: typeof candidate.lastRetrieved === 'number' ? candidate.lastRetrieved : undefined,
+        };
+      }
+    }
+
+    doc.destroy();
+    return { elements, files };
   } catch (err) {
-    console.warn('[WB-HTTP] fetchExcalidrawElements error', { boardId, error: err instanceof Error ? err.message : String(err) });
+    console.warn('[WB-HTTP] fetchExcalidrawScene error', { boardId, error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }
@@ -578,17 +625,22 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       })
       .filter((evt): evt is NonNullable<typeof evt> => Boolean(evt));
 
-    // If no legacy stroke events, try to read from the Yjs document
+    // Excalidraw scene data can contain text and image elements that are not present
+    // in the legacy stroke history, so always include the latest scene layer.
     let excalidrawElements: ExcalidrawSnapshotElement[] | undefined;
-    if (mapped.length === 0) {
-      const elements = await fetchExcalidrawElements(db, boardId);
-      if (elements && elements.length > 0) {
-        excalidrawElements = elements;
-        console.log('[WB-HTTP] excalidraw elements from ydoc', { boardId, count: elements.length });
-      }
+    let excalidrawFiles: Record<string, ExcalidrawSnapshotFile> | undefined;
+    const scene = await fetchExcalidrawScene(db, boardId);
+    if (scene?.elements.length) {
+      excalidrawElements = scene.elements;
+      excalidrawFiles = Object.keys(scene.files).length > 0 ? scene.files : undefined;
+      console.log('[WB-HTTP] excalidraw scene from ydoc', {
+        boardId,
+        elementCount: scene.elements.length,
+        fileCount: excalidrawFiles ? Object.keys(excalidrawFiles).length : 0,
+      });
     }
 
-    return { boardId, events: mapped, cursor, excalidrawElements };
+    return { boardId, events: mapped, cursor, excalidrawElements, excalidrawFiles };
   };
 
   const handleRequest = async (req: AuthenticatedRequest, res: Response): Promise<string | null> => {

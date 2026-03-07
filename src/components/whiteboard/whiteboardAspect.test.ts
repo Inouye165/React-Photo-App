@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { BOARD_ASPECT, computeContainedRect, computeWhiteboardFrameRect, resolveWhiteboardAspect } from './whiteboardAspect'
 
+describe('BOARD_ASPECT', () => {
+  it('defaults to a US letter paper aspect ratio', () => {
+    expect(BOARD_ASPECT).toBeCloseTo(8.5 / 11)
+  })
+})
+
 describe('computeContainedRect', () => {
   it('uses height to fit when wrapper is wider than aspect', () => {
     const rect = computeContainedRect(800, 300, BOARD_ASPECT)

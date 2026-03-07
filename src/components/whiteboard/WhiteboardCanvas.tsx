@@ -711,6 +711,8 @@ type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>
 const isBackgroundElement = (element: { type?: string; locked?: boolean }) =>
   element.type === 'image' && element.locked === true
 
+const isActiveElement = (element: { isDeleted?: boolean | null }) => element.isDeleted !== true
+
 type BackgroundFitMode = 'width' | 'contain'
 
 export type BackgroundInfo = {
@@ -1007,9 +1009,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
   const boardFrameRect = useMemo(
     () => (
-      hasBackground
-        ? computeWhiteboardFrameRect(stageRect.width, stageRect.height, backgroundInfo?.aspectRatio ?? BOARD_ASPECT)
-        : { left: 0, top: 0, width: stageRect.width, height: stageRect.height }
+      computeWhiteboardFrameRect(stageRect.width, stageRect.height, hasBackground ? backgroundInfo?.aspectRatio ?? BOARD_ASPECT : undefined)
     ),
     [backgroundInfo?.aspectRatio, hasBackground, stageRect.height, stageRect.width],
   )
@@ -2295,6 +2295,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         throw new Error('Please choose an image file.')
       }
 
+      const existingElements = api.getSceneElements().filter(isActiveElement)
+      const hasNonBackgroundContent = existingElements.some((element) => !isBackgroundElement(element))
+
+      if (!hasNonBackgroundContent) {
+        await applyBackgroundFile(file)
+        return
+      }
+
       const dataUrl = await readFileAsDataUrl(file)
       const dimensions = await loadImageDimensions(dataUrl)
       const rawWidth = Math.max(1, dimensions.width)
@@ -2327,7 +2335,6 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       }
 
-      const existingElements = api.getSceneElements()
       const lastElementIndex = [...existingElements]
         .reverse()
         .find((element) => typeof element.index === 'string')?.index
