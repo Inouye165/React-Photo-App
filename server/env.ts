@@ -2,28 +2,45 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 
+function readTrimmedEnv(name: string): string {
+  const value = process.env[name];
+  if (value == null) return '';
+  return typeof value === 'string' ? value.trim() : String(value).trim();
+}
+
 // Idempotent environment loader for server scripts.
 // Use require('./env') from other server modules instead of calling dotenv.config()
 // multiple times. This makes sure .env is loaded exactly once and is easy to mock
 // in tests by setting process.env beforehand.
 if (!process.env.__SERVER_ENV_LOADED) {
   try {
-    // Prefer local overrides first.
-    // Load order (first existing file wins):
-    // 1) server/.env.local
-    // 2) repo/.env.local (when running from server/dist)
-    // 3) server/.env
-    // 4) repo/.env
-    // When running compiled output (server/dist), this loader lives in dist/, so
-    // we also check one level up.
-    const candidatePaths = [
-      path.join(__dirname, '.env.local'),
-      path.join(__dirname, '..', '.env.local'),
-      path.join(__dirname, '.env'),
-      path.join(__dirname, '..', '.env'),
-    ];
-    const envPath = candidatePaths.find((candidate) => fs.existsSync(candidate)) ?? candidatePaths[0];
-    dotenv.config({ path: envPath });
+    const repoEnvPath = path.join(__dirname, '..', '.env');
+    const serverEnvPath = path.join(__dirname, '.env');
+    const repoLocalEnvPath = path.join(__dirname, '..', '.env.local');
+    const serverLocalEnvPath = path.join(__dirname, '.env.local');
+    const preservedKeys = new Set(Object.keys(process.env));
+
+    const loadEnvFile = (envPath: string, override: boolean) => {
+      if (!fs.existsSync(envPath)) return;
+      const parsed = dotenv.parse(fs.readFileSync(envPath));
+      for (const [key, value] of Object.entries(parsed)) {
+        if (preservedKeys.has(key)) continue;
+        if (!override && process.env[key] != null) continue;
+        process.env[key] = value;
+      }
+    };
+
+    // Merge env files instead of stopping at the first one found.
+    // Priority order:
+    // 1) repo/.env
+    // 2) server/.env (fills server-specific gaps without clobbering repo values)
+    // 3) repo/.env.local (local override)
+    // 4) server/.env.local (server-local override)
+    loadEnvFile(repoEnvPath, false);
+    loadEnvFile(serverEnvPath, false);
+    loadEnvFile(repoLocalEnvPath, true);
+    loadEnvFile(serverLocalEnvPath, true);
+
     // Mark as loaded so subsequent requires are no-ops
     process.env.__SERVER_ENV_LOADED = '1';
   } catch (err) {
@@ -42,6 +59,23 @@ if (process.env.SUPABASE_URL && typeof process.env.SUPABASE_URL === 'string') {
   process.env.SUPABASE_URL = process.env.SUPABASE_URL.trim().replace(/\/+$/, '');
 }
 
+// Canonical Google key support.
+// Prefer GOOGLE_API_KEY as the shared base value when teams intentionally use
+// one Google credential across Gemini, Maps, and Places. Explicit service-
+// specific vars still win when present.
+const canonicalGoogleApiKey = readTrimmedEnv('GOOGLE_API_KEY');
+if (canonicalGoogleApiKey) {
+  if (!readTrimmedEnv('GOOGLE_MAPS_API_KEY')) {
+    process.env.GOOGLE_MAPS_API_KEY = canonicalGoogleApiKey;
+  }
+  if (!readTrimmedEnv('GOOGLE_PLACES_API_KEY')) {
+    process.env.GOOGLE_PLACES_API_KEY = canonicalGoogleApiKey;
+  }
+  if (!readTrimmedEnv('GEMINI_API_KEY')) {
+    process.env.GEMINI_API_KEY = canonicalGoogleApiKey;
+  }
+}
+
 // Normalize Google key aliases so worker code can rely on GOOGLE_MAPS_API_KEY even
 // if only the historical GOOGLE_PLACES_API_KEY value is set.
 if (!process.env.GOOGLE_MAPS_API_KEY && process.env.GOOGLE_PLACES_API_KEY) {
@@ -58,12 +92,6 @@ if (!process.env.GOOGLE_MAPS_API_KEY && process.env.VITE_GOOGLE_MAPS_API_KEY) {
 // Prefer GOOGLE_MAPS_API_KEY, but accept MAPS_API_KEY if provided.
 if (!process.env.GOOGLE_MAPS_API_KEY && process.env.MAPS_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.MAPS_API_KEY;
-}
-
-function readTrimmedEnv(name: string): string {
-  const value = process.env[name];
-  if (value == null) return '';
-  return typeof value === 'string' ? value.trim() : String(value).trim();
 }
 
 // LangSmith renamed / alternative env vars are common across deployments.

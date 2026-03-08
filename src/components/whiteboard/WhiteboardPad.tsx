@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
+import type { ComponentProps, ComponentType } from 'react'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 import WhiteboardCanvas, {
   type AnnotationTool,
@@ -6,6 +7,7 @@ import WhiteboardCanvas, {
   type BackgroundInfo,
   type WhiteboardCanvasHandle,
 } from './WhiteboardCanvas'
+import type { WhiteboardBoardFrame } from './types'
 
 type BackgroundFitMode = 'width' | 'contain'
 
@@ -19,6 +21,7 @@ type WhiteboardPadProps = {
   onHasBackgroundChange?: (hasBackground: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
   onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
+  onBoardFrameChange?: (rect: WhiteboardBoardFrame) => void
   annotationMode?: boolean
 }
 
@@ -34,6 +37,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       onHasBackgroundChange,
       onBackgroundInfoChange,
       onBackgroundImageAssetChange,
+      onBoardFrameChange,
       annotationMode,
     },
     ref,
@@ -41,6 +45,11 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     const { token } = useRealtimeToken()
     const tokenRef = useRef(token)
     const canvasRef = useRef<WhiteboardCanvasHandle>(null)
+    const WhiteboardCanvasComponent = WhiteboardCanvas as unknown as ComponentType<
+      ComponentProps<typeof WhiteboardCanvas> & {
+        onBoardFrameChange?: (rect: WhiteboardBoardFrame) => void
+      }
+    >
     useEffect(() => {
       tokenRef.current = token
     }, [token])
@@ -55,7 +64,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     return (
       <div className={`flex h-full w-full flex-col ${className || ''}`}>
         <div className="flex-1 min-h-0">
-          <WhiteboardCanvas
+          <WhiteboardCanvasComponent
             ref={canvasRef}
             boardId={boardId}
             token={token}
@@ -68,6 +77,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             onHasBackgroundChange={onHasBackgroundChange}
             onBackgroundInfoChange={onBackgroundInfoChange}
             onBackgroundImageAssetChange={onBackgroundImageAssetChange}
+            onBoardFrameChange={onBoardFrameChange}
             annotationMode={annotationMode}
           />
         </div>

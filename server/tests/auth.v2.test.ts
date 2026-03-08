@@ -101,4 +101,15 @@ describe('auth v2 (issuer + env mapping)', () => {
     const cfg = getConfig();
     expect(cfg.google.mapsApiKey).toBe('vite-maps-key');
   });
+
+  test('getConfig uses GOOGLE_API_KEY as the shared Google fallback', () => {
+    delete process.env.VITE_GOOGLE_MAPS_API_KEY;
+    process.env.GOOGLE_API_KEY = 'shared-google-key';
+
+    const { getConfig, __resetForTests } = require('../config/env');
+    __resetForTests();
+
+    const cfg = getConfig();
+    expect(cfg.google.mapsApiKey).toBe('shared-google-key');
+  });
 });

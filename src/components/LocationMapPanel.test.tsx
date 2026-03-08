@@ -370,7 +370,7 @@ describe('LocationMapPanel component', () => {
       render(<LocationMapPanel photo={photo} />);
 
       expect(screen.getByText(/Map configuration missing/)).toBeInTheDocument();
-      expect(screen.getByText(/VITE_GOOGLE_MAPS_API_KEY/)).toBeInTheDocument();
+      expect(screen.getByText(/GOOGLE_API_KEY/)).toBeInTheDocument();
     });
 
     it('does not render OSM iframe when no location', () => {

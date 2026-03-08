@@ -132,7 +132,7 @@ export default function LocationMapPanel({ photo }: LocationMapPanelProps) {
     } else {
       content = (
         <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
-          Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see <code>.env.example</code>) and restart the dev server.
+          Map configuration missing. Please set <code>GOOGLE_API_KEY</code> or <code>VITE_GOOGLE_MAPS_API_KEY</code> in your root .env (see <code>.env.example</code>) and restart the dev server.
         </div>
       );
     }

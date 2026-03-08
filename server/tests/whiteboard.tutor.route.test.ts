@@ -100,30 +100,37 @@ describe('whiteboard tutor route', () => {
         {
           type: 'text',
           text: JSON.stringify({
-            problem: 'Solve 2x = 10',
-            correctSolution: 'Divide both sides by 2 to get x = 5.',
-            scoreCorrect: 2,
-            scoreTotal: 2,
+            problemText: 'Solve 2x = 10',
+            finalAnswers: ['x = 5'],
+            overallSummary: 'Nice work. You kept the equation balanced and got the right answer.',
+            regions: [
+              { id: 'region-1', x: 0.1, y: 0.2, width: 0.35, height: 0.12 },
+              { id: 'region-2', x: 0.1, y: 0.36, width: 0.3, height: 0.12 },
+            ],
             steps: [
               {
-                stepNumber: 1,
-                label: 'Step 1',
-                studentWork: '2x = 10',
-                correct: true,
-                neutral: true,
-                explanation: 'Great start! You copied the problem clearly, and that is a helpful first step.',
+                id: 'step-1',
+                index: 0,
+                studentText: '2x = 10',
+                normalizedMath: '2x = 10',
+                status: 'correct',
+                shortLabel: 'Start with the equation',
+                kidFriendlyExplanation: 'Great start. You showed the equation clearly.',
+                regionId: 'region-1',
               },
               {
-                stepNumber: 2,
-                label: 'Step 2',
-                studentWork: 'x = 5',
-                correct: true,
-                neutral: false,
-                explanation: 'Great job! You nailed this step ✓',
+                id: 'step-2',
+                index: 1,
+                studentText: 'x = 5',
+                normalizedMath: 'x = 5',
+                status: 'correct',
+                shortLabel: 'Divide both sides by 2',
+                kidFriendlyExplanation: 'Great job. Dividing both sides by 2 gives you x = 5.',
+                regionId: 'region-2',
               },
             ],
-            errorsFound: [],
-            closingEncouragement: 'You solved it well, and you should feel proud of that progress!',
+            validatorWarnings: [],
+            canAnimate: true,
           }),
         },
       ],
@@ -170,7 +177,12 @@ describe('whiteboard tutor route', () => {
     expect(res.body.boardId).toBe(boardId)
     expect(res.body.reply).toContain('Problem: Solve 2x = 10')
     expect(res.body.correctSolution).toContain('x = 5')
-    expect(res.body.steps[0]).toMatchObject({ neutral: true, correct: true })
+    expect(res.body.analysisResult).toMatchObject({
+      problemText: 'Solve 2x = 10',
+      finalAnswers: ['x = 5'],
+      canAnimate: true,
+    })
+    expect(res.body.steps[0]).toMatchObject({ correct: true })
     expect(res.body.messages).toEqual([
       {
         role: 'assistant',
@@ -204,7 +216,7 @@ describe('whiteboard tutor route', () => {
     expect(typeof promptText).toBe('string')
     expect(promptText).toContain("The student's age is: 8")
     expect(promptText).toContain('First solve this problem yourself')
-    expect(promptText).toContain('The student\'s steps are:')
+    expect(promptText).toContain('Visible step transcriptions:')
   })
 
   test('denies tutor requests to non-members', async () => {

@@ -6,7 +6,10 @@ type WsTokenEntry = {
   expiresAt: number
 }
 
-const WS_TOKEN_TTL_MS = 60_000
+// Keep tickets valid long enough for browser websocket reconnects without
+// forcing client-side provider resets that can disturb the canvas state.
+// Tickets remain process-local, board-scoped, and random.
+const WS_TOKEN_TTL_MS = 8 * 60 * 60 * 1000
 const wsTokens = new Map<string, WsTokenEntry>()
 
 function nowMs() {

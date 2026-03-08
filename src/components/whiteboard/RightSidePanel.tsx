@@ -1,7 +1,8 @@
 import React from 'react'
 import TabbedPanel, { type TabConfig } from '../common/TabbedPanel'
 import { AITutorTab, ChatTab, StepsTab } from './tabs'
-import type { WhiteboardTutorResponse } from '../../types/whiteboard'
+import type { TutorLessonMessage } from './tabs/AITutorTab'
+import type { TutorAnalysisResult, WhiteboardTutorResponse } from '../../types/whiteboard'
 
 export type TabType = 'ai-tutor' | 'chat' | 'steps'
 
@@ -14,7 +15,10 @@ export interface RightSidePanelProps {
   hasPhoto: boolean
   hasInput?: boolean
   inputMode?: 'photo' | 'text'
+  problemDraft?: string
+  onProblemDraftChange?: (value: string) => void
   analysis: WhiteboardTutorResponse | null
+  analysisResult?: TutorAnalysisResult | null
   analysisLoading: boolean
   analysisError: string | null
   onStartAnalysis: () => void
@@ -27,6 +31,18 @@ export interface RightSidePanelProps {
   onTutorDraftChange: (value: string) => void
   onTutorSubmit: () => void
   onRequestHumanTutor: () => void
+  onLessonMessageChange?: (message: TutorLessonMessage | null) => void
+  activeTutorStepId?: string | null
+  overlayVisible?: boolean
+  tutorPlaybackCanPlay?: boolean
+  tutorPlaybackIsPlaying?: boolean
+  onToggleTutorOverlay?: () => void
+  onTutorPlaybackPlay?: () => void
+  onTutorPlaybackPause?: () => void
+  onTutorPlaybackPrevious?: () => void
+  onTutorPlaybackNext?: () => void
+  onTutorPlaybackReplay?: () => void
+  onTutorStepSelect?: (stepId: string) => void
 }
 
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
@@ -38,7 +54,10 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   hasPhoto,
   hasInput,
   inputMode = 'photo',
+  problemDraft = '',
+  onProblemDraftChange,
   analysis,
+  analysisResult = null,
   analysisLoading,
   analysisError,
   onStartAnalysis,
@@ -51,6 +70,18 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   onTutorDraftChange,
   onTutorSubmit,
   onRequestHumanTutor,
+  onLessonMessageChange,
+  activeTutorStepId = null,
+  overlayVisible = true,
+  tutorPlaybackCanPlay = false,
+  tutorPlaybackIsPlaying = false,
+  onToggleTutorOverlay,
+  onTutorPlaybackPlay,
+  onTutorPlaybackPause,
+  onTutorPlaybackPrevious,
+  onTutorPlaybackNext,
+  onTutorPlaybackReplay,
+  onTutorStepSelect,
 }) => {
   const tabs: TabConfig<TabType>[] = [
     {
@@ -61,6 +92,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           hasPhoto={hasPhoto}
           hasInput={hasInput ?? hasPhoto}
           inputMode={inputMode}
+          problemDraft={problemDraft}
+          onProblemDraftChange={onProblemDraftChange}
           analysis={analysis}
           isLoading={analysisLoading}
           error={analysisError}
@@ -73,6 +106,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           isSubmitting={tutorSubmitting}
           onFollowUpDraftChange={onTutorDraftChange}
           onSubmitFollowUp={onTutorSubmit}
+          onLessonMessageChange={onLessonMessageChange}
         />
       )
     },
@@ -88,7 +122,26 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
     {
       id: 'steps',
       label: 'STEPS',
-      content: <StepsTab hasPhoto={hasPhoto} isLoading={analysisLoading} correctSolution={analysis?.correctSolution ?? ''} steps={analysis?.steps ?? []} />
+      content: (
+        <StepsTab
+          hasPhoto={hasPhoto}
+          isLoading={analysisLoading}
+          correctSolution={analysis?.correctSolution ?? ''}
+          analysisResult={analysisResult}
+          steps={analysis?.steps ?? []}
+          activeStepId={activeTutorStepId}
+          overlayVisible={overlayVisible}
+          canPlay={tutorPlaybackCanPlay}
+          isPlaying={tutorPlaybackIsPlaying}
+          onToggleOverlay={onToggleTutorOverlay}
+          onPlay={onTutorPlaybackPlay}
+          onPause={onTutorPlaybackPause}
+          onPrevious={onTutorPlaybackPrevious}
+          onNext={onTutorPlaybackNext}
+          onReplay={onTutorPlaybackReplay}
+          onStepSelect={onTutorStepSelect}
+        />
+      )
     },
   ]
 

@@ -1,5 +1,6 @@
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
+import { loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -8,9 +9,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const googleMapsApiKey = env.VITE_GOOGLE_MAPS_API_KEY || env.GOOGLE_API_KEY || ''
   console.log(`[vite] Running in mode: ${mode}`);
   console.log(`[vite] VITE_E2E: ${process.env.VITE_E2E}`);
   return {
+  define: {
+    'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(googleMapsApiKey),
+  },
   plugins: [react()],
   // WARNING: Do not add aliases for 'konva' or 'konva/lib/...' here.
   // It breaks react-konva which relies on internal structure.
