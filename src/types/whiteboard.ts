@@ -123,6 +123,39 @@ export type WhiteboardSessionDetails = {
 
 export type WhiteboardTutorRole = 'user' | 'assistant'
 
+export type TutorStepStatus = 'correct' | 'incorrect' | 'partial' | 'warning'
+
+export type TutorDetectedRegion = {
+  id: string
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type TutorStepAnalysis = {
+  id: string
+  index: number
+  studentText: string
+  normalizedMath?: string
+  status: TutorStepStatus
+  shortLabel: string
+  kidFriendlyExplanation: string
+  correction?: string
+  hint?: string
+  regionId?: string
+}
+
+export type TutorAnalysisResult = {
+  problemText: string
+  finalAnswers: string[]
+  overallSummary: string
+  regions: TutorDetectedRegion[]
+  steps: TutorStepAnalysis[]
+  validatorWarnings: string[]
+  canAnimate: boolean
+}
+
 export type WhiteboardTutorMessage = {
   role: WhiteboardTutorRole
   content: string
@@ -153,6 +186,7 @@ export type WhiteboardTutorSections = {
 export type WhiteboardTutorResponse = {
   reply: string
   messages: WhiteboardTutorMessage[]
+  analysisResult: TutorAnalysisResult | null
   sections: WhiteboardTutorSections
   problem: string
   correctSolution: string

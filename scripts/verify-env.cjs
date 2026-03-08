@@ -37,9 +37,20 @@ let success = true;
 
 // 1. Check Frontend (.env in root)
 const frontendKeys = [
-  'VITE_GOOGLE_MAPS_API_KEY'
+  'GOOGLE_API_KEY'
 ];
-if (!checkEnvFile(path.join(rootDir, '.env'), frontendKeys, 'Frontend')) {
+const frontendEnvPath = path.join(rootDir, '.env');
+if (fs.existsSync(frontendEnvPath)) {
+  console.log(`\nChecking Frontend environment (${frontendEnvPath})...`);
+  const envConfig = dotenv.parse(fs.readFileSync(frontendEnvPath));
+  if (!envConfig['GOOGLE_API_KEY'] && !envConfig['VITE_GOOGLE_MAPS_API_KEY']) {
+    console.error('❌  Missing required frontend key: GOOGLE_API_KEY (or VITE_GOOGLE_MAPS_API_KEY)');
+    success = false;
+  } else {
+    console.log('✅  Google API key is present for the frontend');
+  }
+} else {
+  console.error(`❌  Missing .env file at ${frontendEnvPath}`);
   success = false;
 }
 
@@ -59,8 +70,8 @@ if (fs.existsSync(backendPath)) {
   });
 
   // Check Google (One of them is required for POI)
-  if (!envConfig['GOOGLE_MAPS_API_KEY'] && !envConfig['GOOGLE_PLACES_API_KEY']) {
-    console.warn('⚠️  Neither GOOGLE_MAPS_API_KEY nor GOOGLE_PLACES_API_KEY found in backend. POI lookups will be disabled.');
+  if (!envConfig['GOOGLE_API_KEY'] && !envConfig['GOOGLE_MAPS_API_KEY'] && !envConfig['GOOGLE_PLACES_API_KEY']) {
+    console.warn('⚠️  No Google API key found in backend. POI lookups will be disabled.');
   } else {
     console.log('✅  Google Maps/Places API key is present');
   }

@@ -95,18 +95,31 @@ vi.mock('../components/rooms/RoomMembersModal', () => ({
 }))
 
 vi.mock('../components/whiteboard/RightSidePanel', () => ({
-  default: (props: any) => (
-    <div data-testid="right-side-panel">
-      <input
-        aria-label="Response age"
-        value={props.responseAge ?? ''}
-        onChange={(event) => props.onResponseAgeChange?.(event.target.value)}
-      />
-      <button type="button" onClick={() => props.onStartAnalysis?.()}>
-        Start analysis
-      </button>
-    </div>
-  ),
+  default: (props: any) => {
+    const ReactModule = require('react')
+
+    ReactModule.useEffect(() => {
+      if (!props.analysis) return
+      props.onLessonMessageChange?.({
+        title: 'Here is the lesson plan',
+        body: 'Summary: Nice work.',
+        tone: 'prompt',
+      })
+    }, [props.analysis, props.onLessonMessageChange])
+
+    return (
+      <div data-testid="right-side-panel">
+        <input
+          aria-label="Response age"
+          value={props.responseAge ?? ''}
+          onChange={(event) => props.onResponseAgeChange?.(event.target.value)}
+        />
+        <button type="button" onClick={() => props.onStartAnalysis?.()}>
+          Start analysis
+        </button>
+      </div>
+    )
+  },
 }))
 
 vi.mock('../components/whiteboard/WhiteboardPad', async () => {
@@ -141,6 +154,25 @@ describe('WhiteboardSessionPage', () => {
     analyzeWhiteboardPhoto.mockResolvedValue({
       reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
       messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
+      analysisResult: {
+        problemText: 'Solve 2x = 10',
+        finalAnswers: ['x = 5'],
+        overallSummary: 'Nice work.',
+        regions: [],
+        steps: [
+          {
+            id: 'step-1',
+            index: 0,
+            studentText: '2x ÷ 2 = 10 ÷ 2',
+            normalizedMath: 'x = 5',
+            status: 'correct',
+            shortLabel: 'Divide both sides by 2',
+            kidFriendlyExplanation: 'You divided both sides by 2 correctly.',
+          },
+        ],
+        validatorWarnings: [],
+        canAnimate: false,
+      },
       sections: {
         problem: 'Solve 2x = 10',
         stepsAnalysis: '1. Dividing both sides by 2 is correct.',
@@ -274,6 +306,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByText('Pen')).toBeInTheDocument()
     expect(screen.getByText('Highlighter')).toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Hide tutor overlay/i)).not.toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 
@@ -524,5 +557,75 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Type or paste instead/i }))
 
     expect(screen.getByLabelText('Your Problem')).toHaveAttribute('placeholder', TEXT_MODE_PLACEHOLDER)
+  })
+
+  it('keeps pasted homework text visible while the text field is focused', async () => {
+    setViewport(390)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Type or paste instead/i })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Type or paste instead/i }))
+
+    const textarea = screen.getByLabelText('Your Problem')
+    fireEvent.focus(textarea)
+    fireEvent.paste(textarea)
+    fireEvent.change(textarea, {
+      target: { value: 'The school store sold 14 notebooks in the morning and 9 in the afternoon. How many notebooks did it sell altogether?' },
+    })
+
+    await new Promise((resolve) => window.setTimeout(resolve, 350))
+
+    expect(textarea).not.toHaveClass('text-transparent')
+
+    fireEvent.blur(textarea)
+
+    await waitFor(() => {
+      expect(textarea).toHaveClass('text-transparent')
+    })
+  })
+
+  it('shows the lesson tracker in the main workspace for text-mode analysis', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Switch to text input/i }))
+
+    await waitFor(() => {
+      expect(document.querySelector('textarea')).not.toBeNull()
+    })
+
+    const textarea = document.querySelector('textarea') as HTMLTextAreaElement
+    expect(textarea).toHaveAttribute('placeholder', TEXT_MODE_PLACEHOLDER)
+
+    fireEvent.change(textarea, {
+      target: { value: 'Solve 2x = 10' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Lesson Tracker')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Here is the lesson plan')).toBeInTheDocument()
   })
 })

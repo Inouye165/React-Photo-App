@@ -19,10 +19,15 @@ import {
   Type,
   Users,
 } from 'lucide-react'
+import TutorOverlay from '../components/whiteboard/TutorOverlay'
+import useTutorPlayback from '../components/whiteboard/useTutorPlayback'
+import type { TutorLessonMessage } from '../components/whiteboard/tabs/AITutorTab'
+import type { WhiteboardBoardFrame } from '../components/whiteboard/types'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import type {
   AnnotationTool,
   BackgroundImageAsset,
+  BackgroundInfo,
   WhiteboardCanvasHandle,
 } from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel from '../components/whiteboard/RightSidePanel'
@@ -236,7 +241,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [inputMode, setInputMode] = useState<HomeworkInputMode>('photo')
   const [textContent, setTextContent] = useState('')
   const [formattedProblemLines, setFormattedProblemLines] = useState<FormattedProblemLine[]>([])
+  const [isTextInputFocused, setIsTextInputFocused] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
+  const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
+  const [boardFrame, setBoardFrame] = useState<WhiteboardBoardFrame | null>(null)
   const [backgroundImageAsset, setBackgroundImageAsset] = useState<BackgroundImageAsset | null>(null)
   const [mobilePhotoObjectUrl, setMobilePhotoObjectUrl] = useState<string | null>(null)
   const [mobilePhotoVersion, setMobilePhotoVersion] = useState(0)
@@ -245,6 +253,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [tutorOverlayVisible, setTutorOverlayVisible] = useState(true)
+  const [tutorLessonMessage, setTutorLessonMessage] = useState<TutorLessonMessage | null>(null)
   const [responseAge, setResponseAge] = useState('')
   const [tutorDraft, setTutorDraft] = useState('')
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
@@ -279,9 +289,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const currentUserId = user?.id ?? null
   const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
   const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
+  const structuredAnalysisResult = analysis?.analysisResult ?? null
   const displayBoardName = useMemo(() => boardName.trim() || WHITEBOARD_APP_NAME, [boardName])
   const hasTextInput = textContent.trim().length > 0
   const hasTutorInput = inputMode === 'text' ? hasTextInput : hasBackground
+  const showFormattedProblemOverlay = !isTextInputFocused && formattedProblemLines.length > 0
+  const tutorPlayback = useTutorPlayback({
+    steps: structuredAnalysisResult?.steps ?? [],
+    reducedMotion: Boolean(prefersReducedMotion),
+  })
 
   const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
@@ -434,6 +450,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const applyAnalysisResponse = useCallback((response: WhiteboardTutorResponse) => {
     setAnalysis(response)
+    setTutorOverlayVisible(true)
     handleAnnotationToolSelect('pen')
   }, [handleAnnotationToolSelect])
 
@@ -610,6 +627,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setAnalysis(null)
     setAnalysisError(null)
     setAnalysisLoading(false)
+    setTutorOverlayVisible(true)
+    setTutorLessonMessage(null)
     setTutorDraft('')
     setTutorSubmitting(false)
     setAnnotationTool('pen')
@@ -668,8 +687,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [scheduleFormatProblemText])
 
   const handleTextInputBlur = useCallback((value: string) => {
+    setIsTextInputFocused(false)
     formatProblemText(value)
   }, [formatProblemText])
+
+  const handleTextInputFocus = useCallback(() => {
+    setIsTextInputFocused(true)
+  }, [])
 
   const handleTextInputPaste = useCallback(() => {
     window.setTimeout(() => {
@@ -767,6 +791,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
     setTextContent('')
     setFormattedProblemLines([])
+    setIsTextInputFocused(false)
     setInputMode('photo')
     resetPhotoTransform()
     resetTutorState()
@@ -1743,7 +1768,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       <div className="w-full max-w-[720px]">
                         <label htmlFor="mobile-homework-text" className="block text-[14px] font-semibold text-[#F0EDE8]">Your Problem</label>
                         <div className="relative mt-3">
-                          {formattedProblemLines.length > 0 ? (
+                          {showFormattedProblemOverlay ? (
                             <div
                               ref={mobileFormattedOverlayRef}
                               className="pointer-events-none absolute inset-0 z-10 overflow-y-auto rounded-[12px] border border-white/15 bg-[#1e1e1e]"
@@ -1757,11 +1782,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                             id="mobile-homework-text"
                             value={textContent}
                             onChange={(event) => handleTextContentChange(event.target.value)}
+                            onFocus={handleTextInputFocus}
                             onBlur={(event) => handleTextInputBlur(event.target.value)}
                             onPaste={handleTextInputPaste}
                             onScroll={(event) => syncFormattedOverlayScroll(event.currentTarget.scrollTop)}
                             placeholder={TEXT_MODE_PLACEHOLDER}
-                            className={`w-full rounded-[12px] border border-white/15 bg-[#1e1e1e] p-4 text-[16px] outline-none transition focus:border-amber-400 ${formattedProblemLines.length > 0 ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
+                            className={`w-full rounded-[12px] border border-white/15 bg-[#1e1e1e] p-4 text-[16px] outline-none transition focus:border-amber-400 ${showFormattedProblemOverlay ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
                             style={{ height: `${Math.max(180, Math.round((mobilePhotoContainerHeight ?? 420) * 0.4))}px`, resize: 'none' }}
                           />
                         </div>
@@ -1811,6 +1837,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       hasPhoto={hasBackground}
                       hasInput={hasTutorInput}
                       inputMode={inputMode}
+                      problemDraft={textContent}
+                      onProblemDraftChange={handleTextContentChange}
                       analysis={analysis}
                       isLoading={analysisLoading}
                       error={analysisError}
@@ -1882,7 +1910,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
               {inputMode === 'text' ? (
                 <div className="relative h-full w-full bg-[#1a1a1a] p-6 pt-20">
-                  {formattedProblemLines.length > 0 ? (
+                  {showFormattedProblemOverlay ? (
                     <div
                       ref={desktopFormattedOverlayRef}
                       className="pointer-events-none absolute inset-x-6 bottom-6 top-20 z-10 overflow-y-auto rounded-[16px] border border-white/10 bg-[#1a1a1a]"
@@ -1895,24 +1923,53 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     ref={desktopTextInputRef}
                     value={textContent}
                     onChange={(event) => handleTextContentChange(event.target.value)}
+                    onFocus={handleTextInputFocus}
                     onBlur={(event) => handleTextInputBlur(event.target.value)}
                     onPaste={handleTextInputPaste}
                     onScroll={(event) => syncFormattedOverlayScroll(event.currentTarget.scrollTop)}
                     placeholder={TEXT_MODE_PLACEHOLDER}
-                    className={`h-full w-full resize-none rounded-[16px] border border-white/10 bg-[#1a1a1a] p-4 text-[16px] outline-none ${formattedProblemLines.length > 0 ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
+                    className={`h-full w-full resize-none rounded-[16px] border border-white/10 bg-[#1a1a1a] p-4 text-[16px] outline-none ${showFormattedProblemOverlay ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
                   />
+                  {structuredAnalysisResult ? (
+                    <TutorOverlay
+                      analysisResult={structuredAnalysisResult}
+                      activeStepId={tutorPlayback.activeStepId}
+                      lessonMessage={tutorLessonMessage}
+                      boardFrame={null}
+                      visible={tutorOverlayVisible}
+                      reducedMotion={Boolean(prefersReducedMotion)}
+                      onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
+                      onSelectStep={tutorPlayback.setActiveStepId}
+                    />
+                  ) : null}
                 </div>
               ) : (
-                <WhiteboardPad
-                  ref={whiteboardPadRef}
-                  boardId={boardId}
-                  className="h-full"
-                  annotationMode={hasBackground}
-                  onRealtimeStatusChange={handleRealtimeStatusChange}
-                  onHasBackgroundChange={handleBackgroundChange}
-                  onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
-                  onAccessDenied={handleWhiteboardAccessDenied}
-                />
+                <>
+                  <WhiteboardPad
+                    ref={whiteboardPadRef}
+                    boardId={boardId}
+                    className="h-full"
+                    annotationMode={hasBackground}
+                    onRealtimeStatusChange={handleRealtimeStatusChange}
+                    onHasBackgroundChange={handleBackgroundChange}
+                    onBackgroundInfoChange={setBackgroundInfo}
+                    onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+                    onBoardFrameChange={setBoardFrame}
+                    onAccessDenied={handleWhiteboardAccessDenied}
+                  />
+                  {structuredAnalysisResult ? (
+                    <TutorOverlay
+                      analysisResult={structuredAnalysisResult}
+                      activeStepId={tutorPlayback.activeStepId}
+                      lessonMessage={tutorLessonMessage}
+                      boardFrame={hasBackground && backgroundInfo ? boardFrame : null}
+                      visible={tutorOverlayVisible}
+                      reducedMotion={Boolean(prefersReducedMotion)}
+                      onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
+                      onSelectStep={tutorPlayback.setActiveStepId}
+                    />
+                  ) : null}
+                </>
               )}
 
               {inputMode !== 'text' && photoGuidanceVisible ? (
@@ -1935,7 +1992,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               hasPhoto={hasBackground}
               hasInput={hasTutorInput}
               inputMode={inputMode}
+              problemDraft={textContent}
+              onProblemDraftChange={handleTextContentChange}
               analysis={analysis}
+              analysisResult={structuredAnalysisResult}
               analysisLoading={analysisLoading}
               analysisError={analysisError}
               onStartAnalysis={() => {
@@ -1953,6 +2013,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               onTutorSubmit={() => {
                 void handleTutorFollowUp()
               }}
+              onLessonMessageChange={setTutorLessonMessage}
+              activeTutorStepId={tutorPlayback.activeStepId}
+              overlayVisible={tutorOverlayVisible}
+              tutorPlaybackCanPlay={tutorPlayback.canPlay}
+              tutorPlaybackIsPlaying={tutorPlayback.isPlaying}
+              onToggleTutorOverlay={() => setTutorOverlayVisible((current) => !current)}
+              onTutorPlaybackPlay={tutorPlayback.play}
+              onTutorPlaybackPause={tutorPlayback.pause}
+              onTutorPlaybackPrevious={tutorPlayback.previous}
+              onTutorPlaybackNext={tutorPlayback.next}
+              onTutorPlaybackReplay={tutorPlayback.replay}
+              onTutorStepSelect={tutorPlayback.setActiveStepId}
               onRequestHumanTutor={() => {
                 return undefined
               }}

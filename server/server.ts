@@ -20,9 +20,10 @@ bootstrap.registerProcessHandlers({ logger });
 const { app, socketManager, whiteboardYjsServer } = bootstrap.createApp({ logger, db, supabase });
 
 const PORT = process.env.PORT || 3001;
+const isJestRuntime = typeof process.env.JEST_WORKER_ID !== 'undefined';
 
 // Start server only if not in test mode unless explicitly running integration tests
-if (process.env.NODE_ENV !== 'test' || process.env.INTEGRATION_TESTS === 'true') {
+if (!isJestRuntime && (process.env.NODE_ENV !== 'test' || process.env.INTEGRATION_TESTS === 'true')) {
   const shutdownManager = bootstrap.createShutdownManager({ logger });
 
   shutdownManager.register('otel', () => tracing.shutdown());

@@ -25,6 +25,7 @@ import { fetchWhiteboardSnapshot, fetchWhiteboardWsToken } from '../../api/white
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, computeWhiteboardFrameRect, type ContainedRect } from './whiteboardAspect'
+import type { WhiteboardBoardFrame } from './types'
 import LuminaCaptureSession from '../LuminaCaptureSession'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
@@ -680,9 +681,9 @@ export function LegacyWhiteboardCanvas({
 const LOCAL_ORIGIN = { origin: 'local' } as const
 
 const DEFAULT_APP_STATE: Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'> = {
-  viewBackgroundColor: '#ffffff',
+  viewBackgroundColor: '#111111',
   gridSize: 0,
-  theme: 'light',
+  theme: 'dark',
 }
 
 const STROKE_WIDTH_REMAP: Record<number, number> = {
@@ -709,6 +710,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   onHasBackgroundChange?: (hasBackground: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
   onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
+  onBoardFrameChange?: (rect: WhiteboardBoardFrame) => void
   annotationMode?: boolean
 }
 
@@ -932,6 +934,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       onHasBackgroundChange,
       onBackgroundInfoChange,
       onBackgroundImageAssetChange,
+      onBoardFrameChange,
       annotationMode = false,
     },
     ref,
@@ -996,6 +999,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const onHasBackgroundChangeRef = useRef(onHasBackgroundChange)
   const onBackgroundInfoChangeRef = useRef(onBackgroundInfoChange)
   const onBackgroundImageAssetChangeRef = useRef(onBackgroundImageAssetChange)
+  const onBoardFrameChangeRef = useRef(onBoardFrameChange)
 
   useEffect(() => {
     onAccessDeniedRef.current = onAccessDenied
@@ -1024,6 +1028,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onBackgroundImageAssetChangeRef.current = onBackgroundImageAssetChange
   }, [onBackgroundImageAssetChange])
+
+  useEffect(() => {
+    onBoardFrameChangeRef.current = onBoardFrameChange
+  }, [onBoardFrameChange])
 
   const updateStageRect = useCallback(() => {
     const stage = stageViewportRef.current
@@ -1129,6 +1137,15 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onBackgroundInfoChangeRef.current?.(backgroundInfo)
   }, [backgroundInfo])
+
+  useEffect(() => {
+    onBoardFrameChangeRef.current?.({
+      left: boardFrameRect.left,
+      top: boardFrameRect.top,
+      width: boardFrameRect.width,
+      height: boardFrameRect.height,
+    })
+  }, [boardFrameRect.height, boardFrameRect.left, boardFrameRect.top, boardFrameRect.width])
 
   useEffect(() => {
     if (!hasBackground) {
@@ -2277,7 +2294,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       controller.abort()
       cleanupProvider?.()
     }
-  }, [applySceneFromYjs, boardId, emitRealtimeStatus, token, updateAwarenessState])
+  }, [API_BASE_URL, applySceneFromYjs, boardId, emitRealtimeStatus, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {
@@ -2654,9 +2671,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
             style={boardFrameStyle}
           >
             {!isSynced ? (
-              <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
-                <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
-                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-[#111111]">
+                <div className="flex items-center gap-3 text-sm text-slate-300" role="status" aria-live="polite">
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-slate-200" />
                   Connecting to Room…
                 </div>
               </div>

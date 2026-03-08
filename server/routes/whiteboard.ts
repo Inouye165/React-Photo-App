@@ -10,6 +10,7 @@ import { z } from 'zod';
 import * as Y from 'yjs';
 import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
+import { buildLegacyTutorPayload, parseStructuredTutorAnalysis } from '../tutor/analysisParser';
 const supabase = require('../lib/supabaseClient');
 
 const gzipAsync = promisify(gzip);
@@ -65,102 +66,85 @@ const WhiteboardTutorBodySchema = z.object({
 const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
 const WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 const WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514';
-const WHITEBOARD_TRANSCRIPTION_PROMPT = `Look at this homework photo. Transcribe exactly what 
-is written, step by step. Do not evaluate whether anything 
-is right or wrong. Just tell me:
-1. What is the problem being asked?
-2. What did the student write on each line, in order?
-Return as JSON:
+const WHITEBOARD_TRANSCRIPTION_PROMPT = `Look at this homework photo and return only JSON.
+
+Tasks:
+1. Identify the full problem text.
+2. Split the student's visible work into steps in reading order.
+3. For each visible step, give a short transcription.
+4. If possible, estimate a normalized bounding box for each visible step.
+
+Rules:
+- Do not judge correctness yet.
+- Use normalized coordinates from 0 to 1.
+- If a region is unclear, skip the region instead of guessing wildly.
+- Keep text short.
+
+Return JSON exactly like this:
 {
-  problem: string,
-  steps: [{ stepNumber: number, content: string }]
+  "problem": "string",
+  "regions": [{ "id": "region-1", "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.12 }],
+  "steps": [{ "stepNumber": 1, "content": "string", "regionId": "region-1" }]
 }`;
-const WHITEBOARD_EVALUATION_SYSTEM_PROMPT = `You are a warm, encouraging human tutor speaking DIRECTLY 
-to a student. You must ALWAYS follow these rules:
+const WHITEBOARD_EVALUATION_SYSTEM_PROMPT = `You are a calm, supportive math tutor for children.
 
-VOICE RULES — NON-NEGOTIABLE:
-- ALWAYS use second person: 'you' and 'your', NEVER 
-  'the student' under any circumstance
-- ALWAYS acknowledge correct work warmly before 
-  pointing out errors
-- NEVER use passive voice
-- NEVER use clinical, robotic, or report-card language
-- Correct steps must feel celebratory:
-  'Great job! You nailed this step ✓'
-- Incorrect steps must feel supportive and specific:
-  'You were so close here! The tricky part is...'
-- End every full analysis with one warm encouraging 
-  closing sentence
-- Age-appropriate language based on the age parameter:
-  * Age 5-10: very simple words, maximum encouragement,
-    short sentences, exclamation points welcome
-  * Age 11-15: friendly, slightly more technical, 
-    still warm and direct
-  * Age 16-20: peer-like tone, respectful, 
-    honest but encouraging
+You must solve the math yourself first, then explain what the learner did.
+Use simple language a 10-year-old can understand.
+Keep every explanation short.
+Avoid long paragraphs and advanced vocabulary.
+Do not shame the learner.
+Do not reveal the full solution too early in the step explanations.
 
-EVALUATION RULES — NON-NEGOTIABLE:
-- ALWAYS solve the problem yourself completely FIRST
-  before evaluating any student step
-- Only grade student steps by comparing them to 
-  YOUR correct solution
-- NEUTRAL steps (restating the problem, writing the 
-  original equation) are NEVER marked incorrect — 
-  they are always marked as correct or neutral
-- A step that simply copies the problem is always 
-  correct — the student did nothing wrong
-- Never mark a step incorrect just because it shows 
-  no computation
+Return ONLY JSON.
+No markdown. No preamble. No commentary outside JSON.
 
-Return ONLY valid JSON, no markdown, no preamble:
+Required JSON shape:
 {
-  problem: string,
-  correctSolution: string,
-  scoreCorrect: number,
-  scoreTotal: number,
-  steps: [{
-    stepNumber: number,
-    label: string,
-    studentWork: string,
-    correct: boolean,
-    neutral: boolean,
-    explanation: string (warm, second-person, human voice)
+  "problemText": "string",
+  "finalAnswers": ["string"],
+  "overallSummary": "string",
+  "regions": [{ "id": "region-1", "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.12 }],
+  "steps": [{
+    "id": "step-1",
+    "index": 0,
+    "studentText": "string",
+    "normalizedMath": "string",
+    "status": "correct | incorrect | partial | warning",
+    "shortLabel": "string",
+    "kidFriendlyExplanation": "string",
+    "correction": "string",
+    "hint": "string",
+    "regionId": "region-1"
   }],
-  errorsFound: [{
-    stepNumber: number,
-    issue: string (second-person, warm),
-    correction: string (second-person, clear)
-  }],
-  closingEncouragement: string
-}`;
+  "validatorWarnings": ["string"],
+  "canAnimate": true
+}
+
+Rules for the JSON:
+- problemText: the full problem the learner is trying to solve
+- finalAnswers: final answer or answers only
+- steps: split the visible work into small readable steps
+- kidFriendlyExplanation: short, warm, and simple
+- status: choose the best fit for each step
+- regions: optional; include only if reasonably visible
+- if region matching is weak, keep the step and omit regionId
+- validatorWarnings: leave empty unless the model sees an obvious caution
+- canAnimate: true when there is more than one meaningful step`;
 
 const WhiteboardTutorTranscriptionSchema = z.object({
   problem: z.string().trim().default(''),
+  regions: z.array(z.object({
+    id: z.string().trim().min(1),
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  })).default([]),
   steps: z.array(z.object({
     stepNumber: z.number().int().min(1),
     content: z.string().trim().default(''),
+    regionId: z.string().trim().optional(),
   })).default([]),
-});
-
-const WhiteboardTutorEvaluationSchema = z.object({
-  problem: z.string().trim(),
-  correctSolution: z.string().trim(),
-  scoreCorrect: z.number().int().min(0),
-  scoreTotal: z.number().int().min(0),
-  steps: z.array(z.object({
-    stepNumber: z.number().int().min(1),
-    label: z.string().trim(),
-    studentWork: z.string().trim(),
-    correct: z.boolean(),
-    neutral: z.boolean(),
-    explanation: z.string().trim(),
-  })),
-  errorsFound: z.array(z.object({
-    stepNumber: z.number().int().min(1),
-    issue: z.string().trim(),
-    correction: z.string().trim(),
-  })).default([]),
-  closingEncouragement: z.string().trim(),
 });
 
 type AuthenticatedRequest = Request & {
@@ -210,7 +194,6 @@ type WhiteboardTutorMessage = z.infer<typeof WhiteboardTutorMessageSchema>;
 
 type WhiteboardTutorBody = z.infer<typeof WhiteboardTutorBodySchema>;
 type WhiteboardTutorTranscription = z.infer<typeof WhiteboardTutorTranscriptionSchema>;
-type WhiteboardTutorEvaluation = z.infer<typeof WhiteboardTutorEvaluationSchema>;
 
 type GeminiErrorInfo = {
   statusCode?: number;
@@ -370,12 +353,8 @@ There is no photo. The problem is:
 ${body.textContent.trim()}
 
 First solve this problem yourself completely.
-Then identify what steps a student would need to take 
-to solve it, and evaluate whether the student has 
-shown their work or just stated the problem.
-If no work is shown, identify the steps needed 
-and mark them as guidance rather than grading.
-Use the same warm second-person voice as always.
+Then describe the likely steps in a short, kid-friendly way.
+If no student work is shown, keep the steps gentle and guidance-focused.
 
 The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}`;
 
@@ -388,10 +367,12 @@ The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge 
   }
 
   const basePrompt = `The problem is: ${transcription.problem}
-The student's steps are: ${JSON.stringify(transcription.steps)}
+Visible step transcriptions: ${JSON.stringify(transcription.steps)}
+Visible step regions: ${JSON.stringify(transcription.regions)}
 The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}
 First solve this problem yourself, then evaluate 
-each of the student's steps against your solution.`;
+each visible step against your solution.
+Keep the response compact and kid-friendly.`;
 
   const transcript = formatConversationTranscript(body.messages ?? []);
   if (!transcript) {
@@ -399,23 +380,6 @@ each of the student's steps against your solution.`;
   }
 
   return `${basePrompt}\n\nConversation so far:\n${transcript}`;
-}
-
-function buildAssistantReply(evaluation: WhiteboardTutorEvaluation): string {
-  const stepLines = evaluation.steps.map((step) => `${step.stepNumber}. ${step.label}: ${step.explanation}`);
-  const errorLines = evaluation.errorsFound.map((item) => `Step ${item.stepNumber}: ${item.issue} ${item.correction}`.trim());
-
-  return [
-    `Problem: ${evaluation.problem}`,
-    '',
-    'Steps Analysis:',
-    ...(stepLines.length > 0 ? stepLines : ['No step details available.']),
-    '',
-    'Errors Found:',
-    ...(errorLines.length > 0 ? errorLines : ['None.']),
-    '',
-    `Encouragement: ${evaluation.closingEncouragement}`,
-  ].join('\n');
 }
 
 async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<WhiteboardTutorTranscription> {
@@ -505,7 +469,7 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
 async function callWhiteboardEvaluation(
   body: WhiteboardTutorBody,
   transcription: WhiteboardTutorTranscription,
-): Promise<WhiteboardTutorEvaluation> {
+): Promise<ReturnType<typeof buildLegacyTutorPayload>> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     throw toTutorPipelineError('ANTHROPIC_API_KEY is not configured', {
@@ -549,7 +513,7 @@ async function callWhiteboardEvaluation(
       });
     }
 
-    return parseJsonResponse(text, WhiteboardTutorEvaluationSchema, 'Pass 2 evaluation');
+    return buildLegacyTutorPayload(parseStructuredTutorAnalysis(text));
   } catch (error) {
     const summary = summarizeAnthropicError(error);
     throw toTutorPipelineError(summary.message, {
@@ -561,13 +525,9 @@ async function callWhiteboardEvaluation(
   }
 }
 
-async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<WhiteboardTutorEvaluation & { reply: string }> {
+async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<ReturnType<typeof buildLegacyTutorPayload>> {
   const transcription = await callWhiteboardTranscription(body);
-  const evaluation = await callWhiteboardEvaluation(body, transcription);
-  return {
-    ...evaluation,
-    reply: buildAssistantReply(evaluation),
-  };
+  return callWhiteboardEvaluation(body, transcription);
 }
 
 async function deleteWhiteboardFromSupabase(boardId: string): Promise<boolean> {

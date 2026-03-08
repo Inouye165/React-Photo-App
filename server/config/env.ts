@@ -46,8 +46,12 @@ function buildConfig() {
   const langchainTracingV2 = readTrimmed('LANGCHAIN_TRACING_V2') || readTrimmed('LANGSMITH_TRACING');
 
   // Server-side Google Places/Maps usage (POI + foodPlaces).
-  // In some environments only the frontend-prefixed var exists.
-  const googleMapsApiKey = readTrimmed('GOOGLE_MAPS_API_KEY') || readTrimmed('VITE_GOOGLE_MAPS_API_KEY');
+  // In some environments a single GOOGLE_API_KEY is shared across Google APIs.
+  const googleMapsApiKey =
+    readTrimmed('GOOGLE_MAPS_API_KEY') ||
+    readTrimmed('GOOGLE_PLACES_API_KEY') ||
+    readTrimmed('GOOGLE_API_KEY') ||
+    readTrimmed('VITE_GOOGLE_MAPS_API_KEY');
 
   const thumbnailSigningSecretFromEnv = readTrimmed('THUMBNAIL_SIGNING_SECRET');
   const thumbnailSigningSecret = thumbnailSigningSecretFromEnv || jwtSecret;
