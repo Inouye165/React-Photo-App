@@ -195,6 +195,7 @@ export interface UserProfile {
   id: string
   username: string | null
   has_set_username: boolean
+  is_tutor?: boolean
   avatar_url?: string | null
   created_at?: string | null
   updated_at?: string | null

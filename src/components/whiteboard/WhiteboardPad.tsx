@@ -19,6 +19,7 @@ type WhiteboardPadProps = {
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
+  onHasBoardContentChange?: (hasContent: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
   onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
   onBoardFrameChange?: (rect: WhiteboardBoardFrame) => void
@@ -35,6 +36,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
+      onHasBoardContentChange,
       onBackgroundInfoChange,
       onBackgroundImageAssetChange,
       onBoardFrameChange,
@@ -75,6 +77,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             onViewModeChange={onViewModeChange}
             onBackgroundFitModeChange={onBackgroundFitModeChange}
             onHasBackgroundChange={onHasBackgroundChange}
+            onHasBoardContentChange={onHasBoardContentChange}
             onBackgroundInfoChange={onBackgroundInfoChange}
             onBackgroundImageAssetChange={onBackgroundImageAssetChange}
             onBoardFrameChange={onBoardFrameChange}

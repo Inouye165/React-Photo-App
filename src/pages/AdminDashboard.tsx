@@ -147,7 +147,22 @@ interface ActivityResponse {
   error?: string;
 }
 
-type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'activity' | 'access-requests';
+interface AdminUserListItem {
+  id: string;
+  email: string | null;
+  username: string | null;
+  role: string;
+  is_tutor: boolean;
+  created_at: string | null;
+}
+
+interface AdminUsersResponse {
+  success: boolean;
+  data?: AdminUserListItem[];
+  error?: string;
+}
+
+type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'activity' | 'access-requests' | 'users';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -213,6 +228,10 @@ export default function AdminDashboard() {
   const [accessRequestsOffset, setAccessRequestsOffset] = useState(0);
   const accessRequestsLimit = 50;
 
+  const [adminUsers, setAdminUsers] = useState<AdminUserListItem[]>([]);
+  const [adminUsersLoading, setAdminUsersLoading] = useState(false);
+  const [adminUsersError, setAdminUsersError] = useState<string | null>(null);
+
   // Verify admin role
   const isAdmin = user?.app_metadata?.role === 'admin';
 
@@ -231,6 +250,9 @@ export default function AdminDashboard() {
     }
     if (activeTab === 'access-requests') {
       fetchAccessRequests({ offset: 0, append: false });
+    }
+    if (activeTab === 'users') {
+      fetchAdminUsers();
     }
   }, [activeTab, stateFilter, reviewedFilter, feedbackStatusFilter]);
 
@@ -304,6 +326,53 @@ export default function AdminDashboard() {
       console.error('[admin] Fetch access requests error:', err);
     } finally {
       setAccessRequestsLoading(false);
+    }
+  };
+
+  const fetchAdminUsers = async () => {
+    setAdminUsersLoading(true);
+    setAdminUsersError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+      const data = await request<AdminUsersResponse>({
+        path: '/api/admin/users',
+        method: 'GET',
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch users');
+      }
+
+      setAdminUsers(data.data || []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load users';
+      setAdminUsersError(message);
+      console.error('[admin] Fetch users error:', err);
+    } finally {
+      setAdminUsersLoading(false);
+    }
+  };
+
+  const handleTutorToggle = async (userId: string, enabled: boolean) => {
+    try {
+      const headers = await getAuthHeadersAsync(false);
+      const data = await request<{ success: boolean; error?: string }>({
+        path: `/api/admin/users/${userId}/tutor`,
+        method: 'PATCH',
+        headers,
+        body: { enabled },
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to update tutor role');
+      }
+
+      setAdminUsers((prev) => prev.map((item) => (item.id === userId ? { ...item, is_tutor: enabled } : item)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update tutor role';
+      setAdminUsersError(message);
     }
   };
 
@@ -663,6 +732,19 @@ export default function AdminDashboard() {
               >
                 <History size={18} />
                 <span>Activity Log</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('users')}
+                className={`
+                  flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors
+                  ${activeTab === 'users'
+                    ? 'border-indigo-300 text-indigo-200'
+                    : 'border-transparent text-slate-300 hover:text-slate-100 hover:border-slate-500'
+                  }
+                `}
+              >
+                <Users size={18} />
+                <span>Users</span>
               </button>
             </nav>
           </div>
@@ -1179,6 +1261,57 @@ export default function AdminDashboard() {
                         </button>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'users' && (
+              <div>
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900">Tutor role assignment</h2>
+                  <p className="mt-1 text-sm text-gray-600">Promote trusted users into the tutor queue and Tutor Assist flow.</p>
+                </div>
+
+                {adminUsersLoading ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading users...</p>
+                  </div>
+                ) : adminUsersError ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                    <p className="font-medium">Error loading users</p>
+                    <p className="text-sm mt-1">{adminUsersError}</p>
+                  </div>
+                ) : adminUsers.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Users className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p>No users found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {adminUsers.map((item) => (
+                      <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                        <div>
+                          <div className="font-medium text-gray-900">{item.username || item.email || item.id}</div>
+                          <div className="mt-1 text-sm text-gray-500">
+                            {item.email || 'No email available'} · {item.role}
+                          </div>
+                        </div>
+
+                        <label className="inline-flex items-center gap-3 text-sm font-medium text-gray-700">
+                          <span>Tutor</span>
+                          <input
+                            type="checkbox"
+                            aria-label={`Tutor role for ${item.email || item.username || item.id}`}
+                            checked={item.is_tutor}
+                            onChange={(event) => {
+                              void handleTutorToggle(item.id, event.target.checked)
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

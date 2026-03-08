@@ -121,6 +121,25 @@ export type WhiteboardSessionDetails = {
   updated_at: string | null
 }
 
+export type WhiteboardHelpRequestStatus = 'pending' | 'claimed' | 'resolved' | 'cancelled'
+
+export type WhiteboardHelpRequest = {
+  id: string
+  boardId: string
+  studentUserId: string
+  studentUsername: string | null
+  claimedByUserId: string | null
+  claimedByUsername: string | null
+  requestText: string | null
+  problemDraft: string | null
+  status: WhiteboardHelpRequestStatus
+  createdAt: string
+  updatedAt: string
+  claimedAt: string | null
+  resolvedAt: string | null
+  boardName?: string | null
+}
+
 export type WhiteboardTutorRole = 'user' | 'assistant'
 
 export type TutorStepStatus = 'correct' | 'incorrect' | 'partial' | 'warning'
@@ -206,4 +225,9 @@ export type WhiteboardTutorRequest = {
   audienceAge?: number
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'
+}
+
+export type CreateWhiteboardHelpRequestPayload = {
+  requestText?: string
+  problemDraft?: string
 }

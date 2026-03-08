@@ -11,6 +11,8 @@ export interface TabbedPanelProps<T extends string = string> {
   tabs: TabConfig<T>[]
   /** Initially active tab */
   initialTab?: T
+  /** Controlled active tab */
+  activeTab?: T
   /** Callback when tab changes */
   onTabChange?: (tabId: T) => void
   /** Custom className for styling */
@@ -27,15 +29,17 @@ export interface TabbedPanelProps<T extends string = string> {
 function TabbedPanel<T extends string = string>({
   tabs,
   initialTab,
+  activeTab,
   onTabChange,
   className = '',
   renderTabButton,
   renderContent
 }: TabbedPanelProps<T>) {
-  const [activeTab, setActiveTab] = useState<T>(initialTab || tabs[0]?.id)
+  const [internalActiveTab, setInternalActiveTab] = useState<T>(activeTab || initialTab || tabs[0]?.id)
+  const resolvedActiveTab = activeTab || internalActiveTab
 
   const handleTabChange = (tabId: T) => {
-    setActiveTab(tabId)
+    setInternalActiveTab(tabId)
     onTabChange?.(tabId)
   }
 
@@ -55,7 +59,7 @@ function TabbedPanel<T extends string = string>({
 
   const defaultContent = () => {
     return tabs.map((tab) => {
-      const isActive = tab.id === activeTab
+      const isActive = tab.id === resolvedActiveTab
       return (
         <div key={tab.id} className={`${isActive ? 'flex' : 'hidden'} min-h-0 flex-1 flex-col`} aria-hidden={!isActive}>
           {tab.content || null}
@@ -69,7 +73,7 @@ function TabbedPanel<T extends string = string>({
       {/* Tab Headers */}
       <div className="flex border-b border-[#30363d]">
         {tabs.map((tab) => {
-          const isActive = tab.id === activeTab
+          const isActive = tab.id === resolvedActiveTab
           return (
             <div key={tab.id} className="flex-1">
               {renderTabButton 
@@ -83,7 +87,7 @@ function TabbedPanel<T extends string = string>({
 
       {/* Tab Content */}
       <div className="min-h-0 flex-1 overflow-hidden">
-        {renderContent ? renderContent(activeTab) : defaultContent()}
+        {renderContent ? renderContent(resolvedActiveTab) : defaultContent()}
       </div>
     </div>
   )

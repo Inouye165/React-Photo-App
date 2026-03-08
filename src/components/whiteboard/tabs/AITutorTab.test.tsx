@@ -4,42 +4,69 @@ import AITutorTab from './AITutorTab'
 import type { WhiteboardTutorResponse } from '../../../types/whiteboard'
 
 const analysis: WhiteboardTutorResponse = {
-  reply: 'Solve 2x = 10',
-  messages: [{ role: 'assistant', content: 'Solve 2x = 10' }],
-  analysisResult: null,
+  reply: 'Solve 5x - 17 = 18',
+  messages: [{ role: 'assistant', content: 'Solve 5x - 17 = 18' }],
+  analysisResult: {
+    problemText: 'Solve for x: 5x - 17 = 18',
+    finalAnswers: ['x = 7'],
+    overallSummary: 'Add 17 to both sides, then divide both sides by 5.',
+    regions: [],
+    steps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '5x - 17 = 18',
+        status: 'partial',
+        shortLabel: 'Add 17 to both sides',
+        kidFriendlyExplanation: 'Undo the minus 17 first so the x term is easier to isolate.',
+        correction: 'Write +17 on both sides before simplifying.',
+        hint: 'Try turning 5x - 17 = 18 into 5x = 35.',
+      },
+      {
+        id: 'step-2',
+        index: 1,
+        studentText: '5x = 35',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 5',
+        kidFriendlyExplanation: 'Now divide both sides by 5 to get x by itself.',
+      },
+    ],
+    validatorWarnings: [],
+    canAnimate: true,
+  },
   sections: {
-    problem: 'Solve 2x = 10',
-    stepsAnalysis: '1. Divide both sides by 2.\n2. Simplify.',
-    errorsFound: 'Step 1: Check your division carefully.',
+    problem: 'Solve for x: 5x - 17 = 18',
+    stepsAnalysis: '1. Add 17 to both sides.\n2. Divide both sides by 5.',
+    errorsFound: 'Step 1: The balancing move needs to be shown.',
     encouragement: 'Nice start.',
   },
-  problem: 'Solve 2x = 10',
-  correctSolution: 'x = 5',
+  problem: 'Solve for x: 5x - 17 = 18',
+  correctSolution: 'x = 7',
   scoreCorrect: 0,
   scoreTotal: 2,
   steps: [
     {
       number: 1,
-      label: 'Divide both sides by 2',
-      studentWork: '2x / 2 = 10 / 2',
+      label: 'Add 17 to both sides',
+      studentWork: '5x = 35',
       correct: false,
       neutral: false,
-      explanation: 'Divide both sides by 2 so the x term is by itself.',
+      explanation: 'Undo the subtraction before dividing.',
     },
     {
       number: 2,
-      label: 'Simplify both sides',
-      studentWork: 'x = 5',
-      correct: false,
+      label: 'Divide both sides by 5',
+      studentWork: 'x = 7',
+      correct: true,
       neutral: false,
-      explanation: 'Simplify each side after dividing.',
+      explanation: 'Now isolate x.',
     },
   ],
   errorsFound: [
     {
       stepNumber: 1,
-      issue: 'You skipped the balancing step.',
-      correction: 'divide both sides by 2 before simplifying',
+      issue: 'You skipped showing the balancing step.',
+      correction: 'add 17 to both sides before simplifying',
     },
   ],
   closingEncouragement: 'Nice start.',
@@ -50,7 +77,7 @@ function renderTab(overrides: Partial<React.ComponentProps<typeof AITutorTab>> =
     hasPhoto: false,
     hasInput: true,
     inputMode: 'text',
-    problemDraft: 'Solve 2x = 10',
+    problemDraft: 'Solve for x: 5x - 17 = 18',
     onProblemDraftChange: vi.fn(),
     analysis,
     isLoading: false,
@@ -70,76 +97,70 @@ function renderTab(overrides: Partial<React.ComponentProps<typeof AITutorTab>> =
   return render(<AITutorTab {...props} />)
 }
 
-describe('AITutorTab guided flow', () => {
-  it('shows an immediate lesson response after analysis is available', () => {
-    renderTab()
+describe('AITutorTab minimalist tutor assist', () => {
+  it('shows a single AI help action before analysis', () => {
+    const onStartAnalysis = vi.fn()
 
-    expect(screen.getByText('Here is the lesson plan')).toBeInTheDocument()
-    expect(screen.getByText(/Summary: Nice start\./i)).toBeInTheDocument()
-    expect(screen.getByText(/Type your attempt in Student Work/i)).toBeInTheDocument()
+    renderTab({
+      analysis: null,
+      hasInput: false,
+      hasPhoto: true,
+      inputMode: 'photo',
+      problemDraft: '',
+      onStartAnalysis,
+    })
+
+    expect(screen.getByText('Request AI help when you want a clean read of the problem, the steps, and the solution.')).toBeInTheDocument()
+    expect(screen.getByText('Problem')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Get AI help' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Get AI help' }))
+    expect(onStartAnalysis).toHaveBeenCalled()
   })
 
-  it('mirrors the problem input in text mode', () => {
+  it('lets the tutor minimally edit the problem text', () => {
     const onProblemDraftChange = vi.fn()
-    renderTab({ analysis: null, problemDraft: '', onProblemDraftChange, hasInput: false })
+    renderTab({ analysis: null, hasInput: true, problemDraft: 'Solve for x: 5x - 17 = 18', onProblemDraftChange })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Edit problem' }))
     fireEvent.change(screen.getByLabelText('Problem or question'), {
-      target: { value: 'What is 3x = 12?' },
+      target: { value: 'Solve for x: 5x - 17 = 23' },
     })
 
-    expect(onProblemDraftChange).toHaveBeenCalledWith('What is 3x = 12?')
+    expect(onProblemDraftChange).toHaveBeenCalledWith('Solve for x: 5x - 17 = 23')
   })
 
-  it('checks student work before offering the next action', () => {
+  it('shows the problem, steps, and solution after AI help runs', () => {
     renderTab()
 
-    fireEvent.change(screen.getByLabelText('Student work'), {
-      target: { value: 'I divided by 2 but got stuck after that.' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Check my work' }))
-
-    expect(screen.getByText('Work checked')).toBeInTheDocument()
-    expect(screen.getByText('Here’s what I notice')).toBeInTheDocument()
-    expect(screen.getByText(/I can see you started with/i)).toBeInTheDocument()
-    expect(screen.getByText(/Next action: revisit step 1/i)).toBeInTheDocument()
+    expect(screen.getByText('This is the problem as the AI understands it.')).toBeInTheDocument()
+    expect(screen.getByText('Solve for x: 5x - 17 = 18')).toBeInTheDocument()
+    expect(screen.getByText('Steps')).toBeInTheDocument()
+    expect(screen.getByText('1. Add 17 to both sides')).toBeInTheDocument()
+    expect(screen.getByText('2. Divide both sides by 5')).toBeInTheDocument()
+    expect(screen.getByText('Solution')).toBeInTheDocument()
+    expect(screen.getByText('x = 7')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Refresh AI help' })).toBeInTheDocument()
   })
 
-  it('publishes the latest lesson update when student work is checked', () => {
+  it('publishes a single primary lesson insight for the whiteboard overlay', () => {
     const onLessonMessageChange = vi.fn()
     renderTab({ onLessonMessageChange })
 
-    fireEvent.change(screen.getByLabelText('Student work'), {
-      target: { value: 'I divided by 2 but got stuck after that.' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Check my work' }))
-
-    expect(onLessonMessageChange).toHaveBeenCalled()
-    expect(onLessonMessageChange).toHaveBeenLastCalledWith(
+    expect(onLessonMessageChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'Here’s what I notice',
+        title: 'Add 17 to both sides',
         tone: 'assistant',
       }),
     )
   })
 
-  it('reveals a hint, then one step at a time, and finally a similar question', () => {
-    renderTab()
+  it('shows a retry state when AI help fails', () => {
+    const onRetryAnalysis = vi.fn()
+    renderTab({ analysis: null, error: 'Unable to read the problem.', onRetryAnalysis })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Give me a hint' }))
-    expect(screen.getByText('Hint shown')).toBeInTheDocument()
-    expect(screen.getByText('Hint')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show step 1' }))
-    expect(screen.getByText('Step 1 shown')).toBeInTheDocument()
-    expect(screen.getByText(/Step 1 ready to show on canvas/i)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show next step' }))
-    expect(screen.getByText('Solved')).toBeInTheDocument()
-    expect(screen.getByText(/Step 2 ready to show on canvas/i)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Similar question' }))
-    expect(screen.getByText('Similar practice ready')).toBeInTheDocument()
-    expect(screen.getByText('Practice Next')).toBeInTheDocument()
-    expect(screen.getAllByText(/Solve 3x = 12/i)).toHaveLength(2)
+    expect(screen.getByText('AI help failed')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onRetryAnalysis).toHaveBeenCalled()
   })
 })

@@ -42,22 +42,35 @@ function installMatchMediaMock(): void {
 
 const {
   analyzeWhiteboardPhoto,
+  createWhiteboardHelpRequest,
   ensureWhiteboardMembership,
   createWhiteboardInvite,
+  getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
   addRoomMember,
   listRoomMembers,
   searchUsers,
 } = vi.hoisted(() => ({
   analyzeWhiteboardPhoto: vi.fn(),
+  createWhiteboardHelpRequest: vi.fn(),
   ensureWhiteboardMembership: vi.fn(),
   createWhiteboardInvite: vi.fn(),
+  getActiveWhiteboardHelpRequest: vi.fn(),
   getWhiteboardSessionDetails: vi.fn(),
+  resolveWhiteboardHelpRequest: vi.fn(),
   updateWhiteboardTitle: vi.fn(),
   addRoomMember: vi.fn(),
   listRoomMembers: vi.fn(),
   searchUsers: vi.fn(),
+}))
+
+const mockAuthState = vi.hoisted(() => ({
+  value: {
+    user: { id: 'user-1', app_metadata: { role: 'user' } as { role: string; is_tutor?: boolean } },
+    profile: { is_tutor: false },
+  },
 }))
 
 const whiteboardPadState = vi.hoisted(() => ({
@@ -68,9 +81,12 @@ const whiteboardPadState = vi.hoisted(() => ({
 
 vi.mock('../api/whiteboards', () => ({
   analyzeWhiteboardPhoto,
+  createWhiteboardHelpRequest,
   ensureWhiteboardMembership,
   createWhiteboardInvite,
+  getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
 }))
 
@@ -81,9 +97,7 @@ vi.mock('../api/chat', () => ({
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { id: 'user-1' },
-  }),
+  useAuth: () => mockAuthState.value,
 }))
 
 vi.mock('../components/ChessUserMenu', () => ({
@@ -108,7 +122,23 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
     }, [props.analysis, props.onLessonMessageChange])
 
     return (
-      <div data-testid="right-side-panel">
+      <div data-testid="right-side-panel" id="whiteboard-side-panel" data-active-tab={props.activeTab ?? props.initialTab ?? ''}>
+        <div>Active tab: {props.activeTab ?? props.initialTab ?? ''}</div>
+        <div>Panel mode: {props.panelMode ?? 'student'}</div>
+        <div>Ready intent: {props.readyIntent ?? 'analyze'}</div>
+        <button type="button" onClick={() => props.onReadyIntentChange?.('analyze')}>Set analyze intent</button>
+        <button type="button" onClick={() => props.onReadyIntentChange?.('solve')}>Set solve intent</button>
+        <button type="button" onClick={() => props.onReadyIntentChange?.('steps')}>Set steps intent</button>
+        <textarea
+          aria-label="Problem or question"
+          value={props.problemDraft ?? ''}
+          onChange={(event) => props.onProblemDraftChange?.(event.target.value)}
+        />
+        <textarea
+          aria-label="What do you want help with"
+          value={props.helpRequestDraft ?? ''}
+          onChange={(event) => props.onHelpRequestDraftChange?.(event.target.value)}
+        />
         <input
           aria-label="Response age"
           value={props.responseAge ?? ''}
@@ -116,6 +146,9 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
         />
         <button type="button" onClick={() => props.onStartAnalysis?.()}>
           Start analysis
+        </button>
+        <button type="button" onClick={() => props.onSubmitHelpRequest?.()}>
+          Send help request
         </button>
       </div>
     )
@@ -147,6 +180,10 @@ describe('WhiteboardSessionPage', () => {
     vi.clearAllMocks()
     setViewport(1280)
     installMatchMediaMock()
+    mockAuthState.value = {
+      user: { id: 'user-1', app_metadata: { role: 'user' } },
+      profile: { is_tutor: false },
+    }
     whiteboardPadState.hasBackground = false
     whiteboardPadState.asset = null
     whiteboardPadState.clearBackground.mockReset()
@@ -198,6 +235,22 @@ describe('WhiteboardSessionPage', () => {
     })
     ensureWhiteboardMembership.mockResolvedValue({ ok: true })
     createWhiteboardInvite.mockResolvedValue({ joinUrl: 'https://example.com/join', expiresAt: new Date().toISOString() })
+    createWhiteboardHelpRequest.mockResolvedValue({
+      id: 'request-1',
+      boardId: 'board-1',
+      requesterUserId: 'user-1',
+      requesterUsername: 'ron',
+      requestText: 'Need help',
+      problemDraft: '',
+      status: 'pending',
+      claimedByUserId: null,
+      claimedByUsername: null,
+      claimedAt: null,
+      resolvedAt: null,
+      createdAt: '2026-03-08T00:00:00.000Z',
+      updatedAt: '2026-03-08T00:00:00.000Z',
+    })
+    getActiveWhiteboardHelpRequest.mockResolvedValue(null)
     getWhiteboardSessionDetails.mockResolvedValue({
       id: 'board-1',
       name: 'Whiteboard',
@@ -205,6 +258,7 @@ describe('WhiteboardSessionPage', () => {
       created_at: '2026-03-06T00:00:00.000Z',
       updated_at: '2026-03-06T00:00:00.000Z',
     })
+    resolveWhiteboardHelpRequest.mockResolvedValue(undefined)
     updateWhiteboardTitle.mockResolvedValue(undefined)
     addRoomMember.mockResolvedValue(undefined)
     searchUsers.mockResolvedValue([])
@@ -280,7 +334,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.queryByRole('button', { name: 'Rename whiteboard' })).not.toBeInTheDocument()
   })
 
-  it('shows the decluttered annotation toolbar when a background photo is present without auto-starting tutor analysis', async () => {
+  it('keeps desktop annotation controls on the canvas when a background photo is present without auto-starting tutor analysis', async () => {
     whiteboardPadState.hasBackground = true
     whiteboardPadState.asset = {
       dataUrl: 'data:image/png;base64,AAAA',
@@ -302,6 +356,7 @@ describe('WhiteboardSessionPage', () => {
 
     expect(screen.getByRole('button', { name: /invite/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /share/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /request help/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
     expect(screen.getByText('Pen')).toBeInTheDocument()
     expect(screen.getByText('Highlighter')).toBeInTheDocument()
@@ -325,6 +380,12 @@ describe('WhiteboardSessionPage', () => {
         </Routes>
       </MemoryRouter>,
     )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
@@ -405,7 +466,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.queryByRole('button', { name: /^Invite$/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Share$/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Homework' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'AI Tutor' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Help' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Chat' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Change Photo/i })).toBeInTheDocument()
 
@@ -420,7 +481,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByRole('menuitem', { name: 'Copy board link' })).toBeInTheDocument()
   })
 
-  it('switches from homework to the AI tutor tab when the mobile analyze button is tapped', async () => {
+  it('switches from homework to the help tab when the mobile request button is tapped', async () => {
     setViewport(390)
     whiteboardPadState.hasBackground = true
     whiteboardPadState.asset = {
@@ -438,22 +499,16 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Analyze photo' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Analyze photo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /See Homework/i })).toBeInTheDocument()
     })
 
-    expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
-      'board-1',
-      expect.objectContaining({
-        imageName: 'math.png',
-        mode: 'analysis',
-      }),
-    )
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 
   it('shows the updated mobile homework empty state when no photo is loaded', async () => {
@@ -481,7 +536,7 @@ describe('WhiteboardSessionPage', () => {
     inputClickSpy.mockRestore()
   })
 
-  it('submits typed homework text from the mobile homework tab', async () => {
+  it('routes typed homework text into a mobile help request for students', async () => {
     setViewport(390)
 
     render(
@@ -500,13 +555,26 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.change(screen.getByLabelText('Your Problem'), {
       target: { value: 'Solve 5x + 10 = 35' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Analyze problem' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
 
     await waitFor(() => {
-      expect(analyzeWhiteboardPhoto).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: /See Homework/i })).toBeInTheDocument()
     })
 
-    expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+    fireEvent.click(screen.getByRole('button', { name: 'Send help request' }))
+
+    await waitFor(() => {
+      expect(createWhiteboardHelpRequest).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          requestText: '',
+          problemDraft: 'Solve 5x + 10 = 35',
+        }),
+      )
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+    expect(createWhiteboardHelpRequest).not.toHaveBeenCalledWith(
       'board-1',
       expect.objectContaining({
         inputMode: 'text',
@@ -514,10 +582,9 @@ describe('WhiteboardSessionPage', () => {
         mode: 'analysis',
       }),
     )
-    expect(analyzeWhiteboardPhoto.mock.calls.at(-1)?.[1]).not.toHaveProperty('imageDataUrl')
   })
 
-  it('switches the desktop whiteboard into text input mode', async () => {
+  it('does not show the legacy desktop switch-to-text button', async () => {
     setViewport(1280)
 
     render(
@@ -529,14 +596,10 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Switch to text input/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Switch to text input/i }))
-
-    const desktopTextarea = document.querySelector('textarea')
-    expect(desktopTextarea).not.toBeNull()
-    expect(desktopTextarea).toHaveAttribute('placeholder', TEXT_MODE_PLACEHOLDER)
+    expect(screen.queryByRole('button', { name: /Switch to text input/i })).not.toBeInTheDocument()
   })
 
   it('shows the structured example placeholder in mobile text mode', async () => {
@@ -594,7 +657,7 @@ describe('WhiteboardSessionPage', () => {
     })
   })
 
-  it('shows the lesson tracker in the main workspace for text-mode analysis', async () => {
+  it('opens help intentionally and lands on the help request tab for students', async () => {
     render(
       <MemoryRouter initialEntries={['/whiteboards/board-1']}>
         <Routes>
@@ -604,28 +667,195 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('right-side-panel')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Active tab: help-request')).toBeInTheDocument()
+    expect(screen.getByText('Panel mode: student')).toBeInTheDocument()
+  })
+
+  it('submits a help request instead of running tutor analysis for students', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
+
+    await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Switch to text input/i }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
+      target: { value: 'Help me solve 2x = 10' },
+    })
+
+    expect(screen.getByTestId('whiteboard-pad')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send help request' }))
 
     await waitFor(() => {
-      expect(document.querySelector('textarea')).not.toBeNull()
+      expect(createWhiteboardHelpRequest).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          requestText: 'Help me solve 2x = 10',
+          problemDraft: '',
+        }),
+      )
     })
 
-    const textarea = document.querySelector('textarea') as HTMLTextAreaElement
-    expect(textarea).toHaveAttribute('placeholder', TEXT_MODE_PLACEHOLDER)
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+    expect(screen.getByText('Help request waiting in queue')).toBeInTheDocument()
+  })
 
-    fireEvent.change(textarea, {
-      target: { value: 'Solve 2x = 10' },
+  it('wires solve and step-by-step help intents into the tutor analysis request', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
     })
 
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
+      target: { value: 'Show me only the next move' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set solve intent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Lesson Tracker')).toBeInTheDocument()
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('Please help me solve this without jumping straight to the final answer.'),
+            }),
+          ],
+        }),
+      )
     })
 
-    expect(screen.getByText('Here is the lesson plan')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Set steps intent' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenLastCalledWith(
+        'board-1',
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('Please explain this one step at a time so I can work along on the board.'),
+            }),
+          ],
+        }),
+      )
+    })
+  })
+
+  it('shows tutor assist mode and lets tutors resolve claimed requests', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    getActiveWhiteboardHelpRequest.mockResolvedValueOnce({
+      id: 'request-claimed',
+      boardId: 'board-1',
+      requesterUserId: 'user-1',
+      requesterUsername: 'ron',
+      requestText: 'Please check my work',
+      problemDraft: '2x = 10',
+      status: 'claimed',
+      claimedByUserId: 'user-2',
+      claimedByUsername: 'Tutor Kim',
+      claimedAt: '2026-03-08T00:10:00.000Z',
+      resolvedAt: null,
+      createdAt: '2026-03-08T00:00:00.000Z',
+      updatedAt: '2026-03-08T00:10:00.000Z',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Tutor engaged')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Request help' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Active tab: chat')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve request' }))
+
+    await waitFor(() => {
+      expect(resolveWhiteboardHelpRequest).toHaveBeenCalledWith('request-claimed')
+    })
+  })
+
+  it('keeps the desktop whiteboard full-width until the optional side panel is opened', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('right-side-panel')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Hide panel' })).toBeInTheDocument()
   })
 })

@@ -28,6 +28,15 @@ const JoinInviteBodySchema = z.object({
   token: z.string().min(1).max(2048),
 });
 
+const HelpRequestIdParamsSchema = z.object({
+  requestId: z.string().uuid(),
+});
+
+const WhiteboardHelpRequestBodySchema = z.object({
+  requestText: z.string().trim().max(2000).optional(),
+  problemDraft: z.string().trim().max(12000).optional(),
+});
+
 const WhiteboardTutorMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string().trim().min(1).max(4000),
@@ -150,15 +159,39 @@ const WhiteboardTutorTranscriptionSchema = z.object({
 type AuthenticatedRequest = Request & {
   user?: {
     id?: string;
+    role?: string;
+    isTutor?: boolean;
+    app_metadata?: {
+      role?: string;
+      is_tutor?: boolean;
+    };
   };
   validated?: {
     params?: {
       boardId: string;
+      requestId?: string;
     };
     body?: {
       token: string;
     };
   };
+};
+
+type WhiteboardHelpRequestRow = {
+  id: string;
+  board_id: string;
+  student_user_id: string;
+  claimed_by_user_id: string | null;
+  status: 'pending' | 'claimed' | 'resolved' | 'cancelled';
+  request_text: string | null;
+  problem_draft: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  claimed_at: string | Date | null;
+  resolved_at: string | Date | null;
+  board_name?: string | null;
+  student_username?: string | null;
+  claimed_by_username?: string | null;
 };
 
 type WhiteboardEventRow = {
@@ -815,6 +848,93 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
   }
 }
 
+function isTutorOrAdmin(req: AuthenticatedRequest): boolean {
+  return req.user?.role === 'admin' || req.user?.isTutor === true || req.user?.app_metadata?.is_tutor === true;
+}
+
+function toIsoString(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function normalizeHelpRequest(row: WhiteboardHelpRequestRow | null | undefined) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    boardId: row.board_id,
+    studentUserId: row.student_user_id,
+    studentUsername: row.student_username ?? null,
+    claimedByUserId: row.claimed_by_user_id ?? null,
+    claimedByUsername: row.claimed_by_username ?? null,
+    requestText: row.request_text ?? null,
+    problemDraft: row.problem_draft ?? null,
+    status: row.status,
+    createdAt: toIsoString(row.created_at) ?? new Date().toISOString(),
+    updatedAt: toIsoString(row.updated_at) ?? new Date().toISOString(),
+    claimedAt: toIsoString(row.claimed_at),
+    resolvedAt: toIsoString(row.resolved_at),
+    boardName: row.board_name ?? null,
+  };
+}
+
+async function fetchHelpRequestById(db: Knex, requestId: string): Promise<ReturnType<typeof normalizeHelpRequest>> {
+  const row = await db('whiteboard_help_requests as hr')
+    .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+    .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+    .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+    .select(
+      'hr.id',
+      'hr.board_id',
+      'hr.student_user_id',
+      'hr.claimed_by_user_id',
+      'hr.status',
+      'hr.request_text',
+      'hr.problem_draft',
+      'hr.created_at',
+      'hr.updated_at',
+      'hr.claimed_at',
+      'hr.resolved_at',
+      'r.name as board_name',
+      'student_user.username as student_username',
+      'tutor_user.username as claimed_by_username',
+    )
+    .where('hr.id', requestId)
+    .first();
+
+  return normalizeHelpRequest((row as WhiteboardHelpRequestRow | undefined) ?? null);
+}
+
+async function fetchActiveHelpRequestForBoard(db: Knex, boardId: string): Promise<ReturnType<typeof normalizeHelpRequest>> {
+  const row = await db('whiteboard_help_requests as hr')
+    .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+    .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+    .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+    .select(
+      'hr.id',
+      'hr.board_id',
+      'hr.student_user_id',
+      'hr.claimed_by_user_id',
+      'hr.status',
+      'hr.request_text',
+      'hr.problem_draft',
+      'hr.created_at',
+      'hr.updated_at',
+      'hr.claimed_at',
+      'hr.resolved_at',
+      'r.name as board_name',
+      'student_user.username as student_username',
+      'tutor_user.username as claimed_by_username',
+    )
+    .where('hr.board_id', boardId)
+    .whereIn('hr.status', ['pending', 'claimed'])
+    .orderBy('hr.created_at', 'desc')
+    .first();
+
+  return normalizeHelpRequest((row as WhiteboardHelpRequestRow | undefined) ?? null);
+}
+
 async function fetchHistory(db: Knex, boardId: string): Promise<{ events: WhiteboardEventRow[]; cursor: HistoryCursor }> {
   let rows: WhiteboardEventRow[] = [];
   try {
@@ -1164,7 +1284,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   };
 
   router.get(
-    '/:boardId',
+    '/:boardId([0-9a-fA-F-]{36})',
     validateRequest({ params: BoardIdParamsSchema }),
     async (req: AuthenticatedRequest, res: Response) => {
       try {
@@ -1427,6 +1547,238 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
     }
   );
 
+  router.get('/help-requests', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user?.id ? String(req.user.id) : '';
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      if (!isTutorOrAdmin(req)) {
+        return res.status(403).json({ success: false, error: 'Tutor access required' });
+      }
+
+      const requestedStatus = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : 'pending';
+      const status = requestedStatus === 'claimed' ? 'claimed' : 'pending';
+      const mine = String(req.query?.mine || '').toLowerCase() === 'true';
+
+      let query = db('whiteboard_help_requests as hr')
+        .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+        .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+        .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+        .select(
+          'hr.id',
+          'hr.board_id',
+          'hr.student_user_id',
+          'hr.claimed_by_user_id',
+          'hr.status',
+          'hr.request_text',
+          'hr.problem_draft',
+          'hr.created_at',
+          'hr.updated_at',
+          'hr.claimed_at',
+          'hr.resolved_at',
+          'r.name as board_name',
+          'student_user.username as student_username',
+          'tutor_user.username as claimed_by_username',
+        )
+        .where('hr.status', status)
+        .orderBy('hr.created_at', 'asc');
+
+      if (status === 'claimed' && mine && req.user?.role !== 'admin') {
+        query = query.where('hr.claimed_by_user_id', userId);
+      }
+
+      const rows = await query;
+      return res.status(200).json((rows as WhiteboardHelpRequestRow[]).map((row) => normalizeHelpRequest(row)));
+    } catch (error) {
+      console.error('[WB-HELP] queue-list failed', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  router.get(
+    '/:boardId/help-requests/active',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const helpRequest = await fetchActiveHelpRequestForBoard(db, boardId);
+        if (!helpRequest) {
+          return res.status(404).json({ success: false, error: 'No active help request' });
+        }
+
+        return res.status(200).json(helpRequest);
+      } catch (error) {
+        console.error('[WB-HELP] active-fetch failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.post(
+    '/:boardId/help-requests',
+    validateRequest({ params: BoardIdParamsSchema, body: WhiteboardHelpRequestBodySchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Students create help requests; tutors use the queue.' });
+        }
+
+        const existing = await fetchActiveHelpRequestForBoard(db, boardId);
+        if (existing) {
+          return res.status(409).json({ success: false, error: 'This whiteboard already has an active help request.', data: existing });
+        }
+
+        const body = req.body as z.infer<typeof WhiteboardHelpRequestBodySchema>;
+        const requestText = body.requestText?.trim() || 'Help requested on this whiteboard.';
+        const problemDraft = body.problemDraft?.trim() || null;
+
+        const inserted = await db('whiteboard_help_requests')
+          .insert({
+            board_id: boardId,
+            student_user_id: userId,
+            request_text: requestText,
+            problem_draft: problemDraft,
+            status: 'pending',
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          })
+          .returning('id');
+
+        const firstInserted = Array.isArray(inserted) ? inserted[0] : inserted;
+        const requestId = typeof firstInserted === 'string'
+          ? firstInserted
+          : String(firstInserted?.id ?? '');
+
+        const created = await fetchHelpRequestById(db, requestId);
+        return res.status(201).json(created);
+      } catch (error) {
+        console.error('[WB-HELP] create failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.post(
+    '/help-requests/:requestId/claim',
+    validateRequest({ params: HelpRequestIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
+
+        const requestId = req.validated?.params?.requestId;
+        if (!requestId) {
+          return res.status(400).json({ success: false, error: 'Invalid request' });
+        }
+
+        const existing = await fetchHelpRequestById(db, requestId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: 'Help request not found' });
+        }
+
+        if (existing.status === 'resolved' || existing.status === 'cancelled') {
+          return res.status(409).json({ success: false, error: 'This help request is no longer active.' });
+        }
+
+        if (existing.status === 'claimed' && existing.claimedByUserId && existing.claimedByUserId !== userId && req.user?.role !== 'admin') {
+          return res.status(409).json({ success: false, error: 'This help request has already been claimed.' });
+        }
+
+        await db.transaction(async (trx) => {
+          await trx('whiteboard_help_requests')
+            .where({ id: requestId })
+            .update({
+              status: 'claimed',
+              claimed_by_user_id: userId,
+              claimed_at: trx.fn.now(),
+              updated_at: trx.fn.now(),
+            });
+
+          const membership = await trx('room_members')
+            .where({ room_id: existing.boardId, user_id: userId })
+            .first();
+
+          if (!membership) {
+            await trx('room_members').insert({
+              room_id: existing.boardId,
+              user_id: userId,
+              is_owner: false,
+            });
+          }
+        });
+
+        const claimed = await fetchHelpRequestById(db, requestId);
+        return res.status(200).json(claimed);
+      } catch (error) {
+        console.error('[WB-HELP] claim failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.patch(
+    '/help-requests/:requestId/resolve',
+    validateRequest({ params: HelpRequestIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
+
+        const requestId = req.validated?.params?.requestId;
+        if (!requestId) {
+          return res.status(400).json({ success: false, error: 'Invalid request' });
+        }
+
+        const existing = await fetchHelpRequestById(db, requestId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: 'Help request not found' });
+        }
+
+        if (req.user?.role !== 'admin' && existing.claimedByUserId && existing.claimedByUserId !== userId) {
+          return res.status(403).json({ success: false, error: 'Only the claimed tutor can resolve this help request.' });
+        }
+
+        await db('whiteboard_help_requests')
+          .where({ id: requestId })
+          .update({
+            status: 'resolved',
+            resolved_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          });
+
+        const resolved = await fetchHelpRequestById(db, requestId);
+        return res.status(200).json(resolved);
+      } catch (error) {
+        console.error('[WB-HELP] resolve failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
   router.post(
     '/:boardId/tutor',
     validateRequest({ params: BoardIdParamsSchema, body: WhiteboardTutorBodySchema }),
@@ -1434,6 +1786,10 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       try {
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
 
         const body = req.body as WhiteboardTutorBody;
         const tutorResponse = await callWhiteboardTutor(body);

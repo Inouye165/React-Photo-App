@@ -1063,7 +1063,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [boards, setBoards] = useState<any[]>([])
   const [membersByBoard, setMembersByBoard] = useState<Record<string, RoomMemberDetails[]>>({})
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1073,6 +1073,11 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
   const prefersReducedMotion = useReducedMotion()
   const isDesktop = useDesktopLayout()
+  const canUseTutorQueue = user?.app_metadata?.role === 'admin' || user?.app_metadata?.is_tutor === true || profile?.is_tutor === true
+
+  const handleOpenTutorQueue = useCallback(() => {
+    navigate('/tutor/queue')
+  }, [navigate])
 
   useEffect(() => {
     console.log('[WB-HUB] ambient-glow version 1.00 loaded')
@@ -1282,13 +1287,23 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
               <span className="text-xs font-medium">Home</span>
             </button>
             <h1 className="text-lg font-semibold">Whiteboards</h1>
-            <button 
-              onClick={handleCreate} 
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#F59E0B] hover:bg-[#d97706] transition-colors text-black font-medium text-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {canUseTutorQueue ? (
+                <button
+                  onClick={handleOpenTutorQueue}
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors text-white font-medium text-xs"
+                >
+                  <span>Queue</span>
+                </button>
+              ) : null}
+              <button 
+                onClick={handleCreate} 
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#F59E0B] hover:bg-[#d97706] transition-colors text-black font-medium text-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create</span>
+              </button>
+            </div>
           </div>
           
           {/* Mobile Search */}
@@ -1359,6 +1374,14 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
 
           {/* Right: Create Button & User Menu */}
           <div className="flex items-center gap-3">
+            {canUseTutorQueue ? (
+              <button
+                onClick={handleOpenTutorQueue}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors text-white font-medium"
+              >
+                Tutor Queue
+              </button>
+            ) : null}
             <button 
               onClick={handleCreate} 
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#F59E0B] hover:bg-[#d97706] transition-colors text-black font-medium"
