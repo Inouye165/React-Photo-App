@@ -668,7 +668,7 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
   try {
     const { data: roomData, error: roomErr } = await supabase
       .from('rooms')
-      .select('id')
+      .select('id,created_by')
       .eq('id', boardId)
       .maybeSingle();
 
@@ -688,17 +688,26 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
       return false;
     }
 
+    const createdBy = String((roomData as { created_by?: unknown } | null)?.created_by ?? '') || userId;
+
     await db('rooms')
-      .insert({ id: roomId })
+      .insert({ id: roomId, created_by: createdBy })
       .onConflict('id')
       .ignore();
 
-    await ensureLocalUserShadow(db, userId);
+    try {
+      await db('room_members')
+        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
+        .onConflict(['room_id', 'user_id'])
+        .ignore();
+    } catch (error) {
+      if (!isRoomMemberUserForeignKeyError(error)) throw error;
 
-    await db('room_members')
-      .insert({ room_id: roomId, user_id: userId, is_owner: true })
-      .onConflict(['room_id', 'user_id'])
-      .ignore();
+      console.warn('[WB-JOIN] invite-room-hydrate:owner-membership-skipped', {
+        boardId,
+        userId: createdBy,
+      });
+    }
 
     console.info('[WB-JOIN] invite-room-hydrate:success', { boardId, userId });
     return true;
@@ -744,12 +753,19 @@ async function hydrateMissingRoomForJoin(db: Knex, boardId: string, inviteCreate
     await db('rooms').insert(roomInsert).onConflict('id').ignore();
 
     if (createdBy) {
-      await ensureLocalUserShadow(db, createdBy);
+      try {
+        await db('room_members')
+          .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
+          .onConflict(['room_id', 'user_id'])
+          .ignore();
+      } catch (error) {
+        if (!isRoomMemberUserForeignKeyError(error)) throw error;
 
-      await db('room_members')
-        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
-        .onConflict(['room_id', 'user_id'])
-        .ignore();
+        console.warn('[WB-JOIN] join-room-hydrate:owner-membership-skipped', {
+          boardId,
+          userId: createdBy,
+        });
+      }
     }
 
     console.info('[WB-JOIN] join-room-hydrate:success', { boardId });
