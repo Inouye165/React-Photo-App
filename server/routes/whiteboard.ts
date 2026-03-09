@@ -841,8 +841,32 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
     const matched = Boolean(data?.room_id);
     if (matched) {
       console.log('[WB-HTTP] membership-fallback matched', { boardId, userId });
+      return true;
     }
-    return matched;
+
+    const { data: roomData, error: roomError } = await supabase
+      .from('rooms')
+      .select('created_by')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomError) {
+      console.warn('[WB-HTTP] membership-owner-fallback query failed', {
+        boardId,
+        userId,
+        code: roomError.code,
+        message: roomError.message,
+      });
+      return false;
+    }
+
+    const ownerMatched = String((roomData as { created_by?: unknown } | null)?.created_by ?? '') === userId;
+    if (ownerMatched) {
+      console.log('[WB-HTTP] membership-owner-fallback matched', { boardId, userId });
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }

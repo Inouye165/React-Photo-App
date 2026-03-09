@@ -3,6 +3,12 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
 import request from 'supertest'
 
+const mockFrom = jest.fn()
+
+jest.mock('../lib/supabaseClient', () => ({
+  from: mockFrom,
+}))
+
 const createWhiteboardRouter = require('../routes/whiteboard')
 
 type RoomMember = { room_id: string; user_id: string }
@@ -56,6 +62,16 @@ function createTestApp({ db, authMode }: { db: ReturnType<typeof createMockDb>; 
 
 describe('whiteboard ws-token route', () => {
   const boardId = '11111111-1111-4111-8111-111111111111'
+  const originalNodeEnv = process.env.NODE_ENV
+
+  beforeEach(() => {
+    process.env.NODE_ENV = 'test'
+    mockFrom.mockReset()
+  })
+
+  afterAll(() => {
+    process.env.NODE_ENV = originalNodeEnv
+  })
 
   test('returns ws-ticket for authenticated member', async () => {
     const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
@@ -75,5 +91,45 @@ describe('whiteboard ws-token route', () => {
 
     const res = await request(app).post(`/api/whiteboard/${boardId}/ws-token`)
     expect(res.status).toBe(404)
+  })
+
+  test('returns ws-ticket for board creator when membership row is not mirrored yet', async () => {
+    process.env.NODE_ENV = 'development'
+
+    mockFrom.mockImplementation((tableName: string) => {
+      if (tableName === 'room_members') {
+        return {
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({
+              eq: jest.fn(() => ({
+                maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+              })),
+            })),
+          })),
+        }
+      }
+
+      if (tableName === 'rooms') {
+        return {
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({
+              maybeSingle: jest.fn().mockResolvedValue({ data: { created_by: 'user-1' }, error: null }),
+            })),
+          })),
+        }
+      }
+
+      throw new Error(`Unexpected supabase table: ${tableName}`)
+    })
+
+    const db = createMockDb({ roomMembers: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app).post(`/api/whiteboard/${boardId}/ws-token`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(mockFrom).toHaveBeenNthCalledWith(1, 'room_members')
+    expect(mockFrom).toHaveBeenNthCalledWith(2, 'rooms')
   })
 })
