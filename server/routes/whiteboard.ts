@@ -28,6 +28,15 @@ const JoinInviteBodySchema = z.object({
   token: z.string().min(1).max(2048),
 });
 
+const HelpRequestIdParamsSchema = z.object({
+  requestId: z.string().uuid(),
+});
+
+const WhiteboardHelpRequestBodySchema = z.object({
+  requestText: z.string().trim().max(2000).optional(),
+  problemDraft: z.string().trim().max(12000).optional(),
+});
+
 const WhiteboardTutorMessageSchema = z.object({
   role: z.enum(['user', 'assistant']),
   content: z.string().trim().min(1).max(4000),
@@ -150,15 +159,39 @@ const WhiteboardTutorTranscriptionSchema = z.object({
 type AuthenticatedRequest = Request & {
   user?: {
     id?: string;
+    role?: string;
+    isTutor?: boolean;
+    app_metadata?: {
+      role?: string;
+      is_tutor?: boolean;
+    };
   };
   validated?: {
     params?: {
       boardId: string;
+      requestId?: string;
     };
     body?: {
       token: string;
     };
   };
+};
+
+type WhiteboardHelpRequestRow = {
+  id: string;
+  board_id: string;
+  student_user_id: string;
+  claimed_by_user_id: string | null;
+  status: 'pending' | 'claimed' | 'resolved' | 'cancelled';
+  request_text: string | null;
+  problem_draft: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  claimed_at: string | Date | null;
+  resolved_at: string | Date | null;
+  board_name?: string | null;
+  student_username?: string | null;
+  claimed_by_username?: string | null;
 };
 
 type WhiteboardEventRow = {
@@ -334,15 +367,38 @@ function extractJsonText(rawText: string): string {
   return trimmed;
 }
 
+function sanitizeJsonText(rawText: string): string {
+  return rawText
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+}
+
+function isInvalidJsonTutorError(error: unknown): boolean {
+  return error instanceof Error && /invalid json/i.test(error.message);
+}
+
 function parseJsonResponse<T>(rawText: string, schema: z.ZodType<T>, label: string): T {
-  try {
-    const parsed = JSON.parse(extractJsonText(rawText));
-    return schema.parse(parsed);
-  } catch (error) {
-    const wrappedError = new Error(`${label} returned invalid JSON`) as Error & { statusCode?: number };
-    wrappedError.statusCode = 502;
-    throw wrappedError;
+  const candidates = [
+    extractJsonText(rawText),
+    sanitizeJsonText(extractJsonText(rawText)),
+    sanitizeJsonText(rawText.trim()),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return schema.parse(parsed);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        break;
+      }
+    }
   }
+
+  const wrappedError = new Error(`${label} returned invalid JSON`) as Error & { statusCode?: number };
+  wrappedError.statusCode = 502;
+  throw wrappedError;
 }
 
 function buildPassTwoUserPrompt(body: WhiteboardTutorBody, transcription: WhiteboardTutorTranscription): string {
@@ -432,6 +488,7 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 1200,
+          responseMimeType: 'application/json',
         },
       });
 
@@ -444,6 +501,10 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
     } catch (error) {
       const errorInfo = extractGeminiErrorInfo(error);
       lastError = errorInfo;
+
+      if (!isLastCandidate && isInvalidJsonTutorError(error)) {
+        continue;
+      }
 
       if (!isLastCandidate && isModelNotFoundError(errorInfo)) {
         continue;
@@ -618,11 +679,71 @@ function isRoomMemberUserForeignKeyError(error: unknown): boolean {
   return typeof dbError.message === 'string' && dbError.message.includes('room_members_user_id_foreign');
 }
 
+async function ensureLocalUserShadow(db: Knex, userId: string): Promise<void> {
+  if (!userId) return;
+
+  await db('users')
+    .insert({
+      id: userId,
+      created_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    })
+    .onConflict('id')
+    .ignore();
+}
+
+async function ensureRoomMembershipWithFallback(
+  db: Knex,
+  roomId: string,
+  userId: string,
+  isOwner: boolean,
+  logLabels: {
+    localFkUserMissing: string;
+    supabaseFallbackFailed: string;
+    supabaseFallbackSuccess: string;
+  },
+): Promise<void> {
+  try {
+    await db('room_members')
+      .insert({ room_id: roomId, user_id: userId, is_owner: isOwner })
+      .onConflict(['room_id', 'user_id'])
+      .ignore();
+  } catch (membershipError) {
+    if (!isRoomMemberUserForeignKeyError(membershipError)) {
+      throw membershipError;
+    }
+
+    console.warn(logLabels.localFkUserMissing, {
+      roomId,
+      userId,
+    });
+
+    const { error: supabaseMembershipError } = await supabase
+      .from('room_members')
+      .insert({ room_id: roomId, user_id: userId, is_owner: isOwner });
+
+    if (supabaseMembershipError && supabaseMembershipError.code !== '23505') {
+      console.warn(logLabels.supabaseFallbackFailed, {
+        roomId,
+        userId,
+        code: supabaseMembershipError.code,
+        message: supabaseMembershipError.message,
+      });
+      throw membershipError;
+    }
+
+    console.info(logLabels.supabaseFallbackSuccess, {
+      roomId,
+      userId,
+    });
+  }
+}
+
 async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: string): Promise<boolean> {
   try {
     const { data: roomData, error: roomErr } = await supabase
       .from('rooms')
-      .select('id')
+      .select('id,created_by')
       .eq('id', boardId)
       .maybeSingle();
 
@@ -642,15 +763,26 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
       return false;
     }
 
+    const createdBy = String((roomData as { created_by?: unknown } | null)?.created_by ?? '') || userId;
+
     await db('rooms')
-      .insert({ id: roomId })
+      .insert({ id: roomId, created_by: createdBy })
       .onConflict('id')
       .ignore();
 
-    await db('room_members')
-      .insert({ room_id: roomId, user_id: userId, is_owner: true })
-      .onConflict(['room_id', 'user_id'])
-      .ignore();
+    try {
+      await db('room_members')
+        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
+        .onConflict(['room_id', 'user_id'])
+        .ignore();
+    } catch (error) {
+      if (!isRoomMemberUserForeignKeyError(error)) throw error;
+
+      console.warn('[WB-JOIN] invite-room-hydrate:owner-membership-skipped', {
+        boardId,
+        userId: createdBy,
+      });
+    }
 
     console.info('[WB-JOIN] invite-room-hydrate:success', { boardId, userId });
     return true;
@@ -696,10 +828,19 @@ async function hydrateMissingRoomForJoin(db: Knex, boardId: string, inviteCreate
     await db('rooms').insert(roomInsert).onConflict('id').ignore();
 
     if (createdBy) {
-      await db('room_members')
-        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
-        .onConflict(['room_id', 'user_id'])
-        .ignore();
+      try {
+        await db('room_members')
+          .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
+          .onConflict(['room_id', 'user_id'])
+          .ignore();
+      } catch (error) {
+        if (!isRoomMemberUserForeignKeyError(error)) throw error;
+
+        console.warn('[WB-JOIN] join-room-hydrate:owner-membership-skipped', {
+          boardId,
+          userId: createdBy,
+        });
+      }
     }
 
     console.info('[WB-JOIN] join-room-hydrate:success', { boardId });
@@ -808,11 +949,122 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
     const matched = Boolean(data?.room_id);
     if (matched) {
       console.log('[WB-HTTP] membership-fallback matched', { boardId, userId });
+      return true;
     }
-    return matched;
+
+    const { data: roomData, error: roomError } = await supabase
+      .from('rooms')
+      .select('created_by')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomError) {
+      console.warn('[WB-HTTP] membership-owner-fallback query failed', {
+        boardId,
+        userId,
+        code: roomError.code,
+        message: roomError.message,
+      });
+      return false;
+    }
+
+    const ownerMatched = String((roomData as { created_by?: unknown } | null)?.created_by ?? '') === userId;
+    if (ownerMatched) {
+      console.log('[WB-HTTP] membership-owner-fallback matched', { boardId, userId });
+      return true;
+    }
+
+    return false;
   } catch {
     return false;
   }
+}
+
+function isTutorOrAdmin(req: AuthenticatedRequest): boolean {
+  return req.user?.role === 'admin' || req.user?.isTutor === true || req.user?.app_metadata?.is_tutor === true;
+}
+
+function toIsoString(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function normalizeHelpRequest(row: WhiteboardHelpRequestRow | null | undefined) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    boardId: row.board_id,
+    studentUserId: row.student_user_id,
+    studentUsername: row.student_username ?? null,
+    claimedByUserId: row.claimed_by_user_id ?? null,
+    claimedByUsername: row.claimed_by_username ?? null,
+    requestText: row.request_text ?? null,
+    problemDraft: row.problem_draft ?? null,
+    status: row.status,
+    createdAt: toIsoString(row.created_at) ?? new Date().toISOString(),
+    updatedAt: toIsoString(row.updated_at) ?? new Date().toISOString(),
+    claimedAt: toIsoString(row.claimed_at),
+    resolvedAt: toIsoString(row.resolved_at),
+    boardName: row.board_name ?? null,
+  };
+}
+
+async function fetchHelpRequestById(db: Knex, requestId: string): Promise<ReturnType<typeof normalizeHelpRequest>> {
+  const row = await db('whiteboard_help_requests as hr')
+    .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+    .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+    .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+    .select(
+      'hr.id',
+      'hr.board_id',
+      'hr.student_user_id',
+      'hr.claimed_by_user_id',
+      'hr.status',
+      'hr.request_text',
+      'hr.problem_draft',
+      'hr.created_at',
+      'hr.updated_at',
+      'hr.claimed_at',
+      'hr.resolved_at',
+      'r.name as board_name',
+      'student_user.username as student_username',
+      'tutor_user.username as claimed_by_username',
+    )
+    .where('hr.id', requestId)
+    .first();
+
+  return normalizeHelpRequest((row as WhiteboardHelpRequestRow | undefined) ?? null);
+}
+
+async function fetchActiveHelpRequestForBoard(db: Knex, boardId: string): Promise<ReturnType<typeof normalizeHelpRequest>> {
+  const row = await db('whiteboard_help_requests as hr')
+    .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+    .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+    .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+    .select(
+      'hr.id',
+      'hr.board_id',
+      'hr.student_user_id',
+      'hr.claimed_by_user_id',
+      'hr.status',
+      'hr.request_text',
+      'hr.problem_draft',
+      'hr.created_at',
+      'hr.updated_at',
+      'hr.claimed_at',
+      'hr.resolved_at',
+      'r.name as board_name',
+      'student_user.username as student_username',
+      'tutor_user.username as claimed_by_username',
+    )
+    .where('hr.board_id', boardId)
+    .whereIn('hr.status', ['pending', 'claimed'])
+    .orderBy('hr.created_at', 'desc')
+    .first();
+
+  return normalizeHelpRequest((row as WhiteboardHelpRequestRow | undefined) ?? null);
 }
 
 async function fetchHistory(db: Knex, boardId: string): Promise<{ events: WhiteboardEventRow[]; cursor: HistoryCursor }> {
@@ -1164,7 +1416,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   };
 
   router.get(
-    '/:boardId',
+    '/:boardId([0-9a-fA-F-]{36})',
     validateRequest({ params: BoardIdParamsSchema }),
     async (req: AuthenticatedRequest, res: Response) => {
       try {
@@ -1371,40 +1623,11 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           return res.status(400).json({ success: false, error: 'Join link is no longer usable', reason: 'used_up' });
         }
 
-        try {
-          await db('room_members')
-            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false })
-            .onConflict(['room_id', 'user_id'])
-            .ignore();
-        } catch (membershipError) {
-          if (!isRoomMemberUserForeignKeyError(membershipError)) {
-            throw membershipError;
-          }
-
-          console.warn('[WB-JOIN] join-membership-local-fk-user-missing', {
-            roomId: invite.room_id,
-            userId,
-          });
-
-          const { error: supabaseMembershipError } = await supabase
-            .from('room_members')
-            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false });
-
-          if (supabaseMembershipError && supabaseMembershipError.code !== '23505') {
-            console.warn('[WB-JOIN] join-membership-supabase-fallback-failed', {
-              roomId: invite.room_id,
-              userId,
-              code: supabaseMembershipError.code,
-              message: supabaseMembershipError.message,
-            });
-            throw membershipError;
-          }
-
-          console.info('[WB-JOIN] join-membership-supabase-fallback-success', {
-            roomId: invite.room_id,
-            userId,
-          });
-        }
+        await ensureRoomMembershipWithFallback(db, invite.room_id, userId, false, {
+          localFkUserMissing: '[WB-JOIN] join-membership-local-fk-user-missing',
+          supabaseFallbackFailed: '[WB-JOIN] join-membership-supabase-fallback-failed',
+          supabaseFallbackSuccess: '[WB-JOIN] join-membership-supabase-fallback-success',
+        });
 
         console.info('[WB-JOIN] join-attempt', {
           ok: true,
@@ -1427,6 +1650,250 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
     }
   );
 
+  router.get('/help-requests', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.user?.id ? String(req.user.id) : '';
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      if (!isTutorOrAdmin(req)) {
+        return res.status(403).json({ success: false, error: 'Tutor access required' });
+      }
+
+      const requestedStatus = typeof req.query?.status === 'string' ? req.query.status.trim().toLowerCase() : 'pending';
+      const status = requestedStatus === 'claimed' ? 'claimed' : 'pending';
+      const mine = String(req.query?.mine || '').toLowerCase() === 'true';
+
+      let query = db('whiteboard_help_requests as hr')
+        .leftJoin('rooms as r', 'hr.board_id', 'r.id')
+        .leftJoin('users as student_user', 'hr.student_user_id', 'student_user.id')
+        .leftJoin('users as tutor_user', 'hr.claimed_by_user_id', 'tutor_user.id')
+        .select(
+          'hr.id',
+          'hr.board_id',
+          'hr.student_user_id',
+          'hr.claimed_by_user_id',
+          'hr.status',
+          'hr.request_text',
+          'hr.problem_draft',
+          'hr.created_at',
+          'hr.updated_at',
+          'hr.claimed_at',
+          'hr.resolved_at',
+          'r.name as board_name',
+          'student_user.username as student_username',
+          'tutor_user.username as claimed_by_username',
+        )
+        .where('hr.status', status)
+        .orderBy('hr.created_at', 'asc');
+
+      if (status === 'claimed' && mine && req.user?.role !== 'admin') {
+        query = query.where('hr.claimed_by_user_id', userId);
+      }
+
+      const rows = await query;
+      return res.status(200).json((rows as WhiteboardHelpRequestRow[]).map((row) => normalizeHelpRequest(row)));
+    } catch (error) {
+      console.error('[WB-HELP] queue-list failed', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  router.get(
+    '/:boardId/help-requests/active',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const helpRequest = await fetchActiveHelpRequestForBoard(db, boardId);
+        if (!helpRequest) {
+          return res.status(404).json({ success: false, error: 'No active help request' });
+        }
+
+        return res.status(200).json(helpRequest);
+      } catch (error) {
+        console.error('[WB-HELP] active-fetch failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.post(
+    '/:boardId/help-requests',
+    validateRequest({ params: BoardIdParamsSchema, body: WhiteboardHelpRequestBodySchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Students create help requests; tutors use the queue.' });
+        }
+
+        const existing = await fetchActiveHelpRequestForBoard(db, boardId);
+        if (existing) {
+          return res.status(409).json({ success: false, error: 'This whiteboard already has an active help request.', data: existing });
+        }
+
+        const localRoom = await db('rooms').select('id').where({ id: boardId }).first();
+        if (!localRoom) {
+          const hydrated = await hydrateMissingRoomForJoin(db, boardId, null);
+          if (!hydrated) {
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
+        }
+
+        await ensureLocalUserShadow(db, userId);
+
+        const body = req.body as z.infer<typeof WhiteboardHelpRequestBodySchema>;
+        const requestText = body.requestText?.trim() || 'Help requested on this whiteboard.';
+        const problemDraft = body.problemDraft?.trim() || null;
+
+        const inserted = await db('whiteboard_help_requests')
+          .insert({
+            board_id: boardId,
+            student_user_id: userId,
+            request_text: requestText,
+            problem_draft: problemDraft,
+            status: 'pending',
+            created_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          })
+          .returning('id');
+
+        const firstInserted = Array.isArray(inserted) ? inserted[0] : inserted;
+        const requestId = typeof firstInserted === 'string'
+          ? firstInserted
+          : String(firstInserted?.id ?? '');
+
+        const created = await fetchHelpRequestById(db, requestId);
+        return res.status(201).json(created);
+      } catch (error) {
+        console.error('[WB-HELP] create failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.post(
+    '/help-requests/:requestId/claim',
+    validateRequest({ params: HelpRequestIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
+
+        const requestId = req.validated?.params?.requestId;
+        if (!requestId) {
+          return res.status(400).json({ success: false, error: 'Invalid request' });
+        }
+
+        const existing = await fetchHelpRequestById(db, requestId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: 'Help request not found' });
+        }
+
+        if (existing.status === 'resolved' || existing.status === 'cancelled') {
+          return res.status(409).json({ success: false, error: 'This help request is no longer active.' });
+        }
+
+        if (existing.status === 'claimed' && existing.claimedByUserId && existing.claimedByUserId !== userId && req.user?.role !== 'admin') {
+          return res.status(409).json({ success: false, error: 'This help request has already been claimed.' });
+        }
+
+        await db.transaction(async (trx) => {
+          await ensureLocalUserShadow(trx as Knex, userId);
+
+          await trx('whiteboard_help_requests')
+            .where({ id: requestId })
+            .update({
+              status: 'claimed',
+              claimed_by_user_id: userId,
+              claimed_at: trx.fn.now(),
+              updated_at: trx.fn.now(),
+            });
+
+          const membership = await trx('room_members')
+            .where({ room_id: existing.boardId, user_id: userId })
+            .first();
+
+          if (!membership) {
+            await ensureRoomMembershipWithFallback(trx as Knex, existing.boardId, userId, false, {
+              localFkUserMissing: '[WB-HELP] claim-membership-local-fk-user-missing',
+              supabaseFallbackFailed: '[WB-HELP] claim-membership-supabase-fallback-failed',
+              supabaseFallbackSuccess: '[WB-HELP] claim-membership-supabase-fallback-success',
+            });
+          }
+        });
+
+        const claimed = await fetchHelpRequestById(db, requestId);
+        return res.status(200).json(claimed);
+      } catch (error) {
+        console.error('[WB-HELP] claim failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
+  router.patch(
+    '/help-requests/:requestId/resolve',
+    validateRequest({ params: HelpRequestIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const userId = req.user?.id ? String(req.user.id) : '';
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
+
+        const requestId = req.validated?.params?.requestId;
+        if (!requestId) {
+          return res.status(400).json({ success: false, error: 'Invalid request' });
+        }
+
+        const existing = await fetchHelpRequestById(db, requestId);
+        if (!existing) {
+          return res.status(404).json({ success: false, error: 'Help request not found' });
+        }
+
+        if (req.user?.role !== 'admin' && existing.claimedByUserId && existing.claimedByUserId !== userId) {
+          return res.status(403).json({ success: false, error: 'Only the claimed tutor can resolve this help request.' });
+        }
+
+        await db('whiteboard_help_requests')
+          .where({ id: requestId })
+          .update({
+            status: 'resolved',
+            resolved_at: db.fn.now(),
+            updated_at: db.fn.now(),
+          });
+
+        const resolved = await fetchHelpRequestById(db, requestId);
+        return res.status(200).json(resolved);
+      } catch (error) {
+        console.error('[WB-HELP] resolve failed', error);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
+  );
+
   router.post(
     '/:boardId/tutor',
     validateRequest({ params: BoardIdParamsSchema, body: WhiteboardTutorBodySchema }),
@@ -1434,6 +1901,10 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       try {
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
+
+        if (!isTutorOrAdmin(req)) {
+          return res.status(403).json({ success: false, error: 'Tutor access required' });
+        }
 
         const body = req.body as WhiteboardTutorBody;
         const tutorResponse = await callWhiteboardTutor(body);

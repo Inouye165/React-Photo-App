@@ -708,6 +708,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
+  onHasBoardContentChange?: (hasContent: boolean) => void
   onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
   onBackgroundImageAssetChange?: (asset: BackgroundImageAsset | null) => void
   onBoardFrameChange?: (rect: WhiteboardBoardFrame) => void
@@ -719,6 +720,9 @@ type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>
 
 const isBackgroundElement = (element: { type?: string; locked?: boolean }) =>
   element.type === 'image' && element.locked === true
+
+const hasNonBackgroundElements = (elements: readonly ExcalidrawElement[]) =>
+  elements.some((element) => !isBackgroundElement(element))
 
 type BackgroundFitMode = 'width' | 'contain'
 
@@ -932,6 +936,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
+      onHasBoardContentChange,
       onBackgroundInfoChange,
       onBackgroundImageAssetChange,
       onBoardFrameChange,
@@ -943,6 +948,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
   const [isSynced, setIsSynced] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
+  const [hasBoardContent, setHasBoardContent] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [stageRect, setStageRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const [boardRect, setBoardRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
@@ -997,6 +1003,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const onViewModeChangeRef = useRef(onViewModeChange)
   const onBackgroundFitModeChangeRef = useRef(onBackgroundFitModeChange)
   const onHasBackgroundChangeRef = useRef(onHasBackgroundChange)
+  const onHasBoardContentChangeRef = useRef(onHasBoardContentChange)
   const onBackgroundInfoChangeRef = useRef(onBackgroundInfoChange)
   const onBackgroundImageAssetChangeRef = useRef(onBackgroundImageAssetChange)
   const onBoardFrameChangeRef = useRef(onBoardFrameChange)
@@ -1020,6 +1027,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onHasBackgroundChangeRef.current = onHasBackgroundChange
   }, [onHasBackgroundChange])
+
+  useEffect(() => {
+    onHasBoardContentChangeRef.current = onHasBoardContentChange
+  }, [onHasBoardContentChange])
 
   useEffect(() => {
     onBackgroundInfoChangeRef.current = onBackgroundInfoChange
@@ -1089,6 +1100,11 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   }, [mode])
 
   useEffect(() => {
+    if (!annotationMode) return
+    setViewModeEnabled(false)
+  }, [annotationMode])
+
+  useEffect(() => {
     if (!token) {
       setIsSynced(false)
     }
@@ -1133,6 +1149,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onHasBackgroundChangeRef.current?.(hasBackground)
   }, [hasBackground])
+
+  useEffect(() => {
+    onHasBoardContentChangeRef.current?.(hasBoardContent)
+  }, [hasBoardContent])
 
   useEffect(() => {
     onBackgroundInfoChangeRef.current?.(backgroundInfo)
@@ -1271,7 +1291,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }
 
     const hasBackgroundElement = elements.some(isBackgroundElement)
+    const hasBoardContentElement = hasNonBackgroundElements(elements)
     setHasBackground(hasBackgroundElement)
+    setHasBoardContent(hasBoardContentElement)
     setBackgroundInfo(hasBackgroundElement ? nextBackgroundInfo : null)
     if (hasBackgroundElement && nextBackgroundInfo?.fileId) {
       const file = files[nextBackgroundInfo.fileId]
@@ -1858,6 +1880,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     const api = excalidrawApiRef.current
     if (!api) return
 
+    setViewModeEnabled(false)
+
     const currentState = api.getAppState()
     const nextAppState: Partial<AppState> = {
       viewModeEnabled: false,
@@ -1898,13 +1922,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         break
     }
 
-    api.setActiveTool({ type: excalidrawTool })
     api.updateScene({
       appState: {
         ...currentState,
         ...nextAppState,
       },
     })
+    api.setActiveTool({ type: excalidrawTool })
   }, [])
 
   const flushSceneToYjs = useCallback(
@@ -2037,6 +2061,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
     // Reflect background presence after commit to avoid React churn while drawing
     setHasBackground((simplified.elements ?? nextElements).some(isBackgroundElement))
+    setHasBoardContent(hasNonBackgroundElements(simplified.elements ?? nextElements))
 
     flushSceneToYjs({ elements: simplified.elements, appState: nextAppState, files: latest.files })
     whiteboardDebugLog('whiteboard:commit', {
@@ -2423,6 +2448,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       nextElements = simplified.elements
       lastNonEmptySceneRef.current = nextElements.length > 0
       setHasBackground(nextElements.some(isBackgroundElement))
+      setHasBoardContent(hasNonBackgroundElements(nextElements))
 
       scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
     },

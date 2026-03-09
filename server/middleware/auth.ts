@@ -338,7 +338,8 @@ async function authenticateToken(req, res, next) {
       username: user.user_metadata?.username || fallbackUsername,
       // SECURITY: Use app_metadata for role (server-controlled, not client-writable)
       // app_metadata can only be modified via Service Role Key
-      role: user.app_metadata?.role || 'user'
+      role: user.app_metadata?.role || 'user',
+      isTutor: user.app_metadata?.role === 'admin' || user.app_metadata?.is_tutor === true,
     };
     req.authSource = 'bearer';
 

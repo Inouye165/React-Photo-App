@@ -310,7 +310,8 @@ describe('Authentication Security Tests', () => {
         id: 'user-456',
         email: 'admin@example.com',
         username: 'adminuser',
-        role: 'admin'
+        role: 'admin',
+        isTutor: true
       });
     });
 

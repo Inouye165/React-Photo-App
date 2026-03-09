@@ -30,24 +30,27 @@ import type {
   BackgroundInfo,
   WhiteboardCanvasHandle,
 } from '../components/whiteboard/WhiteboardCanvas'
-import RightSidePanel from '../components/whiteboard/RightSidePanel'
-import { AITutorTab, ChatTab } from '../components/whiteboard/tabs'
+import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
+import { AITutorTab, ChatTab, HelpRequestTab } from '../components/whiteboard/tabs'
 import {
   analyzeWhiteboardPhoto,
+  createWhiteboardHelpRequest,
   createWhiteboardInvite,
   ensureWhiteboardMembership,
+  getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
 } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
-import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
+import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
-type MobileWhiteboardTab = 'homework' | 'ai-tutor' | 'chat'
+type MobileWhiteboardTab = 'homework' | 'support' | 'chat'
 type HomeworkInputMode = 'photo' | 'text'
 type FormattedProblemLineType = 'question' | 'data' | 'section' | 'context' | 'empty'
 type PhotoTransformState = {
@@ -100,6 +103,26 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
 
 function buildNextMessages(messages: WhiteboardTutorMessage[], draft: string): WhiteboardTutorMessage[] {
   return [...messages, { role: 'user', content: draft.trim() }]
+}
+
+function buildInitialTutorMessages(
+  intent: 'analyze' | 'solve' | 'steps',
+  helpRequest: string,
+  includeHelpRequest: boolean,
+): WhiteboardTutorMessage[] {
+  const intentPrompt = intent === 'solve'
+    ? 'Please help me solve this without jumping straight to the final answer.'
+    : intent === 'steps'
+      ? 'Please explain this one step at a time so I can work along on the board.'
+      : 'Please analyze what is here and tell me the best next thing to focus on.'
+
+  const parts = [intentPrompt]
+  const trimmedHelpRequest = helpRequest.trim()
+  if (includeHelpRequest && trimmedHelpRequest) {
+    parts.push(trimmedHelpRequest)
+  }
+
+  return parts.length > 0 ? [{ role: 'user', content: parts.join('\n\n') }] : []
 }
 
 function parseAudienceAge(value: string): number | undefined {
@@ -222,7 +245,7 @@ function useIsMobileWhiteboardLayout(): boolean {
 export default function WhiteboardSessionPage(): React.JSX.Element {
   const { boardId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
   const isMobileLayout = useIsMobileWhiteboardLayout()
   const [accessState, setAccessState] = useState<'checking' | 'allowed' | 'denied'>('checking')
   const [boardName, setBoardName] = useState<string>(WHITEBOARD_APP_NAME)
@@ -243,6 +266,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [formattedProblemLines, setFormattedProblemLines] = useState<FormattedProblemLine[]>([])
   const [isTextInputFocused, setIsTextInputFocused] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
+  const [hasBoardContent, setHasBoardContent] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [boardFrame, setBoardFrame] = useState<WhiteboardBoardFrame | null>(null)
   const [backgroundImageAsset, setBackgroundImageAsset] = useState<BackgroundImageAsset | null>(null)
@@ -253,16 +277,23 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [activeHelpRequest, setActiveHelpRequest] = useState<WhiteboardHelpRequest | null>(null)
+  const [helpRequestSubmitting, setHelpRequestSubmitting] = useState(false)
+  const [helpRequestError, setHelpRequestError] = useState<string | null>(null)
   const [tutorOverlayVisible, setTutorOverlayVisible] = useState(true)
   const [tutorLessonMessage, setTutorLessonMessage] = useState<TutorLessonMessage | null>(null)
   const [responseAge, setResponseAge] = useState('')
+  const [helpRequestDraft, setHelpRequestDraft] = useState('')
   const [tutorDraft, setTutorDraft] = useState('')
+  const [tutorReadyIntent, setTutorReadyIntent] = useState<'analyze' | 'solve' | 'steps'>('analyze')
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false)
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
+  const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
+  const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('chat')
   const [mobileActiveTab, setMobileActiveTab] = useState<MobileWhiteboardTab>('homework')
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
@@ -271,9 +302,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const whiteboardPadRef = useRef<WhiteboardCanvasHandle>(null)
   const mobilePhotoContainerRef = useRef<HTMLDivElement | null>(null)
   const mobileTextInputRef = useRef<HTMLTextAreaElement | null>(null)
-  const desktopTextInputRef = useRef<HTMLTextAreaElement | null>(null)
   const mobileFormattedOverlayRef = useRef<HTMLDivElement | null>(null)
-  const desktopFormattedOverlayRef = useRef<HTMLDivElement | null>(null)
   const photoUploadInputRef = useRef<HTMLInputElement | null>(null)
   const renameInputRef = useRef<HTMLInputElement | null>(null)
   const shareMenuRef = useRef<HTMLDivElement | null>(null)
@@ -287,12 +316,17 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
+  const canUseTutorAssist = user?.app_metadata?.role === 'admin' || user?.app_metadata?.is_tutor === true || profile?.is_tutor === true
+  const panelMode: 'student' | 'tutor' = canUseTutorAssist ? 'tutor' : 'student'
   const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
   const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
   const structuredAnalysisResult = analysis?.analysisResult ?? null
   const displayBoardName = useMemo(() => boardName.trim() || WHITEBOARD_APP_NAME, [boardName])
+  const hasHelpRequest = helpRequestDraft.trim().length > 0
   const hasTextInput = textContent.trim().length > 0
-  const hasTutorInput = inputMode === 'text' ? hasTextInput : hasBackground
+  const effectiveTutorInputMode: HomeworkInputMode = inputMode === 'text' || (!hasBackground && (hasTextInput || hasHelpRequest)) ? 'text' : 'photo'
+  const hasTutorInput = hasBackground || hasTextInput || hasHelpRequest
+  const mobileSupportLabel = canUseTutorAssist ? 'Tutor Assist' : 'Help'
   const showFormattedProblemOverlay = !isTextInputFocused && formattedProblemLines.length > 0
   const tutorPlayback = useTutorPlayback({
     steps: structuredAnalysisResult?.steps ?? [],
@@ -336,12 +370,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const runTutorRequest = useCallback(
     async (messages: WhiteboardTutorMessage[] = [], mode: 'analysis' | 'tutor' | 'chat' = 'analysis') => {
       if (!boardId) throw new Error('Missing board id')
-      if (inputMode === 'text') {
-        if (!textContent.trim()) throw new Error('Type or paste a problem first.')
+      if (effectiveTutorInputMode === 'text') {
+        const textSource = textContent.trim() || helpRequestDraft.trim()
+        if (!textSource) throw new Error('Type or paste a problem first.')
 
         return analyzeWhiteboardPhoto(boardId, {
           inputMode: 'text',
-          textContent: textContent.trim(),
+          textContent: textSource,
           audienceAge,
           messages,
           mode,
@@ -360,7 +395,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         mode,
       })
     },
-    [audienceAge, backgroundImageAsset, boardId, inputMode, textContent],
+    [audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, helpRequestDraft, textContent],
   )
 
   const resetPhotoTransform = useCallback(() => {
@@ -424,10 +459,64 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     if (mobileFormattedOverlayRef.current) {
       mobileFormattedOverlayRef.current.scrollTop = scrollTop
     }
-    if (desktopFormattedOverlayRef.current) {
-      desktopFormattedOverlayRef.current.scrollTop = scrollTop
-    }
   }, [])
+
+  const openDesktopSidePanel = useCallback((tab?: TabType) => {
+    if (tab) {
+      setDesktopSidePanelTab(tab)
+    }
+    setDesktopSidePanelOpen(true)
+  }, [])
+
+  const handleOpenTutorQueue = useCallback(() => {
+    navigate('/tutor/queue')
+  }, [navigate])
+
+  const handleRequestHelp = useCallback(() => {
+    if (canUseTutorAssist) {
+      setTutorReadyIntent('analyze')
+      openDesktopSidePanel('ai-tutor')
+      return
+    }
+
+    openDesktopSidePanel('help-request')
+  }, [canUseTutorAssist, openDesktopSidePanel])
+
+  const handleSubmitHelpRequest = useCallback(async () => {
+    if (!boardId || canUseTutorAssist) return
+
+    setHelpRequestSubmitting(true)
+    setHelpRequestError(null)
+    try {
+      const created = await createWhiteboardHelpRequest(boardId, {
+        requestText: helpRequestDraft.trim(),
+        problemDraft: textContent.trim(),
+      })
+      setActiveHelpRequest(created)
+      if (created.requestText) {
+        setHelpRequestDraft(created.requestText)
+      }
+      setDesktopSidePanelOpen(true)
+      setDesktopSidePanelTab('help-request')
+      setMobileActiveTab('support')
+    } catch (error) {
+      setHelpRequestError(error instanceof Error ? error.message : 'Unable to send help request.')
+    } finally {
+      setHelpRequestSubmitting(false)
+    }
+  }, [boardId, canUseTutorAssist, helpRequestDraft, textContent])
+
+  const handleResolveHelpRequest = useCallback(async () => {
+    if (!activeHelpRequest || !canUseTutorAssist) return
+
+    try {
+      await resolveWhiteboardHelpRequest(activeHelpRequest.id)
+      setActiveHelpRequest(null)
+      setHelpRequestError(null)
+    } catch (error) {
+      setHelpRequestError(error instanceof Error ? error.message : 'Unable to resolve help request.')
+    }
+  }, [activeHelpRequest, canUseTutorAssist])
 
   const scheduleMobileToolbarHide = useCallback(() => {
     if (mobileToolbarHideTimeoutRef.current) {
@@ -454,7 +543,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     handleAnnotationToolSelect('pen')
   }, [handleAnnotationToolSelect])
 
-  const analyzeText = useCallback(async (rawText: string) => {
+  const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = []) => {
     if (!boardId) throw new Error('Missing board id')
 
     const trimmedText = rawText.trim()
@@ -464,7 +553,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       inputMode: 'text',
       textContent: trimmedText,
       audienceAge,
-      messages: [],
+      messages,
       mode: 'analysis',
     })
 
@@ -629,6 +718,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setAnalysisLoading(false)
     setTutorOverlayVisible(true)
     setTutorLessonMessage(null)
+    setTutorReadyIntent('analyze')
     setTutorDraft('')
     setTutorSubmitting(false)
     setAnnotationTool('pen')
@@ -697,12 +787,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const handleTextInputPaste = useCallback(() => {
     window.setTimeout(() => {
-      const activeValue = isMobileLayout
-        ? (mobileTextInputRef.current?.value ?? '')
-        : (desktopTextInputRef.current?.value ?? '')
+      const activeValue = mobileTextInputRef.current?.value ?? ''
       scheduleFormatProblemText(activeValue)
     }, 0)
-  }, [isMobileLayout, scheduleFormatProblemText])
+  }, [scheduleFormatProblemText])
 
   const handlePhotoFileChange = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -798,14 +886,30 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [hasTextInput, inputMode, resetPhotoTransform, resetTutorState])
 
   const handleStartAnalysis = useCallback(async () => {
-    if (!boardId || (inputMode === 'photo' && !backgroundImageAsset) || (inputMode === 'text' && !textContent.trim())) return
+    const textSource = textContent.trim() || helpRequestDraft.trim()
+    const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
+      ? [{
+          role: 'user' as const,
+          content: `Use this corrected problem statement if the photo text is unclear or inaccurate:\n\n${textContent.trim()}`,
+        }]
+      : []
+    const initialMessages = [
+      ...correctedQuestionMessages,
+      ...buildInitialTutorMessages(
+      tutorReadyIntent,
+      helpRequestDraft,
+      Boolean(hasBackground || textContent.trim()),
+      ),
+    ]
+
+    if (!boardId || (!backgroundImageAsset && !textSource)) return
     setAnalysisLoading(true)
     setAnalysisError(null)
     setPhotoGuidanceVisible(false)
     setPhotoGuidanceFading(false)
     try {
-      if (inputMode === 'text') {
-        await analyzeText(textContent)
+      if (effectiveTutorInputMode === 'text') {
+        await analyzeText(textSource, initialMessages)
         return
       }
 
@@ -820,7 +924,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         imageMimeType: photoAsset.mimeType,
         imageName: photoAsset.name,
         audienceAge,
-        messages: [],
+        messages: initialMessages,
         mode: 'analysis',
       })
       applyAnalysisResponse(response)
@@ -829,13 +933,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [analyzeText, applyAnalysisResponse, audienceAge, backgroundImageAsset, boardId, inputMode, textContent])
+  }, [analyzeText, applyAnalysisResponse, audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, textContent, tutorReadyIntent])
 
   const handleMobileAnalyze = useCallback(() => {
     if (!hasTutorInput || analysisLoading || responseAgeInvalid) return
-    setMobileActiveTab('ai-tutor')
-    void handleStartAnalysis()
-  }, [analysisLoading, handleStartAnalysis, hasTutorInput, responseAgeInvalid])
+    setMobileActiveTab('support')
+    if (canUseTutorAssist) {
+      void handleStartAnalysis()
+    }
+  }, [analysisLoading, canUseTutorAssist, handleStartAnalysis, hasTutorInput, responseAgeInvalid])
 
   const handleTutorFollowUp = useCallback(async () => {
     if (!analysis || !tutorDraft.trim()) return
@@ -959,6 +1065,39 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       cancelled = true
     }
   }, [accessState, boardId, refreshMembers])
+
+  useEffect(() => {
+    if (accessState !== 'allowed' || !boardId) return
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const request = await getActiveWhiteboardHelpRequest(boardId)
+        if (!cancelled) {
+          setActiveHelpRequest(request)
+          setHelpRequestError(null)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setHelpRequestError(error instanceof Error ? error.message : 'Unable to load help request status.')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [accessState, boardId])
+
+  useEffect(() => {
+    if (!canUseTutorAssist || !activeHelpRequest || helpRequestDraft.trim()) return
+
+    const seededDraft = activeHelpRequest.requestText?.trim() || activeHelpRequest.problemDraft?.trim() || ''
+    if (seededDraft) {
+      setHelpRequestDraft(seededDraft)
+    }
+  }, [activeHelpRequest, canUseTutorAssist, helpRequestDraft])
 
   useEffect(() => {
     if (!isRenaming) return
@@ -1334,79 +1473,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         </div>
 
         <div className="order-3 flex w-full justify-center md:order-2 md:flex-1">
-          {hasBackground ? (
-            <div className="flex flex-wrap items-center justify-center gap-2 rounded-[8px] border border-white/10 bg-white/[0.04] px-3 py-2">
-              <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
-              <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
-              <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
-              <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
-              <div className="relative" ref={shapeMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setShapeMenuOpen((prev) => !prev)}
-                  className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
-                    ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
-                      ? 'bg-amber-500 text-slate-950'
-                      : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    {annotationTool === 'arrow' ? <ArrowRight className="h-4 w-4" /> : annotationTool === 'rectangle' ? <Square className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                    Shapes
-                    <ChevronDown className="h-4 w-4" />
-                  </span>
-                </button>
-                {shapeMenuOpen ? (
-                  <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
-                    {([
-                      ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
-                      ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
-                      ['ellipse', <Circle className="h-4 w-4" />, 'Circle'],
-                    ] as [ShapeTool, React.JSX.Element, string][]).map(([tool, icon, label]) => (
-                      <button
-                        key={tool}
-                        type="button"
-                        onClick={() => handleAnnotationToolSelect(tool)}
-                        className="flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-sm text-white transition hover:bg-amber-500/12 hover:text-chess-accentSoft"
-                      >
-                        {icon}
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={handleRemovePhotoRequest}
-                className="rounded-[8px] px-2 py-1 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
-              >
-                <span className="flex items-center gap-2">
-                  <ImageMinus className="h-3.5 w-3.5" />
-                  Remove photo
-                </span>
-              </button>
-              {confirmRemovePhoto ? (
-                <div className="flex flex-wrap items-center gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                  <span>Remove this photo? This can't be undone.</span>
-                  <button
-                    type="button"
-                    onClick={handleRemovePhoto}
-                    className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
-                  >
-                    Yes, Remove
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCancelRemovePhoto}
-                    className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          ) : (
+          {!hasBackground ? (
             <button
               onClick={handlePhotoUploadClick}
               className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
@@ -1415,10 +1482,42 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <Camera className="h-4 w-4" />
               Add photo to annotate
             </button>
-          )}
+          ) : null}
         </div>
 
         <div className="flex flex-1 items-center justify-end gap-2 md:max-w-[30%]">
+          <button
+            type="button"
+            onClick={() => setDesktopSidePanelOpen((current) => !current)}
+            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${desktopSidePanelOpen ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'}`}
+            aria-label={desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
+            aria-expanded={desktopSidePanelOpen}
+            aria-controls="whiteboard-side-panel"
+          >
+            {desktopSidePanelOpen ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+            {desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
+          </button>
+          {canUseTutorAssist ? (
+            <button
+              type="button"
+              onClick={handleOpenTutorQueue}
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+              aria-label="Tutor queue"
+            >
+              <span aria-hidden="true">🧑‍🏫</span>
+              Tutor queue
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleRequestHelp}
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+              aria-label="Request help"
+            >
+              <span aria-hidden="true">🧠</span>
+              Request help
+            </button>
+          )}
           <button
             onClick={handleOpenInvite}
             className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
@@ -1576,6 +1675,36 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
+        {activeHelpRequest ? (
+          <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold">
+                  {activeHelpRequest.status === 'claimed' ? 'Tutor engaged' : 'Help request waiting in queue'}
+                </div>
+                <div className="mt-1 text-amber-50/85">
+                  {activeHelpRequest.status === 'claimed'
+                    ? (activeHelpRequest.claimedByUsername
+                      ? `${activeHelpRequest.claimedByUsername} claimed this whiteboard.`
+                      : 'A tutor claimed this whiteboard.')
+                    : 'Tutors can now pick up this whiteboard from the queue.'}
+                </div>
+              </div>
+              {canUseTutorAssist && activeHelpRequest.status === 'claimed' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleResolveHelpRequest()
+                  }}
+                  className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-white/15"
+                >
+                  Resolve request
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         <input
           ref={photoUploadInputRef}
           type="file"
@@ -1713,6 +1842,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                             className="m-0 h-full w-full p-0"
                             annotationMode={hasBackground}
                             onRealtimeStatusChange={handleRealtimeStatusChange}
+                            onHasBoardContentChange={setHasBoardContent}
                             onHasBackgroundChange={handleBackgroundChange}
                             onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
                             onAccessDenied={handleWhiteboardAccessDenied}
@@ -1811,16 +1941,16 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       disabled={analysisLoading || responseAgeInvalid}
                       className="absolute right-4 z-20 inline-flex min-w-[128px] items-center justify-center gap-2 rounded-full bg-amber-500 px-5 py-3 text-[14px] font-semibold text-slate-950 shadow-[0_16px_36px_rgba(0,0,0,0.28)] transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
                       style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}
-                      aria-label={analysisLoading ? 'Analyzing homework' : inputMode === 'text' ? 'Analyze problem' : 'Analyze photo'}
+                      aria-label={canUseTutorAssist ? (analysisLoading ? 'Analyzing homework' : inputMode === 'text' ? 'Analyze problem' : 'Analyze photo') : 'Request help'}
                     >
-                      <span aria-hidden="true">{inputMode === 'text' ? '🧠' : '📷'}</span>
-                      {analysisLoading ? 'Analyzing…' : inputMode === 'text' ? 'Analyze Problem' : 'Analyze Photo'}
+                      <span aria-hidden="true">{canUseTutorAssist ? (inputMode === 'text' ? '🧠' : '📷') : '🧠'}</span>
+                      {canUseTutorAssist ? (analysisLoading ? 'Analyzing…' : inputMode === 'text' ? 'Analyze Problem' : 'Analyze Photo') : 'Request Help'}
                     </button>
                   ) : null}
                 </motion.div>
               ) : null}
 
-              {mobileActiveTab === 'ai-tutor' ? (
+              {mobileActiveTab === 'support' ? (
                 <div className="flex h-full min-h-0 flex-col bg-[#1c1c1e]">
                   <div className="shrink-0 border-b border-white/10 px-4 py-3">
                     <button
@@ -1833,31 +1963,52 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     </button>
                   </div>
                   <div className="min-h-0 flex-1 overflow-hidden">
-                    <AITutorTab
-                      hasPhoto={hasBackground}
-                      hasInput={hasTutorInput}
-                      inputMode={inputMode}
-                      problemDraft={textContent}
-                      onProblemDraftChange={handleTextContentChange}
-                      analysis={analysis}
-                      isLoading={analysisLoading}
-                      error={analysisError}
-                      onStartAnalysis={() => {
-                        void handleStartAnalysis()
-                      }}
-                      onRetryAnalysis={() => {
-                        void handleStartAnalysis()
-                      }}
-                      responseAge={responseAge}
-                      responseAgeInvalid={responseAgeInvalid}
-                      onResponseAgeChange={handleResponseAgeChange}
-                      followUpDraft={tutorDraft}
-                      isSubmitting={tutorSubmitting}
-                      onFollowUpDraftChange={setTutorDraft}
-                      onSubmitFollowUp={() => {
-                        void handleTutorFollowUp()
-                      }}
-                    />
+                    {canUseTutorAssist ? (
+                      <AITutorTab
+                        hasPhoto={hasBackground}
+                        hasInput={hasTutorInput}
+                        inputMode={inputMode}
+                        hasBoardContent={hasBoardContent}
+                        problemDraft={textContent}
+                        onProblemDraftChange={handleTextContentChange}
+                        helpRequestDraft={helpRequestDraft}
+                        onHelpRequestDraftChange={setHelpRequestDraft}
+                        analysis={analysis}
+                        isLoading={analysisLoading}
+                        error={analysisError}
+                        onStartAnalysis={() => {
+                          void handleStartAnalysis()
+                        }}
+                        onRetryAnalysis={() => {
+                          void handleStartAnalysis()
+                        }}
+                        responseAge={responseAge}
+                        responseAgeInvalid={responseAgeInvalid}
+                        onResponseAgeChange={handleResponseAgeChange}
+                        readyIntent={tutorReadyIntent}
+                        onReadyIntentChange={setTutorReadyIntent}
+                        followUpDraft={tutorDraft}
+                        isSubmitting={tutorSubmitting}
+                        onFollowUpDraftChange={setTutorDraft}
+                        onSubmitFollowUp={() => {
+                          void handleTutorFollowUp()
+                        }}
+                      />
+                    ) : (
+                      <HelpRequestTab
+                        hasPhoto={hasBackground}
+                        hasBoardContent={hasBoardContent}
+                        problemDraft={textContent}
+                        helpRequestDraft={helpRequestDraft}
+                        onHelpRequestDraftChange={setHelpRequestDraft}
+                        activeRequest={activeHelpRequest}
+                        isSubmitting={helpRequestSubmitting}
+                        submitError={helpRequestError}
+                        onSubmit={() => {
+                          void handleSubmitHelpRequest()
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -1876,7 +2027,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <div className="grid h-[60px] grid-cols-3">
                 {([
                   ['homework', '📋', 'Homework'],
-                  ['ai-tutor', '🤖', 'AI Tutor'],
+                  ['support', canUseTutorAssist ? '🤖' : '🧠', mobileSupportLabel],
                   ['chat', '💬', 'Chat'],
                 ] as [MobileWhiteboardTab, string, string][]).map(([tabId, icon, label]) => {
                   const isActive = mobileActiveTab === tabId
@@ -1899,136 +2050,194 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="relative min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={inputMode === 'text' ? switchToPhotoMode : switchToTextMode}
-                className="absolute left-4 top-4 z-20 rounded-full bg-[rgba(0,0,0,0.65)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[rgba(0,0,0,0.78)]"
-              >
-                {inputMode === 'text' ? '📷 Use photo instead' : '📝 Switch to text input'}
-              </button>
+            <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+              {hasBackground ? (
+                <div className="border-b border-white/10 bg-[#111111] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
+                      <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
+                      <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
+                      <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
+                      <div className="relative" ref={shapeMenuRef}>
+                        <button
+                          type="button"
+                          onClick={() => setShapeMenuOpen((prev) => !prev)}
+                          className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
+                            ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            {annotationTool === 'arrow' ? <ArrowRight className="h-4 w-4" /> : annotationTool === 'rectangle' ? <Square className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                            Shapes
+                            <ChevronDown className="h-4 w-4" />
+                          </span>
+                        </button>
+                        {shapeMenuOpen ? (
+                          <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
+                            {([
+                              ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
+                              ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
+                              ['ellipse', <Circle className="h-4 w-4" />, 'Circle'],
+                            ] as [ShapeTool, React.JSX.Element, string][]).map(([tool, icon, label]) => (
+                              <button
+                                key={tool}
+                                type="button"
+                                onClick={() => handleAnnotationToolSelect(tool)}
+                                className="flex w-full items-center gap-2 rounded-[8px] px-3 py-2 text-sm text-white transition hover:bg-amber-500/12 hover:text-chess-accentSoft"
+                              >
+                                {icon}
+                                {label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
 
-              {inputMode === 'text' ? (
-                <div className="relative h-full w-full bg-[#1a1a1a] p-6 pt-20">
-                  {showFormattedProblemOverlay ? (
-                    <div
-                      ref={desktopFormattedOverlayRef}
-                      className="pointer-events-none absolute inset-x-6 bottom-6 top-20 z-10 overflow-y-auto rounded-[16px] border border-white/10 bg-[#1a1a1a]"
-                      aria-hidden="true"
-                    >
-                      {renderFormattedProblemContent(formattedProblemLines)}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleRemovePhotoRequest}
+                        className="rounded-[8px] px-2 py-1 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
+                      >
+                        <span className="flex items-center gap-2">
+                          <ImageMinus className="h-3.5 w-3.5" />
+                          Remove photo
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {confirmRemovePhoto ? (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                      <span>Remove this photo? This can't be undone.</span>
+                      <button
+                        type="button"
+                        onClick={handleRemovePhoto}
+                        className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
+                      >
+                        Yes, Remove
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelRemovePhoto}
+                        className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ) : null}
-                  <textarea
-                    ref={desktopTextInputRef}
-                    value={textContent}
-                    onChange={(event) => handleTextContentChange(event.target.value)}
-                    onFocus={handleTextInputFocus}
-                    onBlur={(event) => handleTextInputBlur(event.target.value)}
-                    onPaste={handleTextInputPaste}
-                    onScroll={(event) => syncFormattedOverlayScroll(event.currentTarget.scrollTop)}
-                    placeholder={TEXT_MODE_PLACEHOLDER}
-                    className={`h-full w-full resize-none rounded-[16px] border border-white/10 bg-[#1a1a1a] p-4 text-[16px] outline-none ${showFormattedProblemOverlay ? 'relative z-20 text-transparent caret-[#F0EDE8] selection:bg-amber-500/30' : 'text-[#F0EDE8] placeholder:text-[rgba(240,237,232,0.3)]'}`}
-                  />
-                  {structuredAnalysisResult ? (
-                    <TutorOverlay
-                      analysisResult={structuredAnalysisResult}
-                      activeStepId={tutorPlayback.activeStepId}
-                      lessonMessage={tutorLessonMessage}
-                      boardFrame={null}
-                      visible={tutorOverlayVisible}
-                      reducedMotion={Boolean(prefersReducedMotion)}
-                      onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
-                      onSelectStep={tutorPlayback.setActiveStepId}
-                    />
-                  ) : null}
-                </div>
-              ) : (
-                <>
-                  <WhiteboardPad
-                    ref={whiteboardPadRef}
-                    boardId={boardId}
-                    className="h-full"
-                    annotationMode={hasBackground}
-                    onRealtimeStatusChange={handleRealtimeStatusChange}
-                    onHasBackgroundChange={handleBackgroundChange}
-                    onBackgroundInfoChange={setBackgroundInfo}
-                    onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
-                    onBoardFrameChange={setBoardFrame}
-                    onAccessDenied={handleWhiteboardAccessDenied}
-                  />
-                  {structuredAnalysisResult ? (
-                    <TutorOverlay
-                      analysisResult={structuredAnalysisResult}
-                      activeStepId={tutorPlayback.activeStepId}
-                      lessonMessage={tutorLessonMessage}
-                      boardFrame={hasBackground && backgroundInfo ? boardFrame : null}
-                      visible={tutorOverlayVisible}
-                      reducedMotion={Boolean(prefersReducedMotion)}
-                      onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
-                      onSelectStep={tutorPlayback.setActiveStepId}
-                    />
-                  ) : null}
-                </>
-              )}
-
-              {inputMode !== 'text' && photoGuidanceVisible ? (
-                <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
-                  <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
-                    <span>Make sure your work is well-lit and fully in frame 📸</span>
-                    <button
-                      type="button"
-                      onClick={handleDismissPhotoGuidance}
-                      className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
-                    >
-                      Got it
-                    </button>
-                  </div>
                 </div>
               ) : null}
+
+              <div className="relative min-h-0 flex-1">
+                <>
+                <WhiteboardPad
+                  ref={whiteboardPadRef}
+                  boardId={boardId}
+                  className="h-full"
+                  annotationMode={hasBackground}
+                  onRealtimeStatusChange={handleRealtimeStatusChange}
+                  onHasBoardContentChange={setHasBoardContent}
+                  onHasBackgroundChange={handleBackgroundChange}
+                  onBackgroundInfoChange={setBackgroundInfo}
+                  onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+                  onBoardFrameChange={setBoardFrame}
+                  onAccessDenied={handleWhiteboardAccessDenied}
+                />
+                {structuredAnalysisResult && effectiveTutorInputMode === 'photo' ? (
+                  <TutorOverlay
+                    analysisResult={structuredAnalysisResult}
+                    activeStepId={tutorPlayback.activeStepId}
+                    lessonMessage={tutorLessonMessage}
+                    boardFrame={hasBackground && backgroundInfo ? boardFrame : null}
+                    visible={tutorOverlayVisible}
+                    reducedMotion={Boolean(prefersReducedMotion)}
+                    onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
+                    onSelectStep={tutorPlayback.setActiveStepId}
+                  />
+                ) : null}
+                  </>
+
+                  {inputMode !== 'text' && photoGuidanceVisible ? (
+                    <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
+                      <div className={`pointer-events-auto flex items-center justify-between gap-3 rounded-[12px] border border-amber-400/35 bg-[#2b2115]/95 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_36px_rgba(0,0,0,0.28)] backdrop-blur-sm transition-opacity duration-200 ${photoGuidanceFading ? 'opacity-0' : 'opacity-100'}`}>
+                        <span>Make sure your work is well-lit and fully in frame 📸</span>
+                        <button
+                          type="button"
+                          onClick={handleDismissPhotoGuidance}
+                          className="shrink-0 rounded-[8px] bg-white/10 px-3 py-1.5 font-medium text-white transition hover:bg-white/15"
+                        >
+                          Got it
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
             </div>
 
-            <RightSidePanel
-              hasPhoto={hasBackground}
-              hasInput={hasTutorInput}
-              inputMode={inputMode}
-              problemDraft={textContent}
-              onProblemDraftChange={handleTextContentChange}
-              analysis={analysis}
-              analysisResult={structuredAnalysisResult}
-              analysisLoading={analysisLoading}
-              analysisError={analysisError}
-              onStartAnalysis={() => {
-                void handleStartAnalysis()
-              }}
-              onRetryAnalysis={() => {
-                void handleStartAnalysis()
-              }}
-              responseAge={responseAge}
-              responseAgeInvalid={responseAgeInvalid}
-              onResponseAgeChange={handleResponseAgeChange}
-              tutorDraft={tutorDraft}
-              tutorSubmitting={tutorSubmitting}
-              onTutorDraftChange={setTutorDraft}
-              onTutorSubmit={() => {
-                void handleTutorFollowUp()
-              }}
-              onLessonMessageChange={setTutorLessonMessage}
-              activeTutorStepId={tutorPlayback.activeStepId}
-              overlayVisible={tutorOverlayVisible}
-              tutorPlaybackCanPlay={tutorPlayback.canPlay}
-              tutorPlaybackIsPlaying={tutorPlayback.isPlaying}
-              onToggleTutorOverlay={() => setTutorOverlayVisible((current) => !current)}
-              onTutorPlaybackPlay={tutorPlayback.play}
-              onTutorPlaybackPause={tutorPlayback.pause}
-              onTutorPlaybackPrevious={tutorPlayback.previous}
-              onTutorPlaybackNext={tutorPlayback.next}
-              onTutorPlaybackReplay={tutorPlayback.replay}
-              onTutorStepSelect={tutorPlayback.setActiveStepId}
-              onRequestHumanTutor={() => {
-                return undefined
-              }}
-            />
+            {desktopSidePanelOpen ? (
+              <RightSidePanel
+                className="whiteboard-side-panel"
+                activeTab={desktopSidePanelTab}
+                panelMode={panelMode}
+                hasPhoto={hasBackground}
+                hasInput={hasTutorInput}
+                hasBoardContent={hasBoardContent}
+                initialTab="chat"
+                inputMode={effectiveTutorInputMode}
+                problemDraft={textContent}
+                onProblemDraftChange={handleTextContentChange}
+                helpRequestDraft={helpRequestDraft}
+                onHelpRequestDraftChange={setHelpRequestDraft}
+                activeHelpRequest={activeHelpRequest}
+                helpRequestSubmitting={helpRequestSubmitting}
+                helpRequestError={helpRequestError}
+                onSubmitHelpRequest={() => {
+                  void handleSubmitHelpRequest()
+                }}
+                analysis={analysis}
+                analysisResult={structuredAnalysisResult}
+                analysisLoading={analysisLoading}
+                analysisError={analysisError}
+                onStartAnalysis={() => {
+                  void handleStartAnalysis()
+                }}
+                onRetryAnalysis={() => {
+                  void handleStartAnalysis()
+                }}
+                responseAge={responseAge}
+                responseAgeInvalid={responseAgeInvalid}
+                onResponseAgeChange={handleResponseAgeChange}
+                readyIntent={tutorReadyIntent}
+                onReadyIntentChange={setTutorReadyIntent}
+                tutorDraft={tutorDraft}
+                tutorSubmitting={tutorSubmitting}
+                onTutorDraftChange={setTutorDraft}
+                onTutorSubmit={() => {
+                  void handleTutorFollowUp()
+                }}
+                onLessonMessageChange={setTutorLessonMessage}
+                activeTutorStepId={tutorPlayback.activeStepId}
+                overlayVisible={tutorOverlayVisible}
+                tutorPlaybackCanPlay={tutorPlayback.canPlay}
+                tutorPlaybackIsPlaying={tutorPlayback.isPlaying}
+                onToggleTutorOverlay={() => setTutorOverlayVisible((current) => !current)}
+                onTutorPlaybackPlay={tutorPlayback.play}
+                onTutorPlaybackPause={tutorPlayback.pause}
+                onTutorPlaybackPrevious={tutorPlayback.previous}
+                onTutorPlaybackNext={tutorPlayback.next}
+                onTutorPlaybackReplay={tutorPlayback.replay}
+                onTabChange={setDesktopSidePanelTab}
+                onTutorStepSelect={tutorPlayback.setActiveStepId}
+                onRequestHumanTutor={() => {
+                  return undefined
+                }}
+              />
+            ) : null}
           </div>
         )}
       </div>

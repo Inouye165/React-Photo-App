@@ -101,7 +101,7 @@ function createUsersRouter({ db }) {
       }
 
       const row = await db('users')
-        .select('id', 'username', 'has_set_username', 'avatar_url')
+        .select('id', 'username', 'has_set_username', 'is_tutor', 'avatar_url')
         .where({ id: userId })
         .first();
 
@@ -114,6 +114,7 @@ function createUsersRouter({ db }) {
             id: userId,
             username: null,
             has_set_username: false,
+            is_tutor: false,
             avatar_url: null,
           },
         });
@@ -125,6 +126,7 @@ function createUsersRouter({ db }) {
           id: row.id,
           username: row.username ?? null,
           has_set_username: Boolean(row.has_set_username),
+          is_tutor: Boolean(row.is_tutor),
           avatar_url: row.avatar_url ?? null,
         },
       });
@@ -237,7 +239,7 @@ function createUsersRouter({ db }) {
         });
 
       const updated = await db('users')
-        .select('id', 'username', 'has_set_username', 'avatar_url')
+        .select('id', 'username', 'has_set_username', 'is_tutor', 'avatar_url')
         .where({ id: userId })
         .first();
 
@@ -247,6 +249,7 @@ function createUsersRouter({ db }) {
           id: updated?.id ?? userId,
           username: updated?.username ?? username,
           has_set_username: updated ? Boolean(updated.has_set_username) : true,
+          is_tutor: updated ? Boolean(updated.is_tutor) : false,
           avatar_url: updated?.avatar_url ?? null,
         },
       });
@@ -325,7 +328,7 @@ function createUsersRouter({ db }) {
         });
 
       const updated = await db('users')
-        .select('id', 'username', 'has_set_username', 'avatar_url')
+        .select('id', 'username', 'has_set_username', 'is_tutor', 'avatar_url')
         .where({ id: userId })
         .first();
 
@@ -335,6 +338,7 @@ function createUsersRouter({ db }) {
           id: updated?.id ?? userId,
           username: updated?.username ?? null,
           has_set_username: updated ? Boolean(updated.has_set_username) : false,
+          is_tutor: updated ? Boolean(updated.is_tutor) : false,
           avatar_url: updated?.avatar_url ?? avatarUrl,
         },
       });

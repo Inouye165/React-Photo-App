@@ -2,6 +2,8 @@ import { supabase } from '../supabaseClient'
 import { buildTutorResponse } from '../components/whiteboard/whiteboardTutor'
 import type { ChatRoom } from '../types/chat'
 import type {
+  CreateWhiteboardHelpRequestPayload,
+  WhiteboardHelpRequest,
   WhiteboardHubItem,
   WhiteboardSessionDetails,
   WhiteboardTutorRequest,
@@ -55,10 +57,6 @@ function isRlsOrPolicyError(error: { code?: string; message?: string } | null | 
     message.includes('permission denied') ||
     message.includes('policy')
   )
-}
-
-function isUniqueViolation(error: { code?: string } | null | undefined): boolean {
-  return Boolean(error && error.code === '23505')
 }
 
 export async function requireAuthedUserId(): Promise<string> {
@@ -278,48 +276,70 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
     wbMembershipLogOnce('info', `membership-check:exists:${boardId}:${userId}`, '[WB-CLIENT] membership-check:exists', { boardId, userId })
     return { ok: true }
   }
-
-  wbMembershipLogOnce('info', `membership-insert:attempt:${boardId}:${userId}:owner`, '[WB-CLIENT] membership-insert:attempt', { boardId, userId, isOwner: true })
-  const { error: ownerInsertError } = await supabase
-    .from('room_members')
-    .insert({ room_id: boardId, user_id: userId, is_owner: true })
-
-  if (!ownerInsertError || isUniqueViolation(ownerInsertError)) {
-    wbMembershipLogOnce('info', `membership-insert:success:${boardId}:${userId}:owner`, '[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: true })
-    return { ok: true }
-  }
-
-  wbMembershipLogOnce('warn', `membership-insert-failed:${boardId}:${userId}:owner:${ownerInsertError.code ?? 'unknown'}`, '[WB-CLIENT] membership-insert-failed', {
-    boardId,
-    userId,
-    isOwner: true,
-    code: ownerInsertError.code,
-    message: ownerInsertError.message,
-  })
-
-  wbMembershipLogOnce('info', `membership-insert:retry:${boardId}:${userId}:member`, '[WB-CLIENT] membership-insert:retry', { boardId, userId, isOwner: false })
-  const { error: memberInsertError } = await supabase
-    .from('room_members')
-    .insert({ room_id: boardId, user_id: userId, is_owner: false })
-
-  if (!memberInsertError || isUniqueViolation(memberInsertError)) {
-    wbMembershipLogOnce('info', `membership-insert:success:${boardId}:${userId}:member`, '[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: false })
-    return { ok: true }
-  }
-
-  wbMembershipLogOnce('warn', `membership-insert-failed:${boardId}:${userId}:member:${memberInsertError.code ?? 'unknown'}`, '[WB-CLIENT] membership-insert-failed', {
-    boardId,
-    userId,
-    isOwner: false,
-    code: memberInsertError.code,
-    message: memberInsertError.message,
-  })
-
-  if (isRlsOrPolicyError(memberInsertError) || isRlsOrPolicyError(ownerInsertError)) {
-    return { ok: false, reason: 'rls' }
-  }
-
+  wbMembershipLogOnce('warn', `membership-check:not-member:${boardId}:${userId}`, '[WB-CLIENT] membership-check:not-member', { boardId, userId })
   return { ok: false, reason: 'not_member' }
+}
+
+export async function createWhiteboardHelpRequest(
+  boardId: string,
+  payload: CreateWhiteboardHelpRequestPayload,
+): Promise<WhiteboardHelpRequest> {
+  if (!boardId) throw new Error('Missing board id')
+
+  return request<WhiteboardHelpRequest>({
+    path: `/api/whiteboards/${boardId}/help-requests`,
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function getActiveWhiteboardHelpRequest(boardId: string): Promise<WhiteboardHelpRequest | null> {
+  if (!boardId) throw new Error('Missing board id')
+
+  try {
+    return await request<WhiteboardHelpRequest>({
+      path: `/api/whiteboards/${boardId}/help-requests/active`,
+      method: 'GET',
+    })
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+    throw error
+  }
+}
+
+export async function listTutorQueueRequests(options?: {
+  status?: 'pending' | 'claimed'
+  mine?: boolean
+}): Promise<WhiteboardHelpRequest[]> {
+  const query: Record<string, string> = {}
+  if (options?.status) query.status = options.status
+  if (typeof options?.mine === 'boolean') query.mine = String(options.mine)
+
+  return request<WhiteboardHelpRequest[]>({
+    path: '/api/whiteboards/help-requests',
+    method: 'GET',
+    query,
+  })
+}
+
+export async function claimWhiteboardHelpRequest(requestId: string): Promise<WhiteboardHelpRequest> {
+  if (!requestId) throw new Error('Missing help request id')
+
+  return request<WhiteboardHelpRequest>({
+    path: `/api/whiteboards/help-requests/${requestId}/claim`,
+    method: 'POST',
+  })
+}
+
+export async function resolveWhiteboardHelpRequest(requestId: string): Promise<WhiteboardHelpRequest> {
+  if (!requestId) throw new Error('Missing help request id')
+
+  return request<WhiteboardHelpRequest>({
+    path: `/api/whiteboards/help-requests/${requestId}/resolve`,
+    method: 'PATCH',
+  })
 }
 
 export async function createWhiteboardInvite(boardId: string): Promise<CreateWhiteboardInviteResult> {

@@ -66,6 +66,7 @@ server/.env.*
 # Ignore local config
 *.local.js
 *.local.json
+.local-runtime-state.json
 
 deployment_env_vars.txt
 

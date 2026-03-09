@@ -78,8 +78,20 @@ interface AuthenticatedRequest extends Request {
     role: string;
     app_metadata?: {
       role?: string;
+      is_tutor?: boolean;
     };
   };
+}
+
+interface AdminUserSummary {
+  id: string;
+  email: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  role: string;
+  is_tutor: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 // Email validation regex (safe pattern to prevent ReDoS)
@@ -156,6 +168,16 @@ function createAdminRouter({ db }: { db: any }): Router {
     }
 
     return { type: 'ok', value: trimmed };
+  }
+
+  function parseBooleanFlag(value: unknown): boolean | null {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+    return null;
   }
 
   // Initialize Supabase Admin Client with Service Role Key
@@ -244,6 +266,149 @@ function createAdminRouter({ db }: { db: any }): Router {
         success: false,
         error: 'Internal server error'
       });
+    }
+  });
+
+  router.get('/users', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ success: false, error: 'Admin functionality not configured' });
+      }
+
+      const search = typeof req.query?.search === 'string' ? req.query.search.trim().toLowerCase() : '';
+      const page = Math.max(1, Number.parseInt(String(req.query?.page || '1'), 10) || 1);
+      const perPage = Math.min(200, Math.max(1, Number.parseInt(String(req.query?.perPage || '100'), 10) || 100));
+
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (error) {
+        return res.status(500).json({ success: false, error: error.message || 'Failed to list users' });
+      }
+
+      const authUsers = Array.isArray(data?.users) ? data.users : [];
+      const authUserIds = authUsers.map((user) => user.id).filter(Boolean);
+      const profileRows = authUserIds.length > 0
+        ? await db('users')
+            .select('id', 'username', 'avatar_url', 'is_tutor', 'created_at', 'updated_at')
+            .whereIn('id', authUserIds)
+        : [];
+
+      const profilesById = new Map<string, {
+        username: string | null;
+        avatar_url: string | null;
+        is_tutor: boolean;
+        created_at: string | null;
+        updated_at: string | null;
+      }>();
+
+      for (const row of profileRows as Array<Record<string, unknown>>) {
+        const id = typeof row.id === 'string' ? row.id : null;
+        if (!id) continue;
+        profilesById.set(id, {
+          username: typeof row.username === 'string' ? row.username : null,
+          avatar_url: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+          is_tutor: row.is_tutor === true,
+          created_at: typeof row.created_at === 'string' ? row.created_at : null,
+          updated_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+        });
+      }
+
+      const users: AdminUserSummary[] = authUsers
+        .map((authUser) => {
+          const profile = profilesById.get(authUser.id);
+          const role = typeof authUser.app_metadata?.role === 'string' ? authUser.app_metadata.role : 'user';
+          const isTutor = authUser.app_metadata?.is_tutor === true || profile?.is_tutor === true;
+
+          return {
+            id: authUser.id,
+            email: typeof authUser.email === 'string' ? authUser.email : null,
+            username: profile?.username ?? (typeof authUser.user_metadata?.username === 'string' ? authUser.user_metadata.username : null),
+            avatar_url: profile?.avatar_url ?? null,
+            role,
+            is_tutor: isTutor,
+            created_at: typeof authUser.created_at === 'string' ? authUser.created_at : profile?.created_at ?? null,
+            updated_at: profile?.updated_at ?? null,
+          };
+        })
+        .filter((user) => {
+          if (!search) return true;
+          const haystack = [user.email, user.username, user.role].filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(search);
+        })
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+      return res.json({ success: true, data: users });
+    } catch (error) {
+      console.error('[admin] Users list exception:', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  router.patch('/users/:id/tutor', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const userId = typeof req.params?.id === 'string' ? req.params.id.trim() : '';
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'Valid user ID is required' });
+      }
+
+      const enabled = parseBooleanFlag(req.body?.enabled);
+      if (enabled === null) {
+        return res.status(400).json({ success: false, error: 'enabled must be true or false' });
+      }
+
+      if (!supabaseAdmin) {
+        return res.status(500).json({ success: false, error: 'Admin functionality not configured' });
+      }
+
+      const existing = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (existing.error || !existing.data?.user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      const currentUser = existing.data.user;
+      const currentAppMetadata = (currentUser.app_metadata && typeof currentUser.app_metadata === 'object')
+        ? currentUser.app_metadata
+        : {};
+
+      const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        app_metadata: {
+          ...currentAppMetadata,
+          is_tutor: enabled,
+        },
+      });
+
+      if (error) {
+        return res.status(500).json({ success: false, error: error.message || 'Failed to update tutor role' });
+      }
+
+      await db('users')
+        .insert({
+          id: userId,
+          is_tutor: enabled,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .onConflict('id')
+        .merge({
+          is_tutor: enabled,
+          updated_at: db.fn.now(),
+        });
+
+      return res.json({
+        success: true,
+        data: {
+          id: userId,
+          email: typeof data.user?.email === 'string' ? data.user.email : null,
+          role: typeof data.user?.app_metadata?.role === 'string' ? data.user.app_metadata.role : 'user',
+          is_tutor: enabled,
+        },
+      });
+    } catch (error) {
+      console.error('[admin] Tutor role update exception:', error);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });
 

@@ -1,21 +1,32 @@
 import React from 'react'
 import TabbedPanel, { type TabConfig } from '../common/TabbedPanel'
-import { AITutorTab, ChatTab, StepsTab } from './tabs'
+import { AITutorTab, ChatTab, HelpRequestTab, StepsTab } from './tabs'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
-import type { TutorAnalysisResult, WhiteboardTutorResponse } from '../../types/whiteboard'
+import type { TutorAnalysisResult, WhiteboardHelpRequest, WhiteboardTutorResponse } from '../../types/whiteboard'
 
-export type TabType = 'ai-tutor' | 'chat' | 'steps'
+export type TabType = 'ai-tutor' | 'help-request' | 'chat' | 'steps'
 
 export interface RightSidePanelProps {
   className?: string
   initialTab?: TabType
+  activeTab?: TabType
+  panelMode?: 'student' | 'tutor'
   width?: string | number
   backgroundColor?: string
   onTabChange?: (tab: TabType) => void
   hasPhoto: boolean
+  hasBoardContent?: boolean
   hasInput?: boolean
   inputMode?: 'photo' | 'text'
   problemDraft?: string
+  helpRequestDraft?: string
+  onHelpRequestDraftChange?: (value: string) => void
+  activeHelpRequest?: WhiteboardHelpRequest | null
+  helpRequestSubmitting?: boolean
+  helpRequestError?: string | null
+  onSubmitHelpRequest?: () => void
+  readyIntent?: 'analyze' | 'solve' | 'steps'
+  onReadyIntentChange?: (value: 'analyze' | 'solve' | 'steps') => void
   onProblemDraftChange?: (value: string) => void
   analysis: WhiteboardTutorResponse | null
   analysisResult?: TutorAnalysisResult | null
@@ -47,14 +58,25 @@ export interface RightSidePanelProps {
 
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
   className = '',
-  initialTab = 'ai-tutor',
+  initialTab = 'chat',
+  activeTab,
+  panelMode = 'student',
   width = 'clamp(380px, 35vw, 560px)',
   backgroundColor = '#1c1c1e',
   onTabChange,
   hasPhoto,
+  hasBoardContent = false,
   hasInput,
   inputMode = 'photo',
   problemDraft = '',
+  helpRequestDraft = '',
+  onHelpRequestDraftChange,
+  activeHelpRequest = null,
+  helpRequestSubmitting = false,
+  helpRequestError = null,
+  onSubmitHelpRequest,
+  readyIntent = 'analyze',
+  onReadyIntentChange,
   onProblemDraftChange,
   analysis,
   analysisResult = null,
@@ -83,16 +105,73 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   onTutorPlaybackReplay,
   onTutorStepSelect,
 }) => {
+  const helpTab: TabConfig<TabType> = {
+    id: 'help-request',
+    label: 'HELP',
+    content: (
+      <HelpRequestTab
+        hasPhoto={hasPhoto}
+        hasBoardContent={hasBoardContent}
+        problemDraft={problemDraft}
+        helpRequestDraft={helpRequestDraft}
+        onHelpRequestDraftChange={onHelpRequestDraftChange}
+        activeRequest={activeHelpRequest}
+        isSubmitting={helpRequestSubmitting}
+        submitError={helpRequestError}
+        onSubmit={() => onSubmitHelpRequest?.()}
+      />
+    ),
+  }
+
   const tabs: TabConfig<TabType>[] = [
     {
-      id: 'ai-tutor',
-      label: 'AI TUTOR',
+      id: 'chat',
+      label: 'CHAT',
+      content: (
+        <ChatTab
+          onRequestHumanTutor={onRequestHumanTutor}
+        />
+      )
+    },
+    ...(panelMode === 'tutor'
+      ? [{
+        id: 'steps' as TabType,
+        label: 'STEPS',
+        content: (
+          <StepsTab
+            hasPhoto={hasPhoto}
+            isLoading={analysisLoading}
+            correctSolution={analysis?.correctSolution ?? ''}
+            analysisResult={analysisResult}
+            steps={analysis?.steps ?? []}
+            activeStepId={activeTutorStepId}
+            overlayVisible={overlayVisible}
+            canPlay={tutorPlaybackCanPlay}
+            isPlaying={tutorPlaybackIsPlaying}
+            onToggleOverlay={onToggleTutorOverlay}
+            onPlay={onTutorPlaybackPlay}
+            onPause={onTutorPlaybackPause}
+            onPrevious={onTutorPlaybackPrevious}
+            onNext={onTutorPlaybackNext}
+            onReplay={onTutorPlaybackReplay}
+            onStepSelect={onTutorStepSelect}
+          />
+        )
+      } satisfies TabConfig<TabType>] : []),
+    ...(panelMode === 'tutor' ? [{
+      id: 'ai-tutor' as TabType,
+      label: 'TUTOR ASSIST',
       content: (
         <AITutorTab
           hasPhoto={hasPhoto}
+          hasBoardContent={hasBoardContent}
           hasInput={hasInput ?? hasPhoto}
           inputMode={inputMode}
           problemDraft={problemDraft}
+          helpRequestDraft={helpRequestDraft}
+          onHelpRequestDraftChange={onHelpRequestDraftChange}
+          readyIntent={readyIntent}
+          onReadyIntentChange={onReadyIntentChange}
           onProblemDraftChange={onProblemDraftChange}
           analysis={analysis}
           isLoading={analysisLoading}
@@ -109,40 +188,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           onLessonMessageChange={onLessonMessageChange}
         />
       )
-    },
-    {
-      id: 'chat',
-      label: 'CHAT',
-      content: (
-        <ChatTab
-          onRequestHumanTutor={onRequestHumanTutor}
-        />
-      )
-    },
-    {
-      id: 'steps',
-      label: 'STEPS',
-      content: (
-        <StepsTab
-          hasPhoto={hasPhoto}
-          isLoading={analysisLoading}
-          correctSolution={analysis?.correctSolution ?? ''}
-          analysisResult={analysisResult}
-          steps={analysis?.steps ?? []}
-          activeStepId={activeTutorStepId}
-          overlayVisible={overlayVisible}
-          canPlay={tutorPlaybackCanPlay}
-          isPlaying={tutorPlaybackIsPlaying}
-          onToggleOverlay={onToggleTutorOverlay}
-          onPlay={onTutorPlaybackPlay}
-          onPause={onTutorPlaybackPause}
-          onPrevious={onTutorPlaybackPrevious}
-          onNext={onTutorPlaybackNext}
-          onReplay={onTutorPlaybackReplay}
-          onStepSelect={onTutorStepSelect}
-        />
-      )
-    },
+    } satisfies TabConfig<TabType>] : [helpTab]),
   ]
 
   const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
@@ -163,6 +209,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       <TabbedPanel
         className="min-h-0"
         tabs={tabs}
+        activeTab={activeTab}
         initialTab={initialTab}
         onTabChange={onTabChange}
         renderTabButton={(tab, isActive, onClick) => (

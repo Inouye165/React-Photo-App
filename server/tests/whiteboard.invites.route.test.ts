@@ -42,6 +42,7 @@ type MockDbState = {
   rooms: RoomRow[]
   roomMembers: RoomMemberRow[]
   invites: InviteRow[]
+  users: string[]
 }
 
 type RequestWithUser = Request & { user?: { id?: string } }
@@ -128,6 +129,24 @@ function createMockDb(state: MockDbState) {
           )
           if (!exists) {
             state.roomMembers.push(query._insertRow)
+          }
+        }),
+      }
+      return query
+    }
+
+    if (tableName === 'users') {
+      const query = {
+        _insertRow: null as { id: string } | null,
+        insert: jest.fn(function insert(row: { id: string }) {
+          query._insertRow = row
+          return query
+        }),
+        onConflict: jest.fn().mockReturnThis(),
+        ignore: jest.fn(async () => {
+          if (!query._insertRow?.id) return
+          if (!state.users.includes(query._insertRow.id)) {
+            state.users.push(query._insertRow.id)
           }
         }),
       }
@@ -256,6 +275,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -279,6 +299,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -295,6 +316,7 @@ describe('whiteboard invites routes', () => {
       rooms: [],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -317,6 +339,7 @@ describe('whiteboard invites routes', () => {
       rooms: [],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -354,6 +377,7 @@ describe('whiteboard invites routes', () => {
           revoked_at: null,
         },
       ],
+      users: ['owner-1', 'invitee-2'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -372,6 +396,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1', 'invitee-2'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -398,6 +423,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -421,6 +447,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1', 'invitee-2', 'invitee-3'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -449,6 +476,7 @@ describe('whiteboard invites routes', () => {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
       roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
       invites: [],
+      users: ['owner-1', 'invitee-2'],
     }
     const app = createTestApp(createMockDb(state))
 
@@ -491,6 +519,7 @@ describe('whiteboard invites routes', () => {
           revoked_at: null,
         },
       ],
+      users: ['owner-1', 'invitee-2'],
     }
     const app = createTestApp(createMockDb(state))
 
