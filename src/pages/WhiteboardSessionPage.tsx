@@ -12,10 +12,12 @@ import {
   Eraser,
   Highlighter,
   ImageMinus,
+  MapPin,
   MoreVertical,
   PenTool,
   Share2,
   Square,
+  Trash2,
   Type,
   Users,
 } from 'lucide-react'
@@ -39,7 +41,6 @@ import {
   ensureWhiteboardMembership,
   getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
-  resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
 } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
@@ -49,6 +50,7 @@ import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/Ro
 import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
+type SessionState = 'queued' | 'live' | 'async'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 type MobileWhiteboardTab = 'homework' | 'support' | 'chat'
 type HomeworkInputMode = 'photo' | 'text'
@@ -274,6 +276,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobilePhotoVersion, setMobilePhotoVersion] = useState(0)
   const [mobilePhotoContainerHeight, setMobilePhotoContainerHeight] = useState<number | null>(null)
   const [photoTransform, setPhotoTransform] = useState<PhotoTransformState>(DEFAULT_PHOTO_TRANSFORM)
+  const [annotationMode, setAnnotationMode] = useState(false)
+  const [annotationMarkers] = useState([
+    { id: 1, x: 45, y: 35, label: '①', color: '#EF4444' },
+    { id: 2, x: 45, y: 55, label: '②', color: '#F59E0B' },
+  ])
+  const [zoomLevel, setZoomLevel] = useState(100)
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
@@ -294,6 +302,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
   const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('chat')
+  const [sessionState, setSessionState] = useState<SessionState>('queued')
+  const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
+  const [liveSessionElapsedSeconds, setLiveSessionElapsedSeconds] = useState(0)
+  const [studentPresence, setStudentPresence] = useState<'online' | 'offline'>('offline')
   const [mobileActiveTab, setMobileActiveTab] = useState<MobileWhiteboardTab>('homework')
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
@@ -322,6 +334,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
   const structuredAnalysisResult = analysis?.analysisResult ?? null
   const displayBoardName = useMemo(() => boardName.trim() || WHITEBOARD_APP_NAME, [boardName])
+  const studentMember = useMemo(
+    () => members.find((member) => member.userId !== currentUserId) ?? members[0] ?? null,
+    [currentUserId, members],
+  )
+  const studentDisplayName = useMemo(() => studentMember?.username?.trim() || 'Student', [studentMember])
   const hasHelpRequest = helpRequestDraft.trim().length > 0
   const hasTextInput = textContent.trim().length > 0
   const effectiveTutorInputMode: HomeworkInputMode = inputMode === 'text' || (!hasBackground && (hasTextInput || hasHelpRequest)) ? 'text' : 'photo'
@@ -332,6 +349,33 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     steps: structuredAnalysisResult?.steps ?? [],
     reducedMotion: Boolean(prefersReducedMotion),
   })
+
+  const sessionStatusMeta = useMemo(() => {
+    if (sessionState === 'live') {
+      return {
+        pillClassName: 'bg-[#064E3B] text-[#10B981]',
+        pillText: '● Live Session',
+      }
+    }
+
+    if (sessionState === 'async') {
+      return {
+        pillClassName: 'bg-[#1E3A5F] text-[#60A5FA]',
+        pillText: '📋 Async Review',
+      }
+    }
+
+    return {
+      pillClassName: 'bg-[#78350F] text-[#F59E0B]',
+      pillText: '⏳ In Queue',
+    }
+  }, [sessionState])
+
+  const liveSessionTimerLabel = useMemo(() => {
+    const minutes = Math.floor(liveSessionElapsedSeconds / 60)
+    const seconds = liveSessionElapsedSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  }, [liveSessionElapsedSeconds])
 
   const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
@@ -472,6 +516,22 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     navigate('/tutor/queue')
   }, [navigate])
 
+  const handlePickUpSession = useCallback(() => {
+    const startedAt = Date.now() - ((4 * 60) + 23) * 1000
+    setSessionState('live')
+    setLiveSessionStartedAt(startedAt)
+    setLiveSessionElapsedSeconds(4 * 60 + 23)
+    setStudentPresence('online')
+    setDesktopSidePanelOpen(true)
+  }, [])
+
+  const handlePassSession = useCallback(() => {
+    setSessionState('async')
+    setLiveSessionStartedAt(null)
+    setLiveSessionElapsedSeconds(0)
+    setStudentPresence('offline')
+  }, [])
+
   const handleRequestHelp = useCallback(() => {
     if (canUseTutorAssist) {
       setTutorReadyIntent('analyze')
@@ -505,18 +565,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setHelpRequestSubmitting(false)
     }
   }, [boardId, canUseTutorAssist, helpRequestDraft, textContent])
-
-  const handleResolveHelpRequest = useCallback(async () => {
-    if (!activeHelpRequest || !canUseTutorAssist) return
-
-    try {
-      await resolveWhiteboardHelpRequest(activeHelpRequest.id)
-      setActiveHelpRequest(null)
-      setHelpRequestError(null)
-    } catch (error) {
-      setHelpRequestError(error instanceof Error ? error.message : 'Unable to resolve help request.')
-    }
-  }, [activeHelpRequest, canUseTutorAssist])
 
   const scheduleMobileToolbarHide = useCallback(() => {
     if (mobileToolbarHideTimeoutRef.current) {
@@ -660,11 +708,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [])
 
   const handleRenameStart = useCallback(() => {
-    if (!isOwner) return
     setRenameError(null)
     setRenameDraft(boardName)
     setIsRenaming(true)
-  }, [boardName, isOwner])
+  }, [boardName])
 
   const handleRenameCancel = useCallback(() => {
     setIsRenaming(false)
@@ -1091,6 +1138,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [accessState, boardId])
 
   useEffect(() => {
+    if (sessionState !== 'live' || liveSessionStartedAt === null) {
+      return undefined
+    }
+
+    const updateElapsed = () => {
+      setLiveSessionElapsedSeconds(Math.max(0, Math.floor((Date.now() - liveSessionStartedAt) / 1000)))
+    }
+
+    updateElapsed()
+    const intervalId = window.setInterval(updateElapsed, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [liveSessionStartedAt, sessionState])
+
+  useEffect(() => {
     if (!canUseTutorAssist || !activeHelpRequest || helpRequestDraft.trim()) return
 
     const seededDraft = activeHelpRequest.requestText?.trim() || activeHelpRequest.problemDraft?.trim() || ''
@@ -1098,6 +1159,24 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setHelpRequestDraft(seededDraft)
     }
   }, [activeHelpRequest, canUseTutorAssist, helpRequestDraft])
+
+  useEffect(() => {
+    if (!activeHelpRequest) return
+
+    if (activeHelpRequest.status === 'claimed') {
+      const startedAt = Date.now() - ((4 * 60) + 23) * 1000
+      setSessionState('live')
+      setLiveSessionStartedAt(startedAt)
+      setLiveSessionElapsedSeconds(4 * 60 + 23)
+      setStudentPresence('online')
+      return
+    }
+
+    setSessionState('queued')
+    setLiveSessionStartedAt(null)
+    setLiveSessionElapsedSeconds(0)
+    setStudentPresence('offline')
+  }, [activeHelpRequest])
 
   useEffect(() => {
     if (!isRenaming) return
@@ -1457,17 +1536,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           ) : (
             <div className="flex min-w-0 items-center gap-2">
               <h1 className="truncate text-xl font-semibold font-display">{displayBoardName}</h1>
-              {isOwner ? (
-                <button
-                  type="button"
-                  onClick={handleRenameStart}
-                  className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
-                  aria-label="Rename whiteboard"
-                  title="Rename whiteboard"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={handleRenameStart}
+                className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
+                aria-label="Rename whiteboard"
+                title="Rename whiteboard"
+              >
+                <Edit3 className="h-4 w-4" />
+              </button>
             </div>
           )}
         </div>
@@ -1498,15 +1575,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             {desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
           </button>
           {canUseTutorAssist ? (
-            <button
-              type="button"
-              onClick={handleOpenTutorQueue}
-              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
-              aria-label="Tutor queue"
-            >
-              <span aria-hidden="true">🧑‍🏫</span>
-              Tutor queue
-            </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenTutorQueue}
+                  className="relative flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+                  aria-label="Tutor queue"
+                >
+                  <span aria-hidden="true">🧑‍🏫</span>
+                  Tutor queue
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    3
+                  </span>
+                </button>
+              </div>
           ) : (
             <button
               type="button"
@@ -1518,14 +1600,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               Request help
             </button>
           )}
-          <button
-            onClick={handleOpenInvite}
-            className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
-            aria-label="Invite"
-          >
-            <Users className="h-4 w-4" />
-            Invite
-          </button>
           <div className="relative" ref={shareMenuRef}>
             <button
               type="button"
@@ -1535,11 +1609,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               aria-haspopup="menu"
             >
               <Share2 className="h-4 w-4" />
-              Share
+              Share ···
               <ChevronDown className="h-4 w-4" />
             </button>
             {shareMenuOpen ? (
               <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl" role="menu" aria-label="Share actions">
+                <button
+                  type="button"
+                  onClick={handleOpenInvite}
+                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                  role="menuitem"
+                >
+                  <Users className="h-4 w-4" />
+                  Invite
+                </button>
                 <button
                   type="button"
                   onClick={() => void handleCopyBoardLink()}
@@ -1675,35 +1758,46 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
-        {activeHelpRequest ? (
-          <div className="border-b border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold">
-                  {activeHelpRequest.status === 'claimed' ? 'Tutor engaged' : 'Help request waiting in queue'}
-                </div>
-                <div className="mt-1 text-amber-50/85">
-                  {activeHelpRequest.status === 'claimed'
-                    ? (activeHelpRequest.claimedByUsername
-                      ? `${activeHelpRequest.claimedByUsername} claimed this whiteboard.`
-                      : 'A tutor claimed this whiteboard.')
-                    : 'Tutors can now pick up this whiteboard from the queue.'}
-                </div>
-              </div>
-              {canUseTutorAssist && activeHelpRequest.status === 'claimed' ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleResolveHelpRequest()
-                  }}
-                  className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-white transition hover:bg-white/15"
-                >
-                  Resolve request
-                </button>
-              ) : null}
-            </div>
+        <div className="flex min-h-[52px] w-full items-center justify-between gap-3 border-b border-[#374151] bg-[#1F2937] px-4 py-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <span className={`inline-flex rounded-full px-[10px] py-[3px] text-[12px] font-medium ${sessionStatusMeta.pillClassName}`}>
+              {sessionStatusMeta.pillText}
+            </span>
+            <span className="min-w-0 text-[13px] text-[#9CA3AF]">
+              Student submitted 23 minutes ago  ·  Algebra  ·  Grade 9
+            </span>
           </div>
-        ) : null}
+
+          {sessionState === 'queued' ? (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePickUpSession}
+                className="rounded-[6px] bg-[#F59E0B] px-[14px] py-[5px] text-[13px] font-semibold text-black transition hover:bg-[#f2ab28]"
+              >
+                Pick Up Session
+              </button>
+              <button
+                type="button"
+                onClick={handlePassSession}
+                className="rounded-[6px] border border-[#374151] px-[14px] py-[5px] text-[13px] text-[#9CA3AF] transition hover:bg-[#111827] hover:text-[#D1D5DB]"
+              >
+                Pass
+              </button>
+            </div>
+          ) : null}
+
+          {sessionState === 'live' ? (
+            <div className="flex shrink-0 items-center gap-3">
+              <span className="text-[12px] text-[#6B7280]">Started 4 min ago</span>
+              <span className="text-[13px] text-[#9CA3AF]">🕐 {liveSessionTimerLabel}</span>
+            </div>
+          ) : null}
+
+          {sessionState === 'async' ? (
+            <div className="shrink-0 text-[12px] text-[#6B7280]">Submitted yesterday at 3:22 PM</div>
+          ) : null}
+        </div>
 
         <input
           ref={photoUploadInputRef}
@@ -2055,11 +2149,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 <div className="border-b border-white/10 bg-[#111111] px-4 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
-                      <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
-                      <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
-                      <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
-                      <div className="relative" ref={shapeMenuRef}>
+                      <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-[#111111] p-1">
+                        <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
+                        <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
+                        <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
+                        <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
+                      </div>
+                      <div className="relative ml-2" ref={shapeMenuRef}>
                         <button
                           type="button"
                           onClick={() => setShapeMenuOpen((prev) => !prev)}
@@ -2098,6 +2194,44 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setAnnotationMode((prev) => !prev)}
+                        title={annotationMode ? 'Hide markers' : 'Show markers'}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
+                          annotationMode
+                            ? 'border-amber-500/50 bg-amber-500/10 text-amber-400'
+                            : 'border-white/10 bg-transparent text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <MapPin className="h-3.5 w-3.5" />
+                        {annotationMode ? 'Markers on' : 'Markers off'}
+                      </button>
+                      {/* Zoom control */}
+                      <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-[#111111] px-2 py-1">
+                        <button
+                          type="button"
+                          onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
+                          className="px-1 text-sm text-slate-400 transition hover:text-white"
+                        >−</button>
+                        <span className="min-w-[36px] text-center text-xs text-slate-400">{zoomLevel}%</span>
+                        <button
+                          type="button"
+                          onClick={() => setZoomLevel((z) => Math.min(200, z + 10))}
+                          className="px-1 text-sm text-slate-400 transition hover:text-white"
+                        >+</button>
+                      </div>
+                      {/* Clear annotations */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          return undefined
+                        }}
+                        title="Clear annotations"
+                        className="rounded-lg p-1.5 text-slate-500 transition hover:bg-red-500/10 hover:text-red-400"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={handleRemovePhotoRequest}
@@ -2148,6 +2282,24 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   onBoardFrameChange={setBoardFrame}
                   onAccessDenied={handleWhiteboardAccessDenied}
                 />
+                {annotationMode ? (
+                  <div className="pointer-events-none absolute inset-0 z-10">
+                    {annotationMarkers.map((marker) => (
+                      <div
+                        key={marker.id}
+                        className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-bold shadow-lg"
+                        style={{
+                          left: `${marker.x}%`,
+                          top: `${marker.y}%`,
+                          backgroundColor: marker.color,
+                          color: '#000',
+                        }}
+                      >
+                        {marker.label}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
                 {structuredAnalysisResult && effectiveTutorInputMode === 'photo' ? (
                   <TutorOverlay
                     analysisResult={structuredAnalysisResult}
@@ -2183,6 +2335,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <RightSidePanel
                 className="whiteboard-side-panel"
                 activeTab={desktopSidePanelTab}
+                studentName={studentDisplayName}
+                studentPresence={studentPresence}
+                studentLastSeenText="Last seen 2 hrs ago"
                 panelMode={panelMode}
                 hasPhoto={hasBackground}
                 hasInput={hasTutorInput}
