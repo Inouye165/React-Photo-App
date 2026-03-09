@@ -219,6 +219,80 @@ describe('whiteboard tutor route', () => {
     expect(promptText).toContain('Visible step transcriptions:')
   })
 
+  test('recovers when transcription JSON is wrapped in fences and includes trailing commas', async () => {
+    mockGenerateContent.mockResolvedValueOnce({
+      response: {
+        text: () => [
+          'Here you go:',
+          '',
+          '```json',
+          '{',
+          '  "problem": "Solve 2x = 10",',
+          '  "steps": [',
+          '    { "stepNumber": 1, "content": "2x = 10" },',
+          '    { "stepNumber": 2, "content": "x = 5" },',
+          '  ],',
+          '}',
+          '```',
+        ].join('\n'),
+      },
+    })
+
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.analysisResult.problemText).toBe('Solve 2x = 10')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
+  })
+
+  test('retries transcription with a fallback Gemini model after invalid JSON', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        response: {
+          text: () => 'not valid json',
+        },
+      })
+      .mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            problem: 'Solve 2x = 10',
+            steps: [
+              { stepNumber: 1, content: '2x = 10' },
+              { stepNumber: 2, content: 'x = 5' },
+            ],
+          }),
+        },
+      })
+
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.analysisResult.problemText).toBe('Solve 2x = 10')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
+  })
+
   test('denies tutor requests to non-members', async () => {
     const db = createMockDb({ roomMembers: [] })
     const app = createTestApp({ db, authMode: 'ok' })

@@ -367,15 +367,38 @@ function extractJsonText(rawText: string): string {
   return trimmed;
 }
 
+function sanitizeJsonText(rawText: string): string {
+  return rawText
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+}
+
+function isInvalidJsonTutorError(error: unknown): boolean {
+  return error instanceof Error && /invalid json/i.test(error.message);
+}
+
 function parseJsonResponse<T>(rawText: string, schema: z.ZodType<T>, label: string): T {
-  try {
-    const parsed = JSON.parse(extractJsonText(rawText));
-    return schema.parse(parsed);
-  } catch (error) {
-    const wrappedError = new Error(`${label} returned invalid JSON`) as Error & { statusCode?: number };
-    wrappedError.statusCode = 502;
-    throw wrappedError;
+  const candidates = [
+    extractJsonText(rawText),
+    sanitizeJsonText(extractJsonText(rawText)),
+    sanitizeJsonText(rawText.trim()),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      return schema.parse(parsed);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        break;
+      }
+    }
   }
+
+  const wrappedError = new Error(`${label} returned invalid JSON`) as Error & { statusCode?: number };
+  wrappedError.statusCode = 502;
+  throw wrappedError;
 }
 
 function buildPassTwoUserPrompt(body: WhiteboardTutorBody, transcription: WhiteboardTutorTranscription): string {
@@ -465,6 +488,7 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 1200,
+          responseMimeType: 'application/json',
         },
       });
 
@@ -477,6 +501,10 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
     } catch (error) {
       const errorInfo = extractGeminiErrorInfo(error);
       lastError = errorInfo;
+
+      if (!isLastCandidate && isInvalidJsonTutorError(error)) {
+        continue;
+      }
 
       if (!isLastCandidate && isModelNotFoundError(errorInfo)) {
         continue;
