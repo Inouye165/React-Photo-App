@@ -664,6 +664,53 @@ async function ensureLocalUserShadow(db: Knex, userId: string): Promise<void> {
     .ignore();
 }
 
+async function ensureRoomMembershipWithFallback(
+  db: Knex,
+  roomId: string,
+  userId: string,
+  isOwner: boolean,
+  logLabels: {
+    localFkUserMissing: string;
+    supabaseFallbackFailed: string;
+    supabaseFallbackSuccess: string;
+  },
+): Promise<void> {
+  try {
+    await db('room_members')
+      .insert({ room_id: roomId, user_id: userId, is_owner: isOwner })
+      .onConflict(['room_id', 'user_id'])
+      .ignore();
+  } catch (membershipError) {
+    if (!isRoomMemberUserForeignKeyError(membershipError)) {
+      throw membershipError;
+    }
+
+    console.warn(logLabels.localFkUserMissing, {
+      roomId,
+      userId,
+    });
+
+    const { error: supabaseMembershipError } = await supabase
+      .from('room_members')
+      .insert({ room_id: roomId, user_id: userId, is_owner: isOwner });
+
+    if (supabaseMembershipError && supabaseMembershipError.code !== '23505') {
+      console.warn(logLabels.supabaseFallbackFailed, {
+        roomId,
+        userId,
+        code: supabaseMembershipError.code,
+        message: supabaseMembershipError.message,
+      });
+      throw membershipError;
+    }
+
+    console.info(logLabels.supabaseFallbackSuccess, {
+      roomId,
+      userId,
+    });
+  }
+}
+
 async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: string): Promise<boolean> {
   try {
     const { data: roomData, error: roomErr } = await supabase
@@ -1548,40 +1595,11 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           return res.status(400).json({ success: false, error: 'Join link is no longer usable', reason: 'used_up' });
         }
 
-        try {
-          await db('room_members')
-            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false })
-            .onConflict(['room_id', 'user_id'])
-            .ignore();
-        } catch (membershipError) {
-          if (!isRoomMemberUserForeignKeyError(membershipError)) {
-            throw membershipError;
-          }
-
-          console.warn('[WB-JOIN] join-membership-local-fk-user-missing', {
-            roomId: invite.room_id,
-            userId,
-          });
-
-          const { error: supabaseMembershipError } = await supabase
-            .from('room_members')
-            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false });
-
-          if (supabaseMembershipError && supabaseMembershipError.code !== '23505') {
-            console.warn('[WB-JOIN] join-membership-supabase-fallback-failed', {
-              roomId: invite.room_id,
-              userId,
-              code: supabaseMembershipError.code,
-              message: supabaseMembershipError.message,
-            });
-            throw membershipError;
-          }
-
-          console.info('[WB-JOIN] join-membership-supabase-fallback-success', {
-            roomId: invite.room_id,
-            userId,
-          });
-        }
+        await ensureRoomMembershipWithFallback(db, invite.room_id, userId, false, {
+          localFkUserMissing: '[WB-JOIN] join-membership-local-fk-user-missing',
+          supabaseFallbackFailed: '[WB-JOIN] join-membership-supabase-fallback-failed',
+          supabaseFallbackSuccess: '[WB-JOIN] join-membership-supabase-fallback-success',
+        });
 
         console.info('[WB-JOIN] join-attempt', {
           ok: true,
@@ -1786,10 +1804,10 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
             .first();
 
           if (!membership) {
-            await trx('room_members').insert({
-              room_id: existing.boardId,
-              user_id: userId,
-              is_owner: false,
+            await ensureRoomMembershipWithFallback(trx as Knex, existing.boardId, userId, false, {
+              localFkUserMissing: '[WB-HELP] claim-membership-local-fk-user-missing',
+              supabaseFallbackFailed: '[WB-HELP] claim-membership-supabase-fallback-failed',
+              supabaseFallbackSuccess: '[WB-HELP] claim-membership-supabase-fallback-success',
             });
           }
         });
