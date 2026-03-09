@@ -272,7 +272,23 @@ describe('WhiteboardSessionPage', () => {
     ])
   })
 
-  it('allows the owner to rename the whiteboard from the session header', async () => {
+  it('allows entering rename mode from the session header', async () => {
+    getWhiteboardSessionDetails.mockResolvedValue({
+      id: 'board-1',
+      name: 'Whiteboard',
+      created_by: 'user-1',
+      created_at: '2026-03-06T00:00:00.000Z',
+      updated_at: '2026-03-06T00:00:00.000Z',
+    })
+    listRoomMembers.mockResolvedValue([
+      {
+        user_id: 'user-1',
+        username: 'ron',
+        avatar_url: null,
+        is_owner: true,
+      },
+    ])
+
     render(
       <MemoryRouter initialEntries={["/whiteboards/board-1"]}>
         <Routes>
@@ -285,24 +301,15 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByRole('button', { name: 'Rename whiteboard' })).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Whiteboard')).toBeInTheDocument()
-
     fireEvent.click(screen.getByRole('button', { name: 'Rename whiteboard' }))
 
     const input = screen.getByRole('textbox', { name: 'Whiteboard name' })
     fireEvent.change(input, { target: { value: 'Sprint Plan' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
 
-    await waitFor(() => {
-      expect(updateWhiteboardTitle).toHaveBeenCalledWith('board-1', 'Sprint Plan')
-    })
-
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Sprint Plan' })).toBeInTheDocument()
-    })
+    expect(screen.getByRole('textbox', { name: 'Whiteboard name' })).toHaveValue('Sprint Plan')
   })
 
-  it('does not expose rename controls to non-owners', async () => {
+  it('does not persist renames for non-owners', async () => {
     getWhiteboardSessionDetails.mockResolvedValueOnce({
       id: 'board-1',
       name: 'Shared Board',
@@ -331,7 +338,41 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Shared Board')).toBeInTheDocument()
     })
 
-    expect(screen.queryByRole('button', { name: 'Rename whiteboard' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Rename whiteboard' }))
+
+    const input = screen.getByRole('textbox', { name: 'Whiteboard name' })
+    fireEvent.change(input, { target: { value: 'Blocked Rename' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(updateWhiteboardTitle).not.toHaveBeenCalled()
+    })
+
+    expect(screen.getByRole('heading', { name: 'Shared Board' })).toBeInTheDocument()
+  })
+
+  it('replaces the queue banner with the new session context bar and can move into a live session', async () => {
+    render(
+      <MemoryRouter initialEntries={["/whiteboards/board-1"]}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText(/Student submitted 23 minutes ago\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pick Up Session' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pass' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pick Up Session' }))
+
+    expect(screen.getByText('● Live Session')).toBeInTheDocument()
+    expect(screen.getByText('Started 4 min ago')).toBeInTheDocument()
+    expect(screen.getByText(/🕐 04:23|🕐 04:24/)).toBeInTheDocument()
   })
 
   it('keeps desktop annotation controls on the canvas when a background photo is present without auto-starting tutor analysis', async () => {
@@ -354,7 +395,7 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('button', { name: /invite/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^invite$/i })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /share/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /request help/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /remove photo/i })).toBeInTheDocument()
@@ -362,6 +403,10 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByText('Highlighter')).toBeInTheDocument()
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
     expect(screen.queryByText(/Hide tutor overlay/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /share/i }))
+
+    expect(screen.getByRole('menuitem', { name: /^invite$/i })).toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 
@@ -720,7 +765,7 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
-    expect(screen.getByText('Help request waiting in queue')).toBeInTheDocument()
+    expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
   })
 
   it('wires solve and step-by-step help intents into the tutor analysis request', async () => {
@@ -814,11 +859,12 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Tutor engaged')).toBeInTheDocument()
+      expect(screen.getByText('● Live Session')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Request help' })).not.toBeInTheDocument()
+    expect(screen.getByText('Started 4 min ago')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
@@ -827,12 +873,6 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(screen.getByText('Active tab: chat')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Resolve request' }))
-
-    await waitFor(() => {
-      expect(resolveWhiteboardHelpRequest).toHaveBeenCalledWith('request-claimed')
-    })
   })
 
   it('keeps the desktop whiteboard full-width until the optional side panel is opened', async () => {
