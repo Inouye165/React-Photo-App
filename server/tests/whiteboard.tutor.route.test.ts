@@ -66,7 +66,7 @@ function createTestApp({ db, authMode }: { db: ReturnType<typeof createMockDb>; 
     if (authMode === 'unauthorized') {
       return res.status(401).json({ success: false, error: 'Unauthorized' })
     }
-    req.user = { id: 'user-1' }
+    req.user = { id: 'user-1', isTutor: true, role: 'user' }
     return next()
   }
 

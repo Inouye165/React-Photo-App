@@ -88,7 +88,8 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
         id: 'user-123',
         email: 'test@example.com',
         username: 'testuser',
-        role: 'user'
+        role: 'user',
+        isTutor: false
       });
     });
 
