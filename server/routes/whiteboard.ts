@@ -651,6 +651,19 @@ function isRoomMemberUserForeignKeyError(error: unknown): boolean {
   return typeof dbError.message === 'string' && dbError.message.includes('room_members_user_id_foreign');
 }
 
+async function ensureLocalUserShadow(db: Knex, userId: string): Promise<void> {
+  if (!userId) return;
+
+  await db('users')
+    .insert({
+      id: userId,
+      created_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    })
+    .onConflict('id')
+    .ignore();
+}
+
 async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: string): Promise<boolean> {
   try {
     const { data: roomData, error: roomErr } = await supabase
@@ -679,6 +692,8 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
       .insert({ id: roomId })
       .onConflict('id')
       .ignore();
+
+    await ensureLocalUserShadow(db, userId);
 
     await db('room_members')
       .insert({ room_id: roomId, user_id: userId, is_owner: true })
@@ -729,6 +744,8 @@ async function hydrateMissingRoomForJoin(db: Knex, boardId: string, inviteCreate
     await db('rooms').insert(roomInsert).onConflict('id').ignore();
 
     if (createdBy) {
+      await ensureLocalUserShadow(db, createdBy);
+
       await db('room_members')
         .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
         .onConflict(['room_id', 'user_id'])
@@ -1664,6 +1681,16 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           return res.status(409).json({ success: false, error: 'This whiteboard already has an active help request.', data: existing });
         }
 
+        const localRoom = await db('rooms').select('id').where({ id: boardId }).first();
+        if (!localRoom) {
+          const hydrated = await hydrateMissingRoomForJoin(db, boardId, null);
+          if (!hydrated) {
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
+        }
+
+        await ensureLocalUserShadow(db, userId);
+
         const body = req.body as z.infer<typeof WhiteboardHelpRequestBodySchema>;
         const requestText = body.requestText?.trim() || 'Help requested on this whiteboard.';
         const problemDraft = body.problemDraft?.trim() || null;
@@ -1727,6 +1754,8 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         }
 
         await db.transaction(async (trx) => {
+          await ensureLocalUserShadow(trx as Knex, userId);
+
           await trx('whiteboard_help_requests')
             .where({ id: requestId })
             .update({
