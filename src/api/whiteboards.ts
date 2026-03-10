@@ -387,13 +387,19 @@ export async function analyzeWhiteboardPhoto(
     throw new Error('Missing image data')
   }
 
-  const response = await request<Omit<WhiteboardTutorResponse, 'messages'> & { messages: WhiteboardTutorResponse['messages'] }>({
+  const response = await request<Omit<WhiteboardTutorResponse, 'messages'> & {
+    messages: WhiteboardTutorResponse['messages']
+    cacheSource?: WhiteboardTutorResponse['cacheSource']
+  }>({
     path: `/api/whiteboards/${boardId}/tutor`,
     method: 'POST',
     body: payload,
   })
 
-  return buildTutorResponse(response, response.messages)
+  return {
+    ...buildTutorResponse(response, response.messages),
+    cacheSource: response.cacheSource ?? 'fresh',
+  }
 }
 
 export default {}

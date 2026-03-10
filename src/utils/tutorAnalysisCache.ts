@@ -60,7 +60,10 @@ export function readTutorAnalysisDeviceCache(cacheKey: string | null | undefined
       return null
     }
 
-    return parsed.response as WhiteboardTutorResponse
+    return {
+      ...(parsed.response as WhiteboardTutorResponse),
+      cacheSource: 'local-cache',
+    }
   } catch {
     return null
   }

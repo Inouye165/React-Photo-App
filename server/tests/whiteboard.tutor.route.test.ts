@@ -231,6 +231,7 @@ describe('whiteboard tutor route', () => {
 
     expect(res.status).toBe(200)
     expect(res.body.boardId).toBe(boardId)
+    expect(res.body.cacheSource).toBe('fresh')
     expect(res.body.reply).toContain('Problem: Solve 2x = 10')
     expect(res.body.correctSolution).toContain('x = 5')
     expect(res.body.analysisResult).toMatchObject({
@@ -392,6 +393,8 @@ describe('whiteboard tutor route', () => {
 
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
+    expect(first.body.cacheSource).toBe('fresh')
+    expect(second.body.cacheSource).toBe('server-cache')
     expect(second.body.reply).toBe(first.body.reply)
     expect(second.body.messages).toEqual([
       ...payload.messages,
@@ -428,6 +431,8 @@ describe('whiteboard tutor route', () => {
 
     expect(first.status).toBe(200)
     expect(second.status).toBe(200)
+    expect(first.body.cacheSource).toBe('fresh')
+    expect(second.body.cacheSource).toBe('fresh')
     expect(mockGenerateContent).toHaveBeenCalledTimes(2)
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
   })

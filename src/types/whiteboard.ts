@@ -202,9 +202,12 @@ export type WhiteboardTutorSections = {
   encouragement: string
 }
 
+export type WhiteboardTutorCacheSource = 'fresh' | 'local-cache' | 'server-cache'
+
 export type WhiteboardTutorResponse = {
   reply: string
   messages: WhiteboardTutorMessage[]
+  cacheSource?: WhiteboardTutorCacheSource
   analysisResult: TutorAnalysisResult | null
   sections: WhiteboardTutorSections
   problem: string

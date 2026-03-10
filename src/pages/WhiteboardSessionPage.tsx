@@ -182,6 +182,22 @@ function getFriendlyTutorErrorMessage(error: unknown, fallback: string): string 
   return fallback
 }
 
+function logTutorAnalysisSource(
+  source: WhiteboardTutorResponse['cacheSource'],
+  details: {
+    boardId?: string
+    mode: 'analysis' | 'tutor' | 'chat'
+    inputMode: HomeworkInputMode
+  },
+): void {
+  console.info('[WB-TUTOR] assistant-data-source', {
+    boardId: details.boardId ?? null,
+    source: source ?? 'fresh',
+    mode: details.mode,
+    inputMode: details.inputMode,
+  })
+}
+
 function ToolButton({
   active,
   label,
@@ -477,6 +493,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       if (mode === 'analysis' && !options?.forceFresh) {
         const cachedResponse = readTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey)
         if (cachedResponse) {
+          logTutorAnalysisSource(cachedResponse.cacheSource, {
+            boardId,
+            mode,
+            inputMode: effectiveTutorInputMode,
+          })
           return cachedResponse
         }
       }
@@ -514,6 +535,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       if (mode === 'analysis') {
         writeTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey, response)
       }
+
+      logTutorAnalysisSource(response.cacheSource, {
+        boardId,
+        mode,
+        inputMode: effectiveTutorInputMode,
+      })
 
       return response
     },

@@ -887,6 +887,7 @@ describe('WhiteboardSessionPage', () => {
   })
 
   it('uses the cached tutor analysis when the tutor asks for help again', async () => {
+    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -937,9 +938,19 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'local-cache',
+      }),
+    )
   })
 
   it('lets tutors explicitly rerun AI after a cached analysis result is reused', async () => {
+    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -961,6 +972,10 @@ describe('WhiteboardSessionPage', () => {
     })
 
     writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+    analyzeWhiteboardPhoto.mockResolvedValue({
+      ...sampleAnalysisResponse,
+      cacheSource: 'server-cache',
+    })
 
     render(
       <MemoryRouter initialEntries={['/whiteboards/board-1']}>
@@ -997,6 +1012,25 @@ describe('WhiteboardSessionPage', () => {
         }),
       )
     })
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'local-cache',
+      }),
+    )
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'server-cache',
+      }),
+    )
   })
 
   it('shows tutor assist mode and lets tutors resolve claimed requests', async () => {

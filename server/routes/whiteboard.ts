@@ -259,6 +259,16 @@ function normalizeTutorCacheMessages(messages: WhiteboardTutorMessage[] | undefi
   }));
 }
 
+function withTutorCacheSource<T extends ReturnType<typeof buildLegacyTutorPayload>>(
+  response: T,
+  cacheSource: 'fresh' | 'server-cache',
+): T & { cacheSource: 'fresh' | 'server-cache' } {
+  return {
+    ...response,
+    cacheSource,
+  };
+}
+
 function buildWhiteboardTutorCacheKey(boardId: string, body: WhiteboardTutorBody): string {
   const normalizedPayload = JSON.stringify({
     version: WHITEBOARD_TUTOR_CACHE_VERSION,
@@ -2015,14 +2025,22 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         const cachedTutorResponse = await readWhiteboardTutorCache(db, boardId, body);
         if (cachedTutorResponse) {
           const messages = [...(body.messages ?? []), { role: 'assistant', content: cachedTutorResponse.reply }];
-          return res.status(200).json({ ...cachedTutorResponse, messages, boardId });
+          console.info('[WB-TUTOR] assistant-data-source', {
+            boardId,
+            source: 'server-cache',
+          });
+          return res.status(200).json({ ...withTutorCacheSource(cachedTutorResponse, 'server-cache'), messages, boardId });
         }
 
         const tutorResponse = await callWhiteboardTutor(body);
         await writeWhiteboardTutorCache(db, boardId, body, tutorResponse);
         const messages = [...(body.messages ?? []), { role: 'assistant', content: tutorResponse.reply }];
+        console.info('[WB-TUTOR] assistant-data-source', {
+          boardId,
+          source: 'fresh',
+        });
 
-        return res.status(200).json({ ...tutorResponse, messages, boardId });
+        return res.status(200).json({ ...withTutorCacheSource(tutorResponse, 'fresh'), messages, boardId });
       } catch (error) {
         const statusCode =
           error && typeof error === 'object' && 'statusCode' in error && typeof (error as { statusCode?: unknown }).statusCode === 'number'
