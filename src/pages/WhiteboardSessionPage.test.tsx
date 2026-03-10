@@ -872,7 +872,7 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Active tab: chat')).toBeInTheDocument()
+    expect(screen.getByText('Active tab: steps')).toBeInTheDocument()
   })
 
   it('keeps the desktop whiteboard full-width until the optional side panel is opened', async () => {

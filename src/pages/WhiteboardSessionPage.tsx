@@ -301,7 +301,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false)
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
-  const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('chat')
+  const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('steps')
   const [sessionState, setSessionState] = useState<SessionState>('queued')
   const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
   const [liveSessionElapsedSeconds, setLiveSessionElapsedSeconds] = useState(0)
@@ -2342,7 +2342,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 hasPhoto={hasBackground}
                 hasInput={hasTutorInput}
                 hasBoardContent={hasBoardContent}
-                initialTab="chat"
+                initialTab="steps"
                 inputMode={effectiveTutorInputMode}
                 problemDraft={textContent}
                 onProblemDraftChange={handleTextContentChange}
