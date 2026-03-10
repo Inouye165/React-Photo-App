@@ -150,6 +150,20 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
         <button type="button" onClick={() => props.onSubmitHelpRequest?.()}>
           Send help request
         </button>
+        <button
+          type="button"
+          onClick={() => props.onBoardActionContextChange?.({
+            source: 'diagnosis',
+            mode: 'mark',
+            stepNumber: 2,
+            stepTitle: 'Take the square root of both sides',
+            statusText: 'Marking step 2',
+            sourceText: 'From Diagnosis',
+            responsePrompt: 'Reply about step 2',
+          })}
+        >
+          Trigger board context
+        </button>
       </div>
     )
   },
@@ -351,7 +365,32 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByRole('heading', { name: 'Shared Board' })).toBeInTheDocument()
   })
 
-  it('replaces the queue banner with the new session context bar and can move into a live session', async () => {
+  it('shows student-facing session chrome without tutor queue controls', async () => {
+    render(
+      <MemoryRouter initialEntries={["/whiteboards/board-1"]}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('💬 Help Request Sent')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText(/A tutor will join here when one is available\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
+    expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pick Up Session' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pass' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tutor queue' })).not.toBeInTheDocument()
+  })
+
+  it('keeps tutor session controls and queue language for tutor users', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'admin', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+
     render(
       <MemoryRouter initialEntries={["/whiteboards/board-1"]}>
         <Routes>
@@ -765,7 +804,8 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
-    expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
+    expect(screen.getByText('💬 Help Request Sent')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
   })
 
   it('wires solve and step-by-step help intents into the tutor analysis request', async () => {
@@ -897,5 +937,67 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Hide panel' })).toBeInTheDocument()
+  })
+
+  it('shows tutor board context near the canvas and routes back to chat', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-1', app_metadata: { role: 'admin' } },
+      profile: { is_tutor: true },
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger board context' }))
+
+    expect(screen.getByText('Focused Step On Board')).toBeInTheDocument()
+    expect(screen.getByText('Marking step 2')).toBeInTheDocument()
+    expect(screen.getByText('Take the square root of both sides')).toBeInTheDocument()
+    expect(screen.getByText('Reply framing is ready in the rail.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reply about step 2' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Active tab: chat')).toBeInTheDocument()
+    })
+  })
+
+  it('keeps tutor board context hidden near the canvas for student users', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Panel mode: student')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Trigger board context' }))
+
+    expect(screen.queryByText('Focused Step On Board')).not.toBeInTheDocument()
   })
 })

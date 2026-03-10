@@ -79,6 +79,19 @@ describe('RightSidePanel', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
   })
 
+  it('renders a student-specific panel without tutor workflow scaffolding', () => {
+    renderPanel({ panelMode: 'student' })
+
+    expect(screen.getByText('Session chat')).toBeInTheDocument()
+    expect(screen.getByText('Stay in sync with Maya Chen while you work through the problem.')).toBeInTheDocument()
+    expect(screen.queryByText('Tutor workflow')).not.toBeInTheDocument()
+    expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
+    expect(screen.queryByText('Best coaching move')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Annotate issue' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark key step on board' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message your tutor' })).toBeInTheDocument()
+  })
+
   it('inserts quick reply chip text into the message input', () => {
     renderPanel()
 
@@ -96,9 +109,9 @@ describe('RightSidePanel', () => {
   it('opens a focused detail view when requested', () => {
     renderPanel()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Full view' })[1])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open detail' })[1])
 
-    expect(screen.getByText('Focused detail view')).toBeInTheDocument()
+    expect(screen.getByText('Workflow detail')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('button', { name: 'Back to workflow' })).toBeInTheDocument()
   })
@@ -126,10 +139,13 @@ describe('RightSidePanel', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Mark key step on board' })[0])
 
-    expect(screen.getByText('Board focus active')).toBeInTheDocument()
+    expect(screen.getByText('Board focus')).toBeInTheDocument()
     expect(screen.getAllByText('Marking step 2').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Take the square root of both sides').length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Reply about step 2' }).length).toBeGreaterThan(0)
+    expect(screen.getByText('Send response about step 2')).toBeInTheDocument()
+    expect(screen.getByText('Focused on board')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Mark key step on board' })[0]).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('updates the board focus context when a supporting diagnosis step is marked', () => {
@@ -201,7 +217,7 @@ describe('RightSidePanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Annotate' }))
 
-    expect(screen.getByText('Board focus active')).toBeInTheDocument()
+    expect(screen.getByText('Board focus')).toBeInTheDocument()
     expect(screen.getByText('Annotating step 2')).toBeInTheDocument()
     expect(screen.getByText('From Assist')).toBeInTheDocument()
   })
