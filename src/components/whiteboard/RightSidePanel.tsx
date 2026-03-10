@@ -68,6 +68,7 @@ export interface RightSidePanelProps {
   onTutorPlaybackReplay?: () => void
   onTutorStepSelect?: (stepId: string) => void
   onMarkStep?: (stepNumber: number) => void
+  onBoardActionContextChange?: (context: BoardActionContext | null) => void
 }
 
 type VisibleTabId = 'chat' | 'steps' | 'ai-tutor'
@@ -121,7 +122,7 @@ type TutorAssistActionCard = {
 type BoardActionSource = 'diagnosis' | 'response' | 'assist'
 type BoardActionMode = 'mark' | 'annotate'
 
-type BoardActionContext = {
+export type BoardActionContext = {
   source: BoardActionSource
   mode: BoardActionMode
   stepNumber: number
@@ -430,6 +431,7 @@ function ChatPanel({
   studentPresence = 'offline',
   studentLastSeenText = 'Last seen 2 hrs ago',
   variant = 'detail',
+  viewerMode = 'tutor',
 }: {
   messages: TutorMessage[]
   composerValue: string
@@ -442,11 +444,20 @@ function ChatPanel({
   studentPresence?: 'online' | 'offline'
   studentLastSeenText?: string
   variant?: PanelVariant
+  viewerMode?: 'student' | 'tutor'
 }): React.JSX.Element {
   const threadRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useAutoResizeTextarea(composerValue)
   const studentInitials = useMemo(() => buildStudentInitials(studentName), [studentName])
   const visibleMessages = variant === 'workflow' ? messages.slice(-2) : messages
+  const isTutorView = viewerMode === 'tutor'
+  const participantLabel = studentName || (isTutorView ? 'Student' : 'Tutor')
+  const boardFocusPrompt = boardActionContext ? `Let's look at step ${boardActionContext.stepNumber} together.` : ''
+  const responseSectionTitle = boardActionContext && isTutorView
+    ? `Send response about step ${boardActionContext.stepNumber}`
+    : isTutorView
+      ? 'Send response'
+      : 'Send message'
 
   useEffect(() => {
     const container = threadRef.current
@@ -525,9 +536,10 @@ function ChatPanel({
             <button
               type="button"
               onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'response')}
+              aria-pressed={isBoardActionActive(boardActionContext, 'response', 'mark', PRIMARY_KEY_STEP.number)}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
                 isBoardActionActive(boardActionContext, 'response', 'mark', PRIMARY_KEY_STEP.number)
-                  ? 'border-amber-300/50 bg-amber-500/20 text-amber-50'
+                  ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
                   : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
               }`}
             >
@@ -537,9 +549,10 @@ function ChatPanel({
             <button
               type="button"
               onClick={handleAnnotateIssue}
+              aria-pressed={isBoardActionActive(boardActionContext, 'response', 'annotate', PRIMARY_KEY_STEP.number)}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
                 isBoardActionActive(boardActionContext, 'response', 'annotate', PRIMARY_KEY_STEP.number)
-                  ? 'border-sky-300/40 bg-sky-500/12 text-sky-100'
+                  ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
                   : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
               }`}
             >
@@ -551,16 +564,16 @@ function ChatPanel({
         </div>
 
         <div className="mt-3 rounded-[14px] border border-white/10 bg-[#161f2d] p-3">
-          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Send response</div>
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{responseSectionTitle}</div>
           {boardActionContext ? (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-50">
-              <span className="font-semibold">Board focus:</span>
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[10px] border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-50 shadow-[0_14px_28px_rgba(245,158,11,0.08)]" aria-live="polite">
+              <span className="rounded-full border border-amber-300/25 bg-amber-500/14 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-50">Active step on board</span>
               <span>{boardActionContext.statusText}</span>
               <span className="text-amber-100/80">{boardActionContext.stepTitle}</span>
               <button
                 type="button"
-                onClick={() => onApplyComposerText(`Let's look at step ${boardActionContext.stepNumber} together.`, 'replace')}
-                className="ml-auto rounded-[8px] border border-amber-300/30 px-2 py-1 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-500/10"
+                onClick={() => onApplyComposerText(boardFocusPrompt, 'replace')}
+                className="ml-auto rounded-[8px] border border-amber-300/30 px-2 py-1 text-[11px] font-semibold text-amber-50 outline-none transition hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-200/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#161f2d]"
               >
                 {boardActionContext.responsePrompt}
               </button>
@@ -575,7 +588,7 @@ function ChatPanel({
               rows={1}
               placeholder="Send the next tutor move..."
               aria-label="Message student"
-              className="min-h-[42px] flex-1 resize-none rounded-[10px] border border-[#374151] bg-[#111827] px-3 py-2 text-[14px] text-[#F9FAFB] outline-none placeholder:text-[#6B7280] focus:border-[#F59E0B]"
+              className="min-h-[42px] flex-1 resize-none rounded-[10px] border border-[#374151] bg-[#111827] px-3 py-2 text-[14px] text-[#F9FAFB] outline-none placeholder:text-[#6B7280] focus:border-[#F59E0B] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#161f2d]"
             />
             <button
               type="button"
@@ -586,7 +599,7 @@ function ChatPanel({
               Send
             </button>
           </div>
-          <div className="mt-2 text-[11px] text-[#4B5563]">Messages are visible to both tutor and student</div>
+          <div className="mt-2 text-[11px] text-[#4B5563]">Shared with both sides of the session.</div>
         </div>
 
         {studentPresence === 'offline' ? (
@@ -605,7 +618,7 @@ function ChatPanel({
                 return (
                   <div key={message.id} className={`flex flex-col ${isTutor ? 'items-end' : 'items-start'}`}>
                     <div className={`mb-1 text-[11px] ${isTutor ? 'text-right' : 'text-left'} text-[#6B7280]`}>
-                      {isTutor ? 'You' : studentName}
+                      {isTutor ? 'You' : participantLabel}
                     </div>
                     <div
                       className={`max-w-[88%] rounded-[12px] px-3 py-2 text-[13px] leading-6 text-[#F9FAFB] ${
@@ -633,7 +646,7 @@ function ChatPanel({
           {studentInitials}
         </div>
         <div className="min-w-0">
-          <div className="truncate text-[14px] font-medium text-[#F9FAFB]">{studentName}</div>
+          <div className="truncate text-[14px] font-medium text-[#F9FAFB]">{participantLabel}</div>
           <div className="flex items-center gap-1.5 text-[12px]">
             <span
               className={`h-2 w-2 rounded-full ${studentPresence === 'online' ? 'bg-[#10B981]' : 'bg-[#6B7280]'}`}
@@ -665,18 +678,18 @@ function ChatPanel({
               return (
                 <div key={message.id} className={`flex flex-col ${isTutor ? 'items-end' : 'items-start'}`}>
                   <div className={`mb-1 text-[11px] ${isTutor ? 'text-right' : 'text-left'} text-[#6B7280]`}>
-                    {isTutor ? 'You' : studentName}
+                    {(isTutorView ? isTutor : !isTutor) ? 'You' : participantLabel}
                   </div>
                   <div
                     className={`max-w-[85%] px-3 py-2 text-[14px] leading-6 text-[#F9FAFB] ${
-                      isTutor
+                      (isTutorView ? isTutor : !isTutor)
                         ? 'rounded-[12px_12px_2px_12px] border border-[#374151] bg-[#1F2937]'
                         : `rounded-[12px_12px_12px_2px] bg-[#374151] ${message.unread ? 'border-l-2 border-l-[#3B82F6] pl-[10px]' : ''}`
                     }`}
                   >
                     {message.body}
                   </div>
-                  <div className={`mt-1 text-[11px] ${isTutor ? 'text-right' : 'text-left'} text-[#4B5563]`}>
+                  <div className={`mt-1 text-[11px] ${(isTutorView ? isTutor : !isTutor) ? 'text-right' : 'text-left'} text-[#4B5563]`}>
                     {message.timestamp}
                   </div>
                 </div>
@@ -688,37 +701,39 @@ function ChatPanel({
 
       {studentPresence === 'offline' ? (
         <div className="shrink-0 bg-[#1F2937] px-3 py-2 text-center text-[12px] text-[#6B7280]">
-          Student is offline - they'll see your message when they return
+          {isTutorView ? 'Student is offline - they\'ll see your message when they return' : `${participantLabel} is offline - they\'ll see your message when they return`}
         </div>
       ) : null}
 
-      <div className="shrink-0 bg-[#111827] px-3 py-2">
-        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {QUICK_REPLY_CHIPS.map((chip) => (
-            <button
-              key={chip}
-              type="button"
-              onClick={() => handleChipClick(chip)}
-              className="shrink-0 rounded-full border border-[#374151] bg-[#1F2937] px-[10px] py-1 text-[12px] text-[#D1D5DB]"
-            >
-              {chip}
-            </button>
-          ))}
+      {isTutorView ? (
+        <div className="shrink-0 bg-[#111827] px-3 py-2">
+          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {QUICK_REPLY_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => handleChipClick(chip)}
+                className="shrink-0 rounded-full border border-[#374151] bg-[#1F2937] px-[10px] py-1 text-[12px] text-[#D1D5DB]"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="shrink-0 border-t border-[#374151] bg-[#1F2937] p-3">
         {boardActionContext ? (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-[8px] border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-50">
-            <span className="font-semibold">Board focus:</span>
+            <span className="font-semibold">{isTutorView ? 'Board focus:' : 'Shared board focus:'}</span>
             <span>{boardActionContext.statusText}</span>
             <span className="text-amber-100/80">{boardActionContext.stepTitle}</span>
             <button
               type="button"
-              onClick={() => onApplyComposerText(`Let's look at step ${boardActionContext.stepNumber} together.`, 'replace')}
-              className="ml-auto rounded-[8px] border border-amber-300/30 px-2 py-1 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-500/10"
+              onClick={() => onApplyComposerText(boardFocusPrompt, 'replace')}
+              className="ml-auto rounded-[8px] border border-amber-300/30 px-2 py-1 text-[11px] font-semibold text-amber-50 outline-none transition hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-amber-200/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#161f2d]"
             >
-              {boardActionContext.responsePrompt}
+              {isTutorView ? boardActionContext.responsePrompt : `Ask about step ${boardActionContext.stepNumber}`}
             </button>
           </div>
         ) : null}
@@ -729,9 +744,9 @@ function ChatPanel({
             onChange={(event) => onComposerValueChange(event.target.value)}
             onKeyDown={handleComposerKeyDown}
             rows={1}
-            placeholder="Message student..."
-            aria-label="Message student"
-            className="min-h-[42px] flex-1 resize-none rounded-[8px] border border-[#374151] bg-[#111827] px-3 py-2 text-[14px] text-[#F9FAFB] outline-none placeholder:text-[#6B7280] focus:border-[#F59E0B]"
+            placeholder={isTutorView ? 'Message student...' : 'Message your tutor...'}
+            aria-label={isTutorView ? 'Message student' : 'Message your tutor'}
+            className="min-h-[42px] flex-1 resize-none rounded-[8px] border border-[#374151] bg-[#111827] px-3 py-2 text-[14px] text-[#F9FAFB] outline-none placeholder:text-[#6B7280] focus:border-[#F59E0B] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1F2937]"
           />
           <button
             type="button"
@@ -742,7 +757,67 @@ function ChatPanel({
             Send
           </button>
         </div>
-        <div className="mt-2 text-[11px] text-[#4B5563]">Messages are visible to both tutor and student</div>
+        <div className="mt-2 text-[11px] text-[#4B5563]">Shared with both sides of the session.</div>
+      </div>
+    </div>
+  )
+}
+
+function StudentPanel({
+  messages,
+  composerValue,
+  onComposerValueChange,
+  onApplyComposerText,
+  onSendMessage,
+  boardActionContext,
+  studentName,
+  studentPresence,
+  studentLastSeenText,
+}: {
+  messages: TutorMessage[]
+  composerValue: string
+  onComposerValueChange: (value: string) => void
+  onApplyComposerText: (text: string, mode?: 'append' | 'replace') => void
+  onSendMessage: () => void
+  boardActionContext: BoardActionContext | null
+  studentName: string
+  studentPresence: 'online' | 'offline'
+  studentLastSeenText: string
+}): React.JSX.Element {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-[#111827] p-4">
+      <div className="mb-4 rounded-[16px] border border-sky-400/20 bg-[linear-gradient(180deg,rgba(18,44,72,0.55),rgba(17,24,39,0.96))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.2)]">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Session chat</div>
+        <div className="mt-1 text-[15px] font-semibold text-[#F9FAFB]">Stay in sync with {studentName} while you work through the problem.</div>
+        <p className="mt-2 text-[13px] leading-6 text-[#CBD5E1]">Ask follow-up questions, respond to guidance, and keep your work moving without leaving the board.</p>
+        <div className="mt-3 flex items-center gap-2 text-[12px] text-[#9CA3AF]">
+          <span className={`h-2 w-2 rounded-full ${studentPresence === 'online' ? 'bg-[#10B981]' : 'bg-[#6B7280]'}`} aria-hidden="true" />
+          <span>{studentPresence === 'online' ? 'Online now' : studentLastSeenText}</span>
+        </div>
+      </div>
+
+      {boardActionContext ? (
+        <div className="mb-4 rounded-[14px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-50">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100/80">Board focus</div>
+          <div className="mt-1 font-semibold">{boardActionContext.statusText}</div>
+          <div className="mt-1 text-amber-100/85">{boardActionContext.stepTitle}</div>
+        </div>
+      ) : null}
+
+      <div className="min-h-0 flex-1 overflow-hidden rounded-[16px] border border-white/10 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+        <ChatPanel
+          messages={messages}
+          composerValue={composerValue}
+          onComposerValueChange={onComposerValueChange}
+          onApplyComposerText={onApplyComposerText}
+          onSendMessage={onSendMessage}
+          boardActionContext={boardActionContext}
+          onBoardAction={() => undefined}
+          studentName={studentName}
+          studentPresence={studentPresence}
+          studentLastSeenText={studentLastSeenText}
+          viewerMode="student"
+        />
       </div>
     </div>
   )
@@ -786,9 +861,10 @@ function StepStatePopulated({
             <button
               type="button"
               title="Mark this step on the whiteboard"
+              aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', PRIMARY_KEY_STEP.number)}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
                 isBoardActionActive(boardActionContext, 'diagnosis', 'mark', PRIMARY_KEY_STEP.number)
-                  ? 'border-amber-300/50 bg-amber-500/20 text-amber-50'
+                  ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
                   : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
               }`}
               onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'diagnosis')}
@@ -827,7 +903,14 @@ function StepStatePopulated({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-[13px] font-medium text-[#F9FAFB]">{step.title}</h3>
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="text-[13px] font-medium text-[#F9FAFB]">{step.title}</h3>
+                        {boardActionContext?.stepNumber === step.number ? (
+                          <span className="rounded-full border border-amber-300/25 bg-amber-500/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100">
+                            Focused on board
+                          </span>
+                        ) : null}
+                      </div>
                       <StepTag value={step.tag} />
                     </div>
                     <p className="mt-1 text-[12px] text-[#9CA3AF]">{step.detail}</p>
@@ -835,6 +918,7 @@ function StepStatePopulated({
                       <button
                         type="button"
                         title="Mark this step on the whiteboard"
+                        aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)}
                         className={`flex items-center gap-1 text-[11px] transition ${
                           isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)
                             ? 'text-amber-300'
@@ -1062,9 +1146,10 @@ function TutorAssistPopulatedState({
                 <button
                   type="button"
                   onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'assist')}
+                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', PRIMARY_KEY_STEP.number)}
                   className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
                     isBoardActionActive(boardActionContext, 'assist', 'mark', PRIMARY_KEY_STEP.number)
-                      ? 'border-amber-300/50 bg-amber-500/20 text-amber-50'
+                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
                       : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
                   }`}
                 >
@@ -1074,9 +1159,10 @@ function TutorAssistPopulatedState({
                 <button
                   type="button"
                   onClick={handleAnnotateIssue}
+                  aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'annotate', PRIMARY_KEY_STEP.number)}
                   className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
                     isBoardActionActive(boardActionContext, 'assist', 'annotate', PRIMARY_KEY_STEP.number)
-                      ? 'border-sky-300/40 bg-sky-500/12 text-sky-100'
+                      ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
                       : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
                   }`}
                 >
@@ -1297,7 +1383,7 @@ function WorkflowSectionCard({
         <button
           type="button"
           onClick={onToggle}
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          className="flex min-w-0 flex-1 items-start gap-3 rounded-[12px] text-left outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
           aria-expanded={isOpen}
         >
           <span className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${accentClassName}`}>
@@ -1313,9 +1399,9 @@ function WorkflowSectionCard({
         <button
           type="button"
           onClick={onOpenDetail}
-          className="shrink-0 text-[11px] font-medium text-[#6B7280] transition hover:text-[#D1D5DB]"
+          className="shrink-0 rounded-[10px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#D1D5DB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
         >
-          Full view
+          Open detail
         </button>
       </div>
 
@@ -1333,9 +1419,11 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   studentName = 'Student',
   studentPresence = 'offline',
   studentLastSeenText = 'Last seen 2 hrs ago',
+  panelMode = 'tutor',
   analysisLoading,
   onStartAnalysis,
   onMarkStep,
+  onBoardActionContextChange,
   width = 'clamp(380px, 35vw, 560px)',
   onTabChange,
 }) => {
@@ -1391,6 +1479,10 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
     previousActiveTabRef.current = activeTab
   }, [activeTab])
+
+  useEffect(() => {
+    onBoardActionContextChange?.(boardActionContext)
+  }, [boardActionContext, onBoardActionContextChange])
 
   const handleApplyComposerText = (text: string, mode: 'append' | 'replace' = 'append') => {
     setChatComposerValue((current) => {
@@ -1452,6 +1544,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           studentName={studentName}
           studentPresence={studentPresence}
           studentLastSeenText={studentLastSeenText}
+          viewerMode="tutor"
         />
       )
     }
@@ -1498,18 +1591,34 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         </div>
       ) : null}
 
+      {panelMode === 'student' ? (
+        <div className="min-h-0 flex-1 overflow-hidden bg-[#111827]">
+          <StudentPanel
+            messages={chatMessages}
+            composerValue={chatComposerValue}
+            onComposerValueChange={setChatComposerValue}
+            onApplyComposerText={handleApplyComposerText}
+            onSendMessage={handleSendChatMessage}
+            boardActionContext={boardActionContext}
+            studentName={studentName}
+            studentPresence={studentPresence}
+            studentLastSeenText={studentLastSeenText}
+          />
+        </div>
+      ) : (
+      <>
       <div className="shrink-0 border-b border-[#374151] bg-[linear-gradient(180deg,rgba(31,41,55,0.96),rgba(17,24,39,0.98))] px-4 py-3">
         {detailTab ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
-                <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Focused detail view</div>
+                <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Workflow detail</div>
               </div>
               <button
                 type="button"
                 onClick={() => setDetailTab(null)}
-                className="text-[11px] font-medium text-[#9CA3AF] transition hover:text-[#F9FAFB]"
+                className="rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
               >
                 Back to workflow
               </button>
@@ -1526,7 +1635,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
                     role="tab"
                     aria-selected={isActive}
                     onClick={() => handleDetailTabChange(section.id)}
-                    className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
+                    className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827] ${
                       isActive
                         ? 'border-amber-400/40 bg-amber-500/12 text-[#F9FAFB]'
                         : 'border-white/10 bg-white/[0.03] text-[#9CA3AF] hover:text-[#F9FAFB]'
@@ -1547,19 +1656,19 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       </div>
 
       {boardActionContext ? (
-        <div className="shrink-0 border-b border-white/10 bg-[linear-gradient(180deg,rgba(69,39,13,0.9),rgba(17,24,39,0.98))] px-4 py-2.5">
+        <div className="shrink-0 border-b border-white/10 bg-[linear-gradient(180deg,rgba(69,39,13,0.9),rgba(17,24,39,0.98))] px-4 py-2.5 shadow-[0_14px_28px_rgba(245,158,11,0.08)]" aria-live="polite">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-100/85">
             <span className="inline-flex h-2 w-2 rounded-full bg-amber-300" aria-hidden="true" />
-            Board focus active
+            Board focus
+            <span className="rounded-full border border-amber-300/25 bg-amber-500/14 px-2 py-1 text-[10px] text-amber-50">{boardActionContext.sourceText}</span>
           </div>
-          <div className="mt-1 flex items-center gap-3 text-[13px] text-[#F9FAFB]">
-            <span>{boardActionContext.statusText}</span>
+          <div className="mt-2 flex items-center gap-3 text-[13px] text-[#F9FAFB]">
+            <span className="font-semibold">{boardActionContext.statusText}</span>
             <span className="text-[#d9c7a7]">{boardActionContext.stepTitle}</span>
-            <span className="text-[#9CA3AF]">{boardActionContext.sourceText}</span>
             <button
               type="button"
               onClick={() => setBoardActionContext(null)}
-              className="ml-auto text-[11px] font-medium text-[#D1D5DB] transition hover:text-white"
+              className="ml-auto rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#D1D5DB] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
             >
               Clear
             </button>
@@ -1604,6 +1713,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
                       studentPresence={studentPresence}
                       studentLastSeenText={studentLastSeenText}
                       variant="workflow"
+                      viewerMode="tutor"
                     />
                   ) : (
                     <TutorAssistPanel
@@ -1622,6 +1732,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           </div>
         )}
       </div>
+      </>
+      )}
     </aside>
   )
 }

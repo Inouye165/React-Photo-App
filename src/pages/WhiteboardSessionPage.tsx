@@ -32,7 +32,7 @@ import type {
   BackgroundInfo,
   WhiteboardCanvasHandle,
 } from '../components/whiteboard/WhiteboardCanvas'
-import RightSidePanel, { type TabType } from '../components/whiteboard/RightSidePanel'
+import RightSidePanel, { type BoardActionContext as RightSidePanelBoardActionContext, type TabType } from '../components/whiteboard/RightSidePanel'
 import { AITutorTab, ChatTab, HelpRequestTab } from '../components/whiteboard/tabs'
 import {
   analyzeWhiteboardPhoto,
@@ -302,6 +302,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
   const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('steps')
+  const [activeBoardActionContext, setActiveBoardActionContext] = useState<RightSidePanelBoardActionContext | null>(null)
   const [sessionState, setSessionState] = useState<SessionState>('queued')
   const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
   const [liveSessionElapsedSeconds, setLiveSessionElapsedSeconds] = useState(0)
@@ -330,6 +331,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const currentUserId = user?.id ?? null
   const canUseTutorAssist = user?.app_metadata?.role === 'admin' || user?.app_metadata?.is_tutor === true || profile?.is_tutor === true
   const panelMode: 'student' | 'tutor' = canUseTutorAssist ? 'tutor' : 'student'
+  const isTutorView = panelMode === 'tutor'
   const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
   const responseAgeInvalid = responseAge.trim().length > 0 && audienceAge === undefined
   const structuredAnalysisResult = analysis?.analysisResult ?? null
@@ -351,24 +353,67 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   })
 
   const sessionStatusMeta = useMemo(() => {
+    if (isTutorView) {
+      if (sessionState === 'live') {
+        return {
+          pillClassName: 'bg-[#064E3B] text-[#10B981]',
+          pillText: '● Live Session',
+        }
+      }
+
+      if (sessionState === 'async') {
+        return {
+          pillClassName: 'bg-[#1E3A5F] text-[#60A5FA]',
+          pillText: '📋 Async Review',
+        }
+      }
+
+      return {
+        pillClassName: 'bg-[#78350F] text-[#F59E0B]',
+        pillText: '⏳ In Queue',
+      }
+    }
+
     if (sessionState === 'live') {
       return {
-        pillClassName: 'bg-[#064E3B] text-[#10B981]',
-        pillText: '● Live Session',
+        pillClassName: 'bg-[#064E3B] text-[#6EE7B7]',
+        pillText: '● Tutor Connected',
       }
     }
 
     if (sessionState === 'async') {
       return {
-        pillClassName: 'bg-[#1E3A5F] text-[#60A5FA]',
-        pillText: '📋 Async Review',
+        pillClassName: 'bg-[#1E3A5F] text-[#93C5FD]',
+        pillText: '📋 Review In Progress',
       }
     }
 
     return {
-      pillClassName: 'bg-[#78350F] text-[#F59E0B]',
-      pillText: '⏳ In Queue',
+      pillClassName: 'bg-[#172554] text-[#93C5FD]',
+      pillText: '💬 Help Request Sent',
     }
+  }, [isTutorView, sessionState])
+
+  const sessionSummaryText = useMemo(() => {
+    if (isTutorView) {
+      return 'Student submitted 23 minutes ago  ·  Algebra  ·  Grade 9'
+    }
+
+    if (sessionState === 'live') {
+      return `${studentDisplayName} is working here with a tutor  ·  Algebra  ·  Grade 9`
+    }
+
+    if (sessionState === 'async') {
+      return 'Your work is saved for tutor follow-up  ·  Algebra  ·  Grade 9'
+    }
+
+    return 'A tutor will join here when one is available  ·  Algebra  ·  Grade 9'
+  }, [isTutorView, sessionState, studentDisplayName])
+
+  const studentSessionAside = useMemo(() => {
+    if (sessionState === 'live') return 'Working together now'
+    if (sessionState === 'async') return 'Tutor review pending'
+    return 'Waiting for tutor'
   }, [sessionState])
 
   const liveSessionTimerLabel = useMemo(() => {
@@ -1566,7 +1611,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           <button
             type="button"
             onClick={() => setDesktopSidePanelOpen((current) => !current)}
-            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${desktopSidePanelOpen ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'}`}
+            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a] ${desktopSidePanelOpen ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'}`}
             aria-label={desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
             aria-expanded={desktopSidePanelOpen}
             aria-controls="whiteboard-side-panel"
@@ -1579,7 +1624,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={handleOpenTutorQueue}
-                  className="relative flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+                  className="relative flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
                   aria-label="Tutor queue"
                 >
                   <span aria-hidden="true">🧑‍🏫</span>
@@ -1593,7 +1638,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             <button
               type="button"
               onClick={handleRequestHelp}
-              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
               aria-label="Request help"
             >
               <span aria-hidden="true">🧠</span>
@@ -1604,7 +1649,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             <button
               type="button"
               onClick={() => setShareMenuOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-xl bg-chess-surface px-3 py-2 text-sm font-medium text-white transition hover:bg-chess-surfaceSoft"
+              className="flex items-center gap-2 rounded-xl bg-chess-surface px-3 py-2 text-sm font-medium text-white outline-none transition hover:bg-chess-surfaceSoft focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
               aria-expanded={shareMenuOpen}
               aria-haspopup="menu"
             >
@@ -1764,38 +1809,44 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               {sessionStatusMeta.pillText}
             </span>
             <span className="min-w-0 text-[13px] text-[#9CA3AF]">
-              Student submitted 23 minutes ago  ·  Algebra  ·  Grade 9
+              {sessionSummaryText}
             </span>
           </div>
 
-          {sessionState === 'queued' ? (
+          {isTutorView && sessionState === 'queued' ? (
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={handlePickUpSession}
-                className="rounded-[6px] bg-[#F59E0B] px-[14px] py-[5px] text-[13px] font-semibold text-black transition hover:bg-[#f2ab28]"
+                className="rounded-[6px] bg-[#F59E0B] px-[14px] py-[5px] text-[13px] font-semibold text-black transition hover:bg-[#f2ab28] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1F2937]"
               >
                 Pick Up Session
               </button>
               <button
                 type="button"
                 onClick={handlePassSession}
-                className="rounded-[6px] border border-[#374151] px-[14px] py-[5px] text-[13px] text-[#9CA3AF] transition hover:bg-[#111827] hover:text-[#D1D5DB]"
+                className="rounded-[6px] border border-[#374151] px-[14px] py-[5px] text-[13px] text-[#9CA3AF] transition hover:bg-[#111827] hover:text-[#D1D5DB] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1F2937]"
               >
                 Pass
               </button>
             </div>
           ) : null}
 
-          {sessionState === 'live' ? (
+          {isTutorView && sessionState === 'live' ? (
             <div className="flex shrink-0 items-center gap-3">
               <span className="text-[12px] text-[#6B7280]">Started 4 min ago</span>
               <span className="text-[13px] text-[#9CA3AF]">🕐 {liveSessionTimerLabel}</span>
             </div>
           ) : null}
 
-          {sessionState === 'async' ? (
+          {isTutorView && sessionState === 'async' ? (
             <div className="shrink-0 text-[12px] text-[#6B7280]">Submitted yesterday at 3:22 PM</div>
+          ) : null}
+
+          {!isTutorView ? (
+            <div className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[12px] text-[#CBD5E1]">
+              {studentSessionAside}
+            </div>
           ) : null}
         </div>
 
@@ -2328,6 +2379,44 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       </div>
                     </div>
                   ) : null}
+
+                  {panelMode === 'tutor' && activeBoardActionContext ? (
+                    <div className="pointer-events-none absolute right-5 top-5 z-20 max-w-[340px]" aria-live="polite">
+                      <div className="pointer-events-auto rounded-[16px] border border-amber-300/30 bg-[linear-gradient(180deg,rgba(58,40,16,0.96),rgba(17,24,39,0.98))] px-4 py-3 text-[#F9FAFB] shadow-[0_20px_44px_rgba(0,0,0,0.28)] ring-1 ring-amber-300/15 backdrop-blur-sm">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/25 bg-amber-500/14 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-50">
+                            <span className="inline-flex h-2 w-2 rounded-full bg-amber-300" aria-hidden="true" />
+                            Focused Step On Board
+                          </span>
+                          <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[#CBD5E1]">
+                            {activeBoardActionContext.sourceText}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-start gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-amber-300/25 bg-amber-500/12 text-amber-100">
+                            <MapPin className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[14px] font-semibold">{activeBoardActionContext.statusText}</div>
+                            <div className="mt-1 text-[12px] text-[#e8d9bf]">{activeBoardActionContext.stepTitle}</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                          <div className="text-[11px] text-[#9CA3AF]">Reply framing is ready in the rail.</div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDesktopSidePanelOpen(true)
+                              setDesktopSidePanelTab('chat')
+                            }}
+                            className="rounded-[9px] border border-amber-300/30 bg-amber-500/12 px-2.5 py-1.5 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
+                          >
+                            {activeBoardActionContext.responsePrompt}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
             </div>
 
@@ -2388,6 +2477,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 onTutorPlaybackReplay={tutorPlayback.replay}
                 onTabChange={setDesktopSidePanelTab}
                 onTutorStepSelect={tutorPlayback.setActiveStepId}
+                onBoardActionContextChange={setActiveBoardActionContext}
                 onRequestHumanTutor={() => {
                   return undefined
                 }}
