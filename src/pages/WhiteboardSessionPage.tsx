@@ -48,6 +48,7 @@ import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
 import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
+import { buildTutorAnalysisDeviceCacheKey, readTutorAnalysisDeviceCache, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type SessionState = 'queued' | 'live' | 'async'
@@ -345,6 +346,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const hasTextInput = textContent.trim().length > 0
   const effectiveTutorInputMode: HomeworkInputMode = inputMode === 'text' || (!hasBackground && (hasTextInput || hasHelpRequest)) ? 'text' : 'photo'
   const hasTutorInput = hasBackground || hasTextInput || hasHelpRequest
+  const tutorAnalysisDeviceCacheKey = useMemo(() => buildTutorAnalysisDeviceCacheKey({
+    boardId,
+    inputMode: effectiveTutorInputMode,
+    audienceAge,
+    textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
+    imageDataUrl: backgroundImageAsset?.dataUrl,
+    imageMimeType: backgroundImageAsset?.mimeType,
+    imageName: backgroundImageAsset?.name,
+  }), [audienceAge, backgroundImageAsset?.dataUrl, backgroundImageAsset?.mimeType, backgroundImageAsset?.name, boardId, effectiveTutorInputMode, helpRequestDraft, textContent])
   const mobileSupportLabel = canUseTutorAssist ? 'Tutor Assist' : 'Help'
   const showFormattedProblemOverlay = !isTextInputFocused && formattedProblemLines.length > 0
   const tutorPlayback = useTutorPlayback({
@@ -457,34 +467,57 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [boardId, currentUserId])
 
   const runTutorRequest = useCallback(
-    async (messages: WhiteboardTutorMessage[] = [], mode: 'analysis' | 'tutor' | 'chat' = 'analysis') => {
+    async (
+      messages: WhiteboardTutorMessage[] = [],
+      mode: 'analysis' | 'tutor' | 'chat' = 'analysis',
+      options?: { forceFresh?: boolean },
+    ) => {
       if (!boardId) throw new Error('Missing board id')
+
+      if (mode === 'analysis' && !options?.forceFresh) {
+        const cachedResponse = readTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey)
+        if (cachedResponse) {
+          return cachedResponse
+        }
+      }
+
+      let response: WhiteboardTutorResponse
+
       if (effectiveTutorInputMode === 'text') {
         const textSource = textContent.trim() || helpRequestDraft.trim()
         if (!textSource) throw new Error('Type or paste a problem first.')
 
-        return analyzeWhiteboardPhoto(boardId, {
+        response = await analyzeWhiteboardPhoto(boardId, {
           inputMode: 'text',
           textContent: textSource,
           audienceAge,
           messages,
           mode,
+          skipCache: Boolean(options?.forceFresh),
+        })
+      } else {
+        if (!backgroundImageAsset) throw new Error('Import a photo first.')
+
+        response = await analyzeWhiteboardPhoto(boardId, {
+          inputMode: 'photo',
+          imageDataUrl: backgroundImageAsset.dataUrl,
+          imageMimeType: backgroundImageAsset.mimeType,
+          imageName: backgroundImageAsset.name,
+          textContent: textContent.trim() || undefined,
+          audienceAge,
+          messages,
+          mode,
+          skipCache: Boolean(options?.forceFresh),
         })
       }
 
-      if (!backgroundImageAsset) throw new Error('Import a photo first.')
+      if (mode === 'analysis') {
+        writeTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey, response)
+      }
 
-      return analyzeWhiteboardPhoto(boardId, {
-        inputMode: 'photo',
-        imageDataUrl: backgroundImageAsset.dataUrl,
-        imageMimeType: backgroundImageAsset.mimeType,
-        imageName: backgroundImageAsset.name,
-        audienceAge,
-        messages,
-        mode,
-      })
+      return response
     },
-    [audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, helpRequestDraft, textContent],
+    [audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, helpRequestDraft, textContent, tutorAnalysisDeviceCacheKey],
   )
 
   const resetPhotoTransform = useCallback(() => {
@@ -636,22 +669,16 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     handleAnnotationToolSelect('pen')
   }, [handleAnnotationToolSelect])
 
-  const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = []) => {
+  const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = [], options?: { forceFresh?: boolean }) => {
     if (!boardId) throw new Error('Missing board id')
 
     const trimmedText = rawText.trim()
     if (!trimmedText) throw new Error('Type or paste a problem first.')
 
-    const response = await analyzeWhiteboardPhoto(boardId, {
-      inputMode: 'text',
-      textContent: trimmedText,
-      audienceAge,
-      messages,
-      mode: 'analysis',
-    })
+    const response = await runTutorRequest(messages, 'analysis', options)
 
     applyAnalysisResponse(response)
-  }, [applyAnalysisResponse, audienceAge, boardId])
+  }, [applyAnalysisResponse, boardId, runTutorRequest])
 
   const handleCopyBoardLink = useCallback(async () => {
     try {
@@ -977,8 +1004,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     resetTutorState()
   }, [hasTextInput, inputMode, resetPhotoTransform, resetTutorState])
 
-  const handleStartAnalysis = useCallback(async () => {
+  const handleStartAnalysis = useCallback(async (options?: { forceFresh?: boolean }) => {
     const textSource = textContent.trim() || helpRequestDraft.trim()
+    const forceFresh = options?.forceFresh ?? Boolean(analysis)
     const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
       ? [{
           role: 'user' as const,
@@ -1001,23 +1029,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setPhotoGuidanceFading(false)
     try {
       if (effectiveTutorInputMode === 'text') {
-        await analyzeText(textSource, initialMessages)
+        await analyzeText(textSource, initialMessages, { forceFresh })
         return
       }
 
-      const photoAsset = backgroundImageAsset
-      if (!photoAsset) {
-        return
-      }
-
-      const response = await analyzeWhiteboardPhoto(boardId, {
-        inputMode: 'photo',
-        imageDataUrl: photoAsset.dataUrl,
-        imageMimeType: photoAsset.mimeType,
-        imageName: photoAsset.name,
-        audienceAge,
-        messages: initialMessages,
-        mode: 'analysis',
+      const response = await runTutorRequest(initialMessages, 'analysis', {
+        forceFresh,
       })
       applyAnalysisResponse(response)
     } catch (error) {
@@ -1025,7 +1042,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     } finally {
       setAnalysisLoading(false)
     }
-  }, [analyzeText, applyAnalysisResponse, audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, textContent, tutorReadyIntent])
+  }, [analysis, analyzeText, applyAnalysisResponse, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, runTutorRequest, textContent, tutorReadyIntent])
 
   const handleMobileAnalyze = useCallback(() => {
     if (!hasTutorInput || analysisLoading || responseAgeInvalid) return
@@ -2125,7 +2142,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                           void handleStartAnalysis()
                         }}
                         onRetryAnalysis={() => {
-                          void handleStartAnalysis()
+                          void handleStartAnalysis({ forceFresh: true })
                         }}
                         responseAge={responseAge}
                         responseAgeInvalid={responseAgeInvalid}
@@ -2451,7 +2468,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   void handleStartAnalysis()
                 }}
                 onRetryAnalysis={() => {
-                  void handleStartAnalysis()
+                  void handleStartAnalysis({ forceFresh: true })
                 }}
                 responseAge={responseAge}
                 responseAgeInvalid={responseAgeInvalid}

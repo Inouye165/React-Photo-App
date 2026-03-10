@@ -19,6 +19,7 @@ const MAX_HISTORY_EVENTS = 5000;
 const JOIN_INVITE_EXPIRY_DAYS = 7;
 const JOIN_INVITE_DEFAULT_MAX_USES = 1;
 const JOIN_INVITE_TOKEN_BYTES = 32;
+const WHITEBOARD_TUTOR_CACHE_VERSION = 'v1';
 
 const BoardIdParamsSchema = z.object({
   boardId: z.string().uuid().max(BOARD_ID_MAX_LENGTH),
@@ -51,6 +52,7 @@ const WhiteboardTutorBodySchema = z.object({
   audienceAge: z.number().int().min(5).max(20).optional(),
   messages: z.array(WhiteboardTutorMessageSchema).max(40).optional(),
   mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
+  skipCache: z.boolean().optional(),
 }).superRefine((value, ctx) => {
   if (value.inputMode === 'text') {
     if (!value.textContent?.trim()) {
@@ -240,6 +242,109 @@ type TutorPipelineError = Error & {
   provider?: 'gemini' | 'anthropic';
   model?: string;
 };
+
+function shouldReadWhiteboardTutorCache(body: WhiteboardTutorBody): boolean {
+  if (body.skipCache) return false;
+  return (body.mode ?? 'analysis') === 'analysis';
+}
+
+function shouldWriteWhiteboardTutorCache(body: WhiteboardTutorBody): boolean {
+  return (body.mode ?? 'analysis') === 'analysis';
+}
+
+function normalizeTutorCacheMessages(messages: WhiteboardTutorMessage[] | undefined): WhiteboardTutorMessage[] {
+  return (messages ?? []).map((message) => ({
+    role: message.role,
+    content: message.content.trim(),
+  }));
+}
+
+function buildWhiteboardTutorCacheKey(boardId: string, body: WhiteboardTutorBody): string {
+  const normalizedPayload = JSON.stringify({
+    version: WHITEBOARD_TUTOR_CACHE_VERSION,
+    boardId,
+    mode: body.mode ?? 'analysis',
+    inputMode: body.inputMode === 'text' ? 'text' : 'photo',
+    audienceAge: typeof body.audienceAge === 'number' ? body.audienceAge : null,
+    textContent: body.textContent?.trim() || null,
+    imageDataUrl: body.inputMode === 'photo' ? body.imageDataUrl?.trim() || null : null,
+    imageMimeType: body.inputMode === 'photo' ? body.imageMimeType?.trim() || null : null,
+    imageName: body.inputMode === 'photo' ? body.imageName?.trim() || null : null,
+    messages: normalizeTutorCacheMessages(body.messages),
+  });
+
+  return createHash('sha256').update(normalizedPayload).digest('hex');
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const dbError = error as {
+    code?: string;
+    message?: string;
+  };
+
+  if (dbError.code === '42P01') return true;
+
+  const message = String(dbError.message || '');
+  return message.includes('no such table') || message.includes('Unexpected table: whiteboard_tutor_cache');
+}
+
+async function readWhiteboardTutorCache(
+  db: Knex,
+  boardId: string,
+  body: WhiteboardTutorBody,
+): Promise<ReturnType<typeof buildLegacyTutorPayload> | null> {
+  if (!shouldReadWhiteboardTutorCache(body)) return null;
+
+  try {
+    const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
+    const row = await db('whiteboard_tutor_cache')
+      .select('response_json')
+      .where({ board_id: boardId, cache_key: cacheKey })
+      .first() as { response_json?: unknown } | null;
+
+    const response = row?.response_json;
+    if (!response || typeof response !== 'object') return null;
+
+    return response as ReturnType<typeof buildLegacyTutorPayload>;
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function writeWhiteboardTutorCache(
+  db: Knex,
+  boardId: string,
+  body: WhiteboardTutorBody,
+  response: ReturnType<typeof buildLegacyTutorPayload>,
+): Promise<void> {
+  if (!shouldWriteWhiteboardTutorCache(body)) return;
+
+  try {
+    const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
+    const payload = {
+      board_id: boardId,
+      cache_key: cacheKey,
+      input_mode: body.inputMode === 'text' ? 'text' : 'photo',
+      response_json: response,
+      updated_at: db.fn.now(),
+    };
+
+    await db('whiteboard_tutor_cache')
+      .insert(payload)
+      .onConflict(['board_id', 'cache_key'])
+      .merge(payload);
+  } catch (error) {
+    if (isMissingRelationError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object') return null;
@@ -1907,7 +2012,14 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         }
 
         const body = req.body as WhiteboardTutorBody;
+        const cachedTutorResponse = await readWhiteboardTutorCache(db, boardId, body);
+        if (cachedTutorResponse) {
+          const messages = [...(body.messages ?? []), { role: 'assistant', content: cachedTutorResponse.reply }];
+          return res.status(200).json({ ...cachedTutorResponse, messages, boardId });
+        }
+
         const tutorResponse = await callWhiteboardTutor(body);
+        await writeWhiteboardTutorCache(db, boardId, body, tutorResponse);
         const messages = [...(body.messages ?? []), { role: 'assistant', content: tutorResponse.reply }];
 
         return res.status(200).json({ ...tutorResponse, messages, boardId });

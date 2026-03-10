@@ -225,6 +225,7 @@ export type WhiteboardTutorRequest = {
   audienceAge?: number
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'
+  skipCache?: boolean
 }
 
 export type CreateWhiteboardHelpRequestPayload = {

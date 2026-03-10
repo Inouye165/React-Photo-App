@@ -28,12 +28,21 @@ jest.mock('@anthropic-ai/sdk', () => ({
 const createWhiteboardRouter = require('../routes/whiteboard')
 
 type RoomMember = { room_id: string; user_id: string }
+type TutorCacheRow = {
+  board_id: string
+  cache_key: string
+  input_mode: string
+  response_json: unknown
+  updated_at?: unknown
+}
 
 type MockDbState = {
   roomMembers: RoomMember[]
+  tutorCache?: TutorCacheRow[]
 }
 
 function createMockDb(state: MockDbState) {
+  const tutorCache = state.tutorCache ?? []
   const db = jest.fn((tableName: string) => {
     if (tableName === 'room_members') {
       const query: any = {
@@ -52,8 +61,55 @@ function createMockDb(state: MockDbState) {
       return query
     }
 
+    if (tableName === 'whiteboard_tutor_cache') {
+      const query: any = {
+        _where: {},
+        select: jest.fn(function select() {
+          return query
+        }),
+        where: jest.fn(function where(conditions: Record<string, string>) {
+          Object.assign(query._where, conditions)
+          return query
+        }),
+        first: jest.fn().mockImplementation(() => {
+          const row = tutorCache.find(
+            (entry) => entry.board_id === query._where.board_id && entry.cache_key === query._where.cache_key,
+          )
+          return Promise.resolve(row ?? null)
+        }),
+        insert: jest.fn().mockImplementation((payload: TutorCacheRow) => ({
+          onConflict: jest.fn().mockImplementation(() => ({
+            merge: jest.fn().mockImplementation((nextPayload: TutorCacheRow) => {
+              const existingIndex = tutorCache.findIndex(
+                (entry) => entry.board_id === payload.board_id && entry.cache_key === payload.cache_key,
+              )
+
+              if (existingIndex >= 0) {
+                tutorCache[existingIndex] = {
+                  ...tutorCache[existingIndex],
+                  ...nextPayload,
+                }
+              } else {
+                tutorCache.push({
+                  ...payload,
+                  ...nextPayload,
+                })
+              }
+
+              return Promise.resolve()
+            }),
+          })),
+        })),
+      }
+      return query
+    }
+
     throw new Error(`Unexpected table: ${tableName}`)
   })
+
+  ;(db as any).fn = {
+    now: jest.fn(() => new Date('2026-03-10T00:00:00.000Z').toISOString()),
+  }
 
   return db
 }
@@ -161,7 +217,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('returns tutor response for authenticated members', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -195,7 +251,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('includes the requested response age in the tutor prompt', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -238,7 +294,7 @@ describe('whiteboard tutor route', () => {
       },
     })
 
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -275,7 +331,7 @@ describe('whiteboard tutor route', () => {
         },
       })
 
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -294,7 +350,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('denies tutor requests to non-members', async () => {
-    const db = createMockDb({ roomMembers: [] })
+    const db = createMockDb({ roomMembers: [], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -307,5 +363,72 @@ describe('whiteboard tutor route', () => {
     expect(res.status).toBe(404)
     expect(mockGenerateContent).not.toHaveBeenCalled()
     expect(mockAnthropicCreate).not.toHaveBeenCalled()
+  })
+
+  test('reuses a cached analysis response for repeat requests', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const payload = {
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      imageMimeType: 'image/png',
+      imageName: 'math.png',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Help me remember how to solve this.',
+        },
+      ],
+    }
+
+    const first = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send(payload)
+
+    const second = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send(payload)
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(second.body.reply).toBe(first.body.reply)
+    expect(second.body.messages).toEqual([
+      ...payload.messages,
+      {
+        role: 'assistant',
+        content: expect.stringContaining('Problem: Solve 2x = 10'),
+      },
+    ])
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
+  })
+
+  test('bypasses the server cache when skipCache is true', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const payload = {
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      imageMimeType: 'image/png',
+      imageName: 'math.png',
+      mode: 'analysis',
+    }
+
+    const first = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send(payload)
+
+    const second = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        ...payload,
+        skipCache: true,
+      })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
   })
 })

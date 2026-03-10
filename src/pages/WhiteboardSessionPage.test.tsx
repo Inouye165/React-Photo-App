@@ -2,8 +2,57 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
+import { buildTutorAnalysisDeviceCacheKey, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
+import type { WhiteboardTutorResponse } from '../types/whiteboard'
 
 const TEXT_MODE_PLACEHOLDER = 'The Weekend Problem\n\nSara has 3 apples...\n\nHow many apples does she have left?'
+const localStorageState = new Map<string, string>()
+
+const sampleAnalysisResponse: WhiteboardTutorResponse = {
+  reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
+  messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
+  analysisResult: {
+    problemText: 'Solve 2x = 10',
+    finalAnswers: ['x = 5'],
+    overallSummary: 'Nice work.',
+    regions: [],
+    steps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '2x ÷ 2 = 10 ÷ 2',
+        normalizedMath: 'x = 5',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 2',
+        kidFriendlyExplanation: 'You divided both sides by 2 correctly.',
+      },
+    ],
+    validatorWarnings: [],
+    canAnimate: false,
+  },
+  sections: {
+    problem: 'Solve 2x = 10',
+    stepsAnalysis: '1. Dividing both sides by 2 is correct.',
+    errorsFound: '',
+    encouragement: 'Nice work.',
+  },
+  problem: 'Solve 2x = 10',
+  correctSolution: 'x = 5',
+  scoreCorrect: 1,
+  scoreTotal: 1,
+  steps: [
+    {
+      number: 1,
+      label: 'Divide both sides by 2',
+      studentWork: '2x ÷ 2 = 10 ÷ 2',
+      correct: true,
+      neutral: false,
+      explanation: 'You divided both sides by 2 correctly.',
+    },
+  ],
+  errorsFound: [],
+  closingEncouragement: 'Nice work.',
+}
 
 function setViewport(width: number): void {
   Object.defineProperty(window, 'innerWidth', {
@@ -126,6 +175,7 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
         <div>Active tab: {props.activeTab ?? props.initialTab ?? ''}</div>
         <div>Panel mode: {props.panelMode ?? 'student'}</div>
         <div>Ready intent: {props.readyIntent ?? 'analyze'}</div>
+        <div>Analysis problem: {props.analysis?.problem ?? ''}</div>
         <button type="button" onClick={() => props.onReadyIntentChange?.('analyze')}>Set analyze intent</button>
         <button type="button" onClick={() => props.onReadyIntentChange?.('solve')}>Set solve intent</button>
         <button type="button" onClick={() => props.onReadyIntentChange?.('steps')}>Set steps intent</button>
@@ -192,6 +242,17 @@ vi.mock('../components/whiteboard/WhiteboardPad', async () => {
 describe('WhiteboardSessionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorageState.clear()
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) => localStorageState.get(String(key)) ?? null)
+    vi.mocked(window.localStorage.setItem).mockImplementation((key: string, value: string) => {
+      localStorageState.set(String(key), String(value))
+    })
+    vi.mocked(window.localStorage.removeItem).mockImplementation((key: string) => {
+      localStorageState.delete(String(key))
+    })
+    vi.mocked(window.localStorage.clear).mockImplementation(() => {
+      localStorageState.clear()
+    })
     setViewport(1280)
     installMatchMediaMock()
     mockAuthState.value = {
@@ -202,51 +263,7 @@ describe('WhiteboardSessionPage', () => {
     whiteboardPadState.asset = null
     whiteboardPadState.clearBackground.mockReset()
 
-    analyzeWhiteboardPhoto.mockResolvedValue({
-      reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
-      messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
-      analysisResult: {
-        problemText: 'Solve 2x = 10',
-        finalAnswers: ['x = 5'],
-        overallSummary: 'Nice work.',
-        regions: [],
-        steps: [
-          {
-            id: 'step-1',
-            index: 0,
-            studentText: '2x ÷ 2 = 10 ÷ 2',
-            normalizedMath: 'x = 5',
-            status: 'correct',
-            shortLabel: 'Divide both sides by 2',
-            kidFriendlyExplanation: 'You divided both sides by 2 correctly.',
-          },
-        ],
-        validatorWarnings: [],
-        canAnimate: false,
-      },
-      sections: {
-        problem: 'Solve 2x = 10',
-        stepsAnalysis: '1. Dividing both sides by 2 is correct.',
-        errorsFound: '',
-        encouragement: 'Nice work.',
-      },
-      problem: 'Solve 2x = 10',
-      correctSolution: 'x = 5',
-      scoreCorrect: 1,
-      scoreTotal: 1,
-      steps: [
-        {
-          number: 1,
-          label: 'Divide both sides by 2',
-          studentWork: '2x ÷ 2 = 10 ÷ 2',
-          correct: true,
-          neutral: false,
-          explanation: 'You divided both sides by 2 correctly.',
-        },
-      ],
-      errorsFound: [],
-      closingEncouragement: 'Nice work.',
-    })
+    analyzeWhiteboardPhoto.mockResolvedValue(sampleAnalysisResponse)
     ensureWhiteboardMembership.mockResolvedValue({ ok: true })
     createWhiteboardInvite.mockResolvedValue({ joinUrl: 'https://example.com/join', expiresAt: new Date().toISOString() })
     createWhiteboardHelpRequest.mockResolvedValue({
@@ -864,6 +881,119 @@ describe('WhiteboardSessionPage', () => {
               content: expect.stringContaining('Please explain this one step at a time so I can work along on the board.'),
             }),
           ],
+        }),
+      )
+    })
+  })
+
+  it('uses the cached tutor analysis when the tutor asks for help again', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    expect(cacheKey).toBeTruthy()
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+  })
+
+  it('lets tutors explicitly rerun AI after a cached analysis result is reused', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          inputMode: 'photo',
+          skipCache: true,
         }),
       )
     })
