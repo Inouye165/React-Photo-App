@@ -138,6 +138,7 @@ function createMockDb(state: MockDbState) {
     if (tableName === 'whiteboard_help_requests as hr') {
       const query: any = {
         _where: {} as Record<string, unknown>,
+        _whereIn: {} as Record<string, unknown[]>,
         leftJoin: jest.fn().mockReturnThis(),
         select: jest.fn().mockReturnThis(),
         where: jest.fn(function where(column: Record<string, unknown> | string, value?: unknown) {
@@ -149,11 +150,21 @@ function createMockDb(state: MockDbState) {
           Object.assign(query._where, column)
           return query
         }),
-        whereIn: jest.fn().mockReturnThis(),
+        whereIn: jest.fn(function whereIn(column: string, values: unknown[]) {
+          query._whereIn[column] = values
+          return query
+        }),
         orderBy: jest.fn().mockReturnThis(),
         first: jest.fn(async () => {
           const requestId = String(query._where['hr.id'] ?? '')
-          const row = state.helpRequests.find((helpRequest) => helpRequest.id === requestId)
+          const boardId = String(query._where['hr.board_id'] ?? '')
+          const allowedStatuses = query._whereIn['hr.status'] as HelpRequestRow['status'][] | undefined
+          const row = state.helpRequests.find((helpRequest) => {
+            if (requestId) return helpRequest.id === requestId
+            if (boardId && helpRequest.board_id !== boardId) return false
+            if (allowedStatuses && allowedStatuses.length > 0 && !allowedStatuses.includes(helpRequest.status)) return false
+            return true
+          })
           if (!row) return null
 
           return {
@@ -238,5 +249,26 @@ describe('whiteboard help request routes', () => {
     expect(mockSupabaseInsert).toHaveBeenCalledWith({ room_id: boardId, user_id: 'tutor-2', is_owner: false })
     expect(state.helpRequests[0]?.status).toBe('claimed')
     expect(state.helpRequests[0]?.claimed_by_user_id).toBe('tutor-2')
+  })
+
+  test('returns null instead of 404 when there is no active help request for the board', async () => {
+    const state: MockDbState = {
+      helpRequests: [],
+      roomMembers: [
+        {
+          room_id: boardId,
+          user_id: 'tutor-2',
+          is_owner: false,
+        },
+      ],
+      users: [],
+    }
+    const db = createMockDb(state)
+    const app = createTestApp(db)
+
+    const res = await request(app).get(`/api/whiteboards/${boardId}/help-requests/active`)
+
+    expect(res.status).toBe(200)
+    expect(res.body).toBeNull()
   })
 })

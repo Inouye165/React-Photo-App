@@ -297,7 +297,7 @@ export async function getActiveWhiteboardHelpRequest(boardId: string): Promise<W
   if (!boardId) throw new Error('Missing board id')
 
   try {
-    return await request<WhiteboardHelpRequest>({
+    return await request<WhiteboardHelpRequest | null>({
       path: `/api/whiteboards/${boardId}/help-requests/active`,
       method: 'GET',
     })

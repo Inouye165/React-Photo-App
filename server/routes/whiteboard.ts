@@ -1825,7 +1825,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
         const helpRequest = await fetchActiveHelpRequestForBoard(db, boardId);
         if (!helpRequest) {
-          return res.status(404).json({ success: false, error: 'No active help request' });
+          return res.status(200).json(null);
         }
 
         return res.status(200).json(helpRequest);
