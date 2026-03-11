@@ -11,6 +11,8 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
+import type { TutorAnalysisResult, TutorStepAnalysis, WhiteboardTutorResponse } from '../../types/whiteboard'
+import { readStoredTutorAssistState, writeStoredTutorAssistState } from './tutorAssistPersistence'
 
 export type TabType = 'ai-tutor' | 'help-request' | 'chat' | 'steps'
 
@@ -41,10 +43,11 @@ export interface RightSidePanelProps {
   readyIntent?: 'analyze' | 'solve' | 'steps'
   onReadyIntentChange?: (value: 'analyze' | 'solve' | 'steps') => void
   onProblemDraftChange?: (value: string) => void
-  analysis: unknown
-  analysisResult?: unknown
+  analysis: WhiteboardTutorResponse | null
+  analysisResult?: TutorAnalysisResult | null
   analysisLoading: boolean
   analysisError: string | null
+  analysisPendingConfirmation?: boolean
   onStartAnalysis: () => void
   onRetryAnalysis: () => void
   responseAge: string
@@ -119,6 +122,13 @@ type TutorAssistActionCard = {
   optional?: boolean
 }
 
+type ResponseRecommendation = {
+  title: string
+  detail: string
+  suggestedReply: string
+  quickActions: TutorQuickAction[]
+}
+
 type BoardActionSource = 'diagnosis' | 'response' | 'assist'
 type BoardActionMode = 'mark' | 'annotate'
 
@@ -190,83 +200,211 @@ const WORKFLOW_SECTION_ORDER: Array<{
 
 const QUICK_REPLY_CHIPS = ['Great effort! 👍', "You're close!", "Let's try again", 'Check step 2']
 
-const QUICK_TUTOR_ACTIONS: TutorQuickAction[] = [
-  {
-    id: 'encourage',
-    label: 'Encourage progress',
-    hint: 'Keep confidence high before redirecting.',
-    message: 'Great effort so far. You are very close.',
-  },
-  {
-    id: 'guide-root',
-    label: 'Ask a guiding question',
-    hint: 'Lead them back to the missing negative root.',
-    message: 'What other number, besides 5, also squares to 25?',
-  },
-  {
-    id: 'return-step-2',
-    label: 'Point back to step 2',
-    hint: 'Refocus on the key transition in the work.',
-    message: 'Check step 2 again and think about what happens after taking the square root.',
-  },
-  {
-    id: 'redirect-visual',
-    label: 'Prompt a board check',
-    hint: 'Use the board to compare +5 and -5 visually.',
-    message: 'Let’s compare (+5)^2 and (-5)^2 on the board and see what they have in common.',
-  },
-]
+const SHOULD_LOG_TUTOR_FIX_DEBUG = import.meta.env.DEV
 
-const SAMPLE_MESSAGES: TutorMessage[] = [
-  {
-    id: 'student-1',
-    sender: 'student',
-    body: "I'm not sure what I did wrong on step 3",
-    timestamp: '35 min ago',
-    unread: true,
-  },
-  {
-    id: 'tutor-1',
-    sender: 'tutor',
-    body: 'Let me take a look!',
-    timestamp: '10 min ago',
-  },
-]
+function tutorFixDebug(label: string, details: Record<string, unknown>): void {
+  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
+  console.info('[TUTOR-FIX-DEBUG]', label, details)
+}
 
-const SAMPLE_STEP_CARDS: StepCard[] = [
-  {
-    number: 1,
-    title: 'Add 5 to both sides',
-    detail: '(x + 3)^2 = 25',
-  },
-  {
-    number: 2,
-    title: 'Take the square root of both sides',
-    detail: 'x + 3 = +-5  (remember the +- !)',
-    tag: 'KEY STEP',
-  },
-  {
-    number: 3,
-    title: 'Solve the positive case: x + 3 = 5',
-    detail: 'x = 2',
-  },
-  {
-    number: 4,
-    title: 'Solve the negative case: x + 3 = -5',
-    detail: 'x = -8',
-  },
-  {
-    number: 5,
-    title: 'Student error identified at Step 2',
-    detail: 'Student wrote √(25) = +5 only - missed the negative root',
-    tag: 'STUDENT ERROR',
-  },
-]
-const PRIMARY_DIAGNOSIS_ISSUE = SAMPLE_STEP_CARDS.find((step) => step.tag === 'STUDENT ERROR') ?? SAMPLE_STEP_CARDS[1]
-const PRIMARY_KEY_STEP = SAMPLE_STEP_CARDS.find((step) => step.tag === 'KEY STEP') ?? SAMPLE_STEP_CARDS[1]
+function toSentenceCase(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return trimmed.charAt(0).toLowerCase() + trimmed.slice(1)
+}
 
-function getStepCard(stepNumber: number): StepCard {
-  return SAMPLE_STEP_CARDS.find((step) => step.number === stepNumber) ?? PRIMARY_KEY_STEP
+function getReadableStudentReference(studentName: string): string {
+  const trimmed = studentName.trim()
+  if (!trimmed) return 'the student'
+
+  const firstName = trimmed.split(/\s+/)[0] ?? trimmed
+  if (/^(student|tutor|test|user|guest)$/i.test(firstName)) {
+    return 'the student'
+  }
+
+  return firstName
+}
+
+function getAnalysisSourceLabel(analysis: WhiteboardTutorResponse | null): string | null {
+  switch (analysis?.cacheSource) {
+    case 'local-cache':
+      return 'Showing saved analysis'
+    case 'server-cache':
+      return 'Showing server-cached analysis'
+    case 'fresh':
+      return 'Fresh AI analysis'
+    default:
+      return null
+  }
+}
+
+function buildStepCards(analysisResult: TutorAnalysisResult | null): StepCard[] {
+  if (!analysisResult?.steps.length) {
+    return []
+  }
+
+  const issueIndex = analysisResult.steps.findIndex((step) => step.status !== 'correct')
+  const fallbackKeyIndex = analysisResult.steps.findIndex((step) => step.status === 'correct')
+  const keyIndex = issueIndex > 0 ? issueIndex - 1 : fallbackKeyIndex >= 0 ? fallbackKeyIndex : 0
+
+  return analysisResult.steps.map((step, index) => ({
+    number: index + 1,
+    title: step.shortLabel?.trim() || `Step ${index + 1}`,
+    detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || step.studentText?.trim() || step.normalizedMath?.trim() || 'Review this step.',
+    tag: index === issueIndex
+      ? 'STUDENT ERROR'
+      : index === keyIndex
+        ? 'KEY STEP'
+        : undefined,
+  }))
+}
+
+function getPrimaryDiagnosisIssue(stepCards: StepCard[]): StepCard {
+  return stepCards.find((step) => step.tag === 'STUDENT ERROR') ?? stepCards[1] ?? stepCards[0] ?? { number: 1, title: 'Step 1', detail: '' }
+}
+
+function getPrimaryKeyStep(stepCards: StepCard[], issue: StepCard): StepCard {
+  return stepCards.find((step) => step.tag === 'KEY STEP')
+    ?? stepCards[Math.max(0, issue.number - 2)]
+    ?? issue
+    ?? { number: 1, title: 'Step 1', detail: '' }
+}
+
+function getStructuredStep(analysisResult: TutorAnalysisResult | null, stepCard: StepCard): TutorStepAnalysis | null {
+  return analysisResult?.steps[stepCard.number - 1] ?? null
+}
+
+function getProblemText(analysis: WhiteboardTutorResponse | null, analysisResult: TutorAnalysisResult | null): string {
+  return analysisResult?.problemText?.trim() || analysis?.problem?.trim() || ''
+}
+
+function getAnswerPairText(analysis: WhiteboardTutorResponse | null, analysisResult: TutorAnalysisResult | null): string {
+  const structuredAnswers = analysisResult?.finalAnswers?.filter(Boolean) ?? []
+  if (structuredAnswers.length > 0) {
+    return structuredAnswers.join(' or ')
+  }
+
+  return analysis?.correctSolution?.trim() || ''
+}
+
+function buildResponseRecommendation(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult: TutorAnalysisResult | null,
+  issueCard: StepCard,
+  issueStep: TutorStepAnalysis | null,
+  studentName: string,
+): ResponseRecommendation | null {
+  if (!analysis && !analysisResult) {
+    return null
+  }
+
+  const studentReference = getReadableStudentReference(studentName)
+
+  const suggestedReply = issueStep?.hint?.trim()
+    || issueStep?.correction?.trim()
+    || issueStep?.kidFriendlyExplanation?.trim()
+    || 'What other number, besides 5, also squares to 25?'
+
+  const summarySource = issueStep?.shortLabel?.trim() || issueCard.title
+  const consequenceText = issueStep?.kidFriendlyExplanation?.trim() || issueCard.detail
+  const correctionText = issueStep?.correction?.trim() || issueStep?.hint?.trim() || `Revisit ${toSentenceCase(summarySource)}.`
+  const detail = [
+    `First fix step ${issueCard.number}: ${toSentenceCase(summarySource)}.`,
+    consequenceText,
+    `Next correction: ${correctionText}`,
+  ].filter(Boolean).join(' ')
+
+  const encouragement = analysisResult?.overallSummary?.trim() || analysis?.closingEncouragement?.trim() || 'You set it up correctly. There is just one more thing to notice.'
+  const conciseCorrection = issueStep?.correction?.trim() || issueStep?.kidFriendlyExplanation?.trim() || `Revisit ${toSentenceCase(summarySource)}.`
+
+  return {
+    title: `Guide ${studentReference} to fix step ${issueCard.number}.`,
+    detail,
+    suggestedReply,
+    quickActions: [
+      {
+        id: 'encourage',
+        label: 'Encourage progress',
+        hint: 'Keep confidence high before redirecting.',
+        message: encouragement,
+      },
+      {
+        id: 'guide-root',
+        label: 'Ask a guiding question',
+        hint: 'Use the shortest prompt that keeps the student thinking.',
+        message: suggestedReply,
+      },
+      {
+        id: 'return-step',
+        label: `Point to step ${issueCard.number}`,
+        hint: `Refocus on ${toSentenceCase(issueCard.title)}.`,
+        message: `Check step ${issueCard.number} again and focus on ${toSentenceCase(issueCard.title)}.`,
+      },
+      {
+        id: 'fallback',
+        label: 'Give the concise correction',
+        hint: 'Use this only if the student stays stuck.',
+        message: conciseCorrection,
+      },
+    ],
+  }
+}
+
+function buildTutorAssistActionCards(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult: TutorAnalysisResult | null,
+  issueCard: StepCard,
+  issueStep: TutorStepAnalysis | null,
+  answerPairText: string,
+): TutorAssistActionCard[] {
+  if (!analysis && !analysisResult) {
+    return []
+  }
+
+  const coachingMove = issueStep?.hint?.trim() || issueStep?.kidFriendlyExplanation?.trim() || 'Ask one short guiding question before explaining the full correction.'
+  const fallbackExplanation = issueStep?.correction?.trim()
+    || issueStep?.kidFriendlyExplanation?.trim()
+    || `Show how the corrected work leads to ${answerPairText}.`
+  const confidencePhrase = analysisResult?.overallSummary?.trim()
+    || analysis?.closingEncouragement?.trim()
+    || 'You have the right setup. There is just one detail to fix.'
+
+  return [
+    {
+      id: 'coaching',
+      title: 'Best coaching move',
+      recommendation: coachingMove,
+      rationale: `This keeps the tutor focused on the first blocking mistake at step ${issueCard.number} before giving away the full correction.`,
+      composerText: coachingMove,
+    },
+    {
+      id: 'board',
+      title: 'Best annotate-on-board move',
+      recommendation: `Mark step ${issueCard.number}, then annotate ${toSentenceCase(issueCard.title)} so the first blocking mistake is visible on the board.`,
+      rationale: `A quick board cue keeps the tutor focused on the earliest blocking step instead of later downstream work.`,
+    },
+    {
+      id: 'fallback',
+      title: 'Best fallback explanation',
+      recommendation: fallbackExplanation,
+      rationale: `Use the direct explanation only if the student stays stuck after the guiding move. It compresses the correction into one tutor-facing response.`,
+      composerText: fallbackExplanation,
+    },
+    {
+      id: 'encouragement',
+      title: 'Confidence phrase',
+      recommendation: confidencePhrase,
+      rationale: 'Keep the redirect warm so the student stays engaged while you correct the mistake.',
+      composerText: confidencePhrase,
+      optional: true,
+    },
+  ]
+}
+
+function getStepCard(stepCards: StepCard[], stepNumber: number): StepCard {
+  return stepCards.find((step) => step.number === stepNumber)
+    ?? stepCards[stepNumber - 1]
+    ?? { number: stepNumber, title: `Step ${stepNumber}`, detail: '' }
 }
 
 function getLikelyIssueSummary(issue: StepCard, keyStep: StepCard): string {
@@ -274,11 +412,11 @@ function getLikelyIssueSummary(issue: StepCard, keyStep: StepCard): string {
     return `Student missed the negative square root at step ${keyStep.number}.`
   }
 
-  return issue.detail
+  return issue.detail || `Step ${issue.number} needs the first correction.`
 }
 
-function createBoardActionContext(stepNumber: number, mode: BoardActionMode, source: BoardActionSource): BoardActionContext {
-  const step = getStepCard(stepNumber)
+function createBoardActionContext(stepCards: StepCard[], stepNumber: number, mode: BoardActionMode, source: BoardActionSource): BoardActionContext {
+  const step = getStepCard(stepCards, stepNumber)
   const sourceText = source === 'diagnosis' ? 'From Diagnosis' : source === 'assist' ? 'From Assist' : 'From Response'
 
   return {
@@ -304,81 +442,6 @@ function isBoardActionActive(
     && boardActionContext.mode === mode
     && boardActionContext.stepNumber === stepNumber,
   )
-}
-
-const TUTOR_ASSIST_STORAGE_KEY = 'photo-app:right-panel:tutor-assist:v1'
-let tutorAssistSessionCache: { viewState: TutorAssistViewState; notes: string } | null = null
-
-const TUTOR_ASSIST_ACTION_CARDS: TutorAssistActionCard[] = [
-  {
-    id: 'coaching',
-    title: 'Best coaching move',
-    recommendation: 'Ask one short guiding question first: "What other number, besides 5, also squares to 25?"',
-    rationale: 'This keeps the student doing the thinking and redirects them back to the missing negative root without dumping the whole correction.',
-    composerText: 'What other number, besides 5, also squares to 25?',
-  },
-  {
-    id: 'board',
-    title: 'Best annotate-on-board move',
-    recommendation: 'Mark step 2, then compare (+5)^2 and (-5)^2 side by side so both roots become visible.',
-    rationale: 'The student already set up the equation correctly. A quick visual comparison makes the missed pair concrete faster than another paragraph in chat.',
-  },
-  {
-    id: 'fallback',
-    title: 'Best fallback explanation',
-    recommendation: 'If they are still stuck, explain: taking a square root while solving gives both + and -, so x + 3 = ±5 and the solutions are x = 2 and x = -8.',
-    rationale: 'This compresses the core correction into one tutor-facing explanation and preserves the useful logic from the longer assist write-up.',
-    composerText: 'When you take a square root while solving, both + and - can work. Here that means x + 3 = ±5, so the solutions are x = 2 and x = -8.',
-  },
-  {
-    id: 'encouragement',
-    title: 'Confidence phrase',
-    recommendation: 'Keep the redirect warm: "You set it up correctly. There is just one second answer hiding here."',
-    rationale: 'This preserves the encouragement-script value from earlier phases while keeping it secondary to the stronger coaching and board moves.',
-    composerText: 'You set it up correctly. There is just one second answer hiding here.',
-    optional: true,
-  },
-]
-
-function readStoredTutorAssistState(): { viewState: TutorAssistViewState; notes: string } | null {
-  if (typeof window === 'undefined') return tutorAssistSessionCache
-
-  try {
-    const raw = window.localStorage.getItem(TUTOR_ASSIST_STORAGE_KEY)
-    if (!raw) return tutorAssistSessionCache
-    const parsed = JSON.parse(raw) as { viewState?: TutorAssistViewState; notes?: string }
-    tutorAssistSessionCache = {
-      viewState: parsed.viewState === 'ready' || parsed.viewState === 'loading' || parsed.viewState === 'populated'
-        ? parsed.viewState
-        : 'populated',
-      notes: typeof parsed.notes === 'string' ? parsed.notes : '',
-    }
-    return tutorAssistSessionCache
-  } catch {
-    return tutorAssistSessionCache
-  }
-}
-
-function writeStoredTutorAssistState(viewState: TutorAssistViewState, notes: string): void {
-  tutorAssistSessionCache = { viewState, notes }
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.setItem(TUTOR_ASSIST_STORAGE_KEY, JSON.stringify({ viewState, notes }))
-  } catch {
-    // Fall back to the in-memory cache when storage is unavailable.
-  }
-}
-
-export function __resetTutorAssistPersistenceForTests(): void {
-  tutorAssistSessionCache = null
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.removeItem(TUTOR_ASSIST_STORAGE_KEY)
-  } catch {
-    // Ignore storage cleanup failures in test and non-browser environments.
-  }
 }
 
 function resolveVisibleTab(tab?: TabType): VisibleTabId {
@@ -432,6 +495,8 @@ function ChatPanel({
   studentLastSeenText = 'Last seen 2 hrs ago',
   variant = 'detail',
   viewerMode = 'tutor',
+  recommendation = null,
+  focusStepNumber = 1,
 }: {
   messages: TutorMessage[]
   composerValue: string
@@ -445,6 +510,8 @@ function ChatPanel({
   studentLastSeenText?: string
   variant?: PanelVariant
   viewerMode?: 'student' | 'tutor'
+  recommendation?: ResponseRecommendation | null
+  focusStepNumber?: number
 }): React.JSX.Element {
   const threadRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useAutoResizeTextarea(composerValue)
@@ -478,90 +545,100 @@ function ChatPanel({
   }
 
   const handleAnnotateIssue = () => {
-    onBoardAction(PRIMARY_KEY_STEP.number, 'annotate', 'response')
+    onBoardAction(focusStepNumber, 'annotate', 'response')
   }
 
   if (variant === 'workflow') {
     return (
       <div className="bg-transparent px-4 pb-4 pt-1">
-        <div className="rounded-[14px] border border-sky-400/20 bg-[linear-gradient(180deg,rgba(30,58,95,0.34),rgba(17,24,39,0.92))] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Recommended next move</div>
-              <div className="mt-1 text-[15px] font-semibold text-[#F9FAFB]">Guide {studentName} back to the missing negative root.</div>
-              <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">Best next step: ask a short guiding question before explaining the full correction.</p>
-            </div>
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1F2937] text-[12px] font-semibold text-[#F9FAFB]">
-              {studentInitials}
-            </div>
-          </div>
+        {recommendation ? (
+          <>
+            <div className="rounded-[14px] border border-sky-400/20 bg-[linear-gradient(180deg,rgba(30,58,95,0.34),rgba(17,24,39,0.92))] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Recommended next move</div>
+                  <div className="mt-1 text-[15px] font-semibold text-[#F9FAFB]">{recommendation.title}</div>
+                  <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{recommendation.detail}</p>
+                </div>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1F2937] text-[12px] font-semibold text-[#F9FAFB]">
+                  {studentInitials}
+                </div>
+              </div>
 
-          <button
-            type="button"
-            onClick={() => handleChipClick('What other number, besides 5, also squares to 25?')}
-            className="mt-3 inline-flex rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
-          >
-            Use suggested reply
-          </button>
-
-          <div className="mt-3 flex items-center gap-2 text-[12px] text-[#9CA3AF]">
-            <span
-              className={`h-2 w-2 rounded-full ${studentPresence === 'online' ? 'bg-[#10B981]' : 'bg-[#6B7280]'}`}
-              aria-hidden="true"
-            />
-            <span>{studentPresence === 'online' ? 'Online now' : studentLastSeenText}</span>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutoring moves</div>
-          <div className="mt-2 grid gap-2">
-            {QUICK_TUTOR_ACTIONS.map((action) => (
               <button
-                key={action.id}
                 type="button"
-                onClick={() => handleChipClick(action.message)}
-                className="rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3 text-left transition hover:border-amber-400/30 hover:bg-white/[0.05]"
+                onClick={() => handleChipClick(recommendation.suggestedReply)}
+                className="mt-3 inline-flex rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
               >
-                <div className="text-[13px] font-semibold text-[#F9FAFB]">{action.label}</div>
-                <div className="mt-1 text-[12px] leading-5 text-[#9CA3AF]">{action.hint}</div>
+                Use suggested reply
               </button>
-            ))}
-          </div>
-        </div>
 
-        <div className="mt-4 rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Board action</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'response')}
-              aria-pressed={isBoardActionActive(boardActionContext, 'response', 'mark', PRIMARY_KEY_STEP.number)}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
-                isBoardActionActive(boardActionContext, 'response', 'mark', PRIMARY_KEY_STEP.number)
-                  ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
-                  : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
-              }`}
-            >
-              <MapPin className="h-3.5 w-3.5" />
-              Mark key step on board
-            </button>
-            <button
-              type="button"
-              onClick={handleAnnotateIssue}
-              aria-pressed={isBoardActionActive(boardActionContext, 'response', 'annotate', PRIMARY_KEY_STEP.number)}
-              className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
-                isBoardActionActive(boardActionContext, 'response', 'annotate', PRIMARY_KEY_STEP.number)
-                  ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
-                  : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
-              }`}
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Annotate issue
-            </button>
+              <div className="mt-3 flex items-center gap-2 text-[12px] text-[#9CA3AF]">
+                <span
+                  className={`h-2 w-2 rounded-full ${studentPresence === 'online' ? 'bg-[#10B981]' : 'bg-[#6B7280]'}`}
+                  aria-hidden="true"
+                />
+                <span>{studentPresence === 'online' ? 'Online now' : studentLastSeenText}</span>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutoring moves</div>
+              <div className="mt-2 grid gap-2">
+                {recommendation.quickActions.map((action) => (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => handleChipClick(action.message)}
+                    className="rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3 text-left transition hover:border-amber-400/30 hover:bg-white/[0.05]"
+                  >
+                    <div className="text-[13px] font-semibold text-[#F9FAFB]">{action.label}</div>
+                    <div className="mt-1 text-[12px] leading-5 text-[#9CA3AF]">{action.hint}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Board action</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onBoardAction(focusStepNumber, 'mark', 'response')}
+                  aria-pressed={isBoardActionActive(boardActionContext, 'response', 'mark', focusStepNumber)}
+                  className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
+                    isBoardActionActive(boardActionContext, 'response', 'mark', focusStepNumber)
+                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
+                      : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
+                  }`}
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  Mark key step on board
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAnnotateIssue}
+                  aria-pressed={isBoardActionActive(boardActionContext, 'response', 'annotate', focusStepNumber)}
+                  className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
+                    isBoardActionActive(boardActionContext, 'response', 'annotate', focusStepNumber)
+                      ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
+                      : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Annotate issue
+                </button>
+              </div>
+              <div className="mt-2 text-[11px] text-[#6B7280]">You can message, mark the board, or do both before opening full detail.</div>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Response guidance</div>
+            <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Run tutoring help once to generate guidance from the current board.</div>
+            <p className="mt-2 text-[13px] leading-6 text-[#9CA3AF]">Use the Run AI action in Diagnosis to gather the steps, response guidance, and assist recommendations in one pass.</p>
           </div>
-          <div className="mt-2 text-[11px] text-[#6B7280]">You can message, mark the board, or do both before opening full detail.</div>
-        </div>
+        )}
 
         <div className="mt-3 rounded-[14px] border border-white/10 bg-[#161f2d] p-3">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{responseSectionTitle}</div>
@@ -836,45 +913,78 @@ function StepTag({ value }: { value: StepCard['tag'] }): React.JSX.Element | nul
 function StepStatePopulated({
   boardActionContext,
   onBoardAction,
+  onRetryAnalysis,
+  analysisLoading,
+  analysisPendingConfirmation = false,
+  analysisSourceLabel,
+  stepCards,
+  primaryDiagnosisIssue,
+  primaryKeyStep,
+  problemText,
+  answerPairText,
   variant = 'detail',
 }: {
   boardActionContext: BoardActionContext | null
   onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  onRetryAnalysis: () => void
+  analysisLoading: boolean
+  analysisPendingConfirmation?: boolean
+  analysisSourceLabel: string | null
+  stepCards: StepCard[]
+  primaryDiagnosisIssue: StepCard
+  primaryKeyStep: StepCard
+  problemText: string
+  answerPairText: string
   variant?: PanelVariant
 }): React.JSX.Element {
+  const focusStep = primaryDiagnosisIssue
+
   if (variant === 'workflow') {
     return (
       <div className="space-y-4 pb-1">
         <section className="rounded-[14px] border border-amber-400/25 bg-[linear-gradient(180deg,rgba(120,53,15,0.28),rgba(17,24,39,0.92))] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.2)]">
           <div className="text-[10px] uppercase tracking-[0.08em] text-amber-200/80">Likely issue</div>
-          <div className="mt-1 text-[16px] font-semibold text-[#F9FAFB]">Likely issue: {getLikelyIssueSummary(PRIMARY_DIAGNOSIS_ISSUE, PRIMARY_KEY_STEP)}</div>
-          <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">Student wrote √25 = +5 only, so they only found x = 2 and missed the second solution.</p>
+          <div className="mt-1 text-[16px] font-semibold text-[#F9FAFB]">Likely issue: {getLikelyIssueSummary(primaryDiagnosisIssue, primaryKeyStep)}</div>
+          <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{primaryDiagnosisIssue.detail}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full border border-[#7c2d12] bg-[#451a03] px-3 py-1 text-[11px] font-semibold text-amber-100">
-              Key step: {PRIMARY_KEY_STEP.title}
+              Focus step {focusStep.number}: {focusStep.title}
             </span>
             <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-200">
-              Answer pair: x = 2 or x = -8
+              Answer pair: {answerPairText}
             </span>
+            {analysisSourceLabel ? (
+              <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-[11px] font-semibold text-sky-200">
+                {analysisSourceLabel}
+              </span>
+            ) : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               title="Mark this step on the whiteboard"
-              aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', PRIMARY_KEY_STEP.number)}
+              aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', focusStep.number)}
               className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
-                isBoardActionActive(boardActionContext, 'diagnosis', 'mark', PRIMARY_KEY_STEP.number)
+                isBoardActionActive(boardActionContext, 'diagnosis', 'mark', focusStep.number)
                   ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
                   : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
               }`}
-              onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'diagnosis')}
+              onClick={() => onBoardAction(focusStep.number, 'mark', 'diagnosis')}
             >
               <MapPin className="h-3.5 w-3.5" />
-              Mark key step on board
+              Mark blocking step on board
             </button>
             <div className="inline-flex items-center rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] text-[#9CA3AF]">
-              Best tutoring move: guide the student to discover the missing negative root.
+              First tutoring move: fix step {focusStep.number} before discussing later work.
             </div>
+            <button
+              type="button"
+              onClick={onRetryAnalysis}
+              disabled={analysisLoading || analysisPendingConfirmation}
+              className="inline-flex items-center rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-semibold text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {analysisLoading ? 'Refreshing…' : analysisPendingConfirmation ? 'Confirming…' : 'Refresh diagnosis'}
+            </button>
           </div>
         </section>
 
@@ -882,13 +992,13 @@ function StepStatePopulated({
           <div className="flex items-center justify-between gap-3 px-1">
             <div>
               <div className="text-[10px] uppercase tracking-[0.08em] text-[#8f867d]">Problem</div>
-              <div className="mt-1 text-[14px] font-medium text-[#F9FAFB]">(x + 3)^2 - 5 = 20</div>
+              <div className="mt-1 text-[14px] font-medium text-[#F9FAFB]">{problemText}</div>
             </div>
             <div className="text-[11px] text-[#6B7280]">Supporting steps</div>
           </div>
 
           <div className="mt-3 space-y-2">
-            {SAMPLE_STEP_CARDS.map((step) => (
+            {stepCards.map((step) => (
               <article
                 key={step.number}
                 className={`rounded-[12px] border px-3 py-3 transition-colors ${
@@ -914,22 +1024,24 @@ function StepStatePopulated({
                       <StepTag value={step.tag} />
                     </div>
                     <p className="mt-1 text-[12px] text-[#9CA3AF]">{step.detail}</p>
-                    <div className="mt-2 flex justify-end">
-                      <button
-                        type="button"
-                        title="Mark this step on the whiteboard"
-                        aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)}
-                        className={`flex items-center gap-1 text-[11px] transition ${
-                          isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)
-                            ? 'text-amber-300'
-                            : 'text-slate-500 hover:text-amber-400'
-                        }`}
-                        onClick={() => onBoardAction(step.number, 'mark', 'diagnosis')}
-                      >
-                        <MapPin className="h-3 w-3" />
-                        Mark on board
-                      </button>
-                    </div>
+                    {step.tag || boardActionContext?.stepNumber === step.number ? (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          title="Mark this step on the whiteboard"
+                          aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)}
+                          className={`flex items-center gap-1 text-[11px] transition ${
+                            isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)
+                              ? 'text-amber-300'
+                              : 'text-slate-500 hover:text-amber-400'
+                          }`}
+                          onClick={() => onBoardAction(step.number, 'mark', 'diagnosis')}
+                        >
+                          <MapPin className="h-3 w-3" />
+                          Mark on board
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -943,14 +1055,33 @@ function StepStatePopulated({
   return (
     <div className="space-y-3 pb-4">
       <section className="rounded-[8px] border border-[#374151] bg-[#1F2937] px-[14px] py-[10px]">
-        <div className="text-[10px] uppercase tracking-[0.08em] text-[#6B7280]">PROBLEM</div>
-        <div className="mt-1 text-[15px] font-medium text-[#F9FAFB]">(x + 3)^2 - 5 = 20</div>
-        <div className="mt-2 inline-flex rounded-full bg-[#064E3B] px-[10px] py-[2px] text-[12px] text-[#10B981]">
-          x = 2  or  x = -8
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.08em] text-[#6B7280]">PROBLEM</div>
+            <div className="mt-1 text-[15px] font-medium text-[#F9FAFB]">{problemText}</div>
+          </div>
+          <button
+            type="button"
+            onClick={onRetryAnalysis}
+            disabled={analysisLoading || analysisPendingConfirmation}
+            className="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-semibold text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {analysisLoading ? 'Refreshing…' : analysisPendingConfirmation ? 'Confirming…' : 'Refresh diagnosis'}
+          </button>
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <div className="inline-flex rounded-full bg-[#064E3B] px-[10px] py-[2px] text-[12px] text-[#10B981]">
+            {answerPairText}
+          </div>
+          {analysisSourceLabel ? (
+            <div className="inline-flex rounded-full border border-sky-400/20 bg-sky-500/10 px-[10px] py-[2px] text-[12px] text-sky-200">
+              {analysisSourceLabel}
+            </div>
+          ) : null}
         </div>
       </section>
 
-      {SAMPLE_STEP_CARDS.map((step) => (
+      {stepCards.map((step) => (
         <article
           key={step.number}
           className={`rounded-[8px] border p-3 transition-colors ${
@@ -969,21 +1100,23 @@ function StepStatePopulated({
                 <StepTag value={step.tag} />
               </div>
               <p className="mt-1 text-[12px] text-[#9CA3AF]">{step.detail}</p>
-              <div className="mt-2 flex justify-end">
-                <button
-                  type="button"
-                  title="Mark this step on the whiteboard"
-                  className={`mt-2 flex items-center gap-1 text-[11px] transition ${
-                    isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)
-                      ? 'text-amber-300'
-                      : 'text-slate-500 hover:text-amber-400'
-                  }`}
-                  onClick={() => onBoardAction(step.number, 'mark', 'diagnosis')}
-                >
-                  <MapPin className="h-3 w-3" />
-                  Mark on board
-                </button>
-              </div>
+              {step.tag || boardActionContext?.stepNumber === step.number ? (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    title="Mark this step on the whiteboard"
+                    className={`mt-2 flex items-center gap-1 text-[11px] transition ${
+                      isBoardActionActive(boardActionContext, 'diagnosis', 'mark', step.number)
+                        ? 'text-amber-300'
+                        : 'text-slate-500 hover:text-amber-400'
+                    }`}
+                    onClick={() => onBoardAction(step.number, 'mark', 'diagnosis')}
+                  >
+                    <MapPin className="h-3 w-3" />
+                    Mark on board
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </article>
@@ -995,16 +1128,93 @@ function StepStatePopulated({
 function StepsPanel({
   boardActionContext,
   onBoardAction,
+  onStartAnalysis,
+  onRetryAnalysis,
+  analysisLoading,
+  analysisPendingConfirmation = false,
+  analysisSourceLabel,
+  stepCards,
+  primaryDiagnosisIssue,
+  primaryKeyStep,
+  problemText,
+  answerPairText,
   variant = 'detail',
 }: {
   boardActionContext: BoardActionContext | null
   onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  onStartAnalysis: () => void
+  onRetryAnalysis: () => void
+  analysisLoading: boolean
+  analysisPendingConfirmation?: boolean
+  analysisSourceLabel: string | null
+  stepCards: StepCard[]
+  primaryDiagnosisIssue: StepCard
+  primaryKeyStep: StepCard
+  problemText: string
+  answerPairText: string
   variant?: PanelVariant
 }): React.JSX.Element {
+  if (stepCards.length === 0 || !problemText.trim()) {
+    return variant === 'workflow'
+      ? (
+          <div className="bg-transparent px-4 pb-4 pt-1">
+            <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.18)]">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Diagnosis</div>
+                  <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">No steps yet</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onStartAnalysis}
+                  disabled={analysisLoading || analysisPendingConfirmation}
+                  className="shrink-0 rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
+                >
+                  {analysisLoading ? 'Thinking…' : analysisPendingConfirmation ? 'Confirming…' : 'Run AI'}
+                </button>
+              </div>
+              <p className="mt-2 text-[13px] leading-6 text-[#9CA3AF]">Run AI analysis to generate solution steps.</p>
+            </div>
+          </div>
+        )
+      : (
+          <div className="flex h-full items-center justify-center p-4 text-center">
+            <div className="mx-auto flex max-w-[320px] flex-col items-center gap-4 rounded-[16px] border border-white/10 bg-white/[0.03] px-5 py-6 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+              <List className="h-10 w-10 text-[#6B7280]" strokeWidth={1.75} aria-hidden="true" />
+              <div className="space-y-1.5">
+                <h3 className="text-base font-semibold text-[#F9FAFB]">No steps yet</h3>
+                <p className="text-sm leading-6 text-[#6B7280]">Run AI analysis to generate solution steps.</p>
+              </div>
+              <button
+                type="button"
+                onClick={onStartAnalysis}
+                disabled={analysisLoading || analysisPendingConfirmation}
+                className="rounded-[10px] bg-[#F59E0B] px-4 py-2 text-[13px] font-semibold text-black transition hover:bg-[#f2ab28]"
+              >
+                {analysisLoading ? 'Thinking…' : analysisPendingConfirmation ? 'Confirming…' : 'Run AI analysis'}
+              </button>
+            </div>
+          </div>
+        )
+  }
+
   if (variant === 'workflow') {
     return (
       <div className="bg-transparent px-4 pb-4 pt-1">
-        <StepStatePopulated boardActionContext={boardActionContext} onBoardAction={onBoardAction} variant="workflow" />
+        <StepStatePopulated
+          boardActionContext={boardActionContext}
+          onBoardAction={onBoardAction}
+          onRetryAnalysis={onRetryAnalysis}
+          analysisLoading={analysisLoading}
+          analysisPendingConfirmation={analysisPendingConfirmation}
+          analysisSourceLabel={analysisSourceLabel}
+          stepCards={stepCards}
+          primaryDiagnosisIssue={primaryDiagnosisIssue}
+          primaryKeyStep={primaryKeyStep}
+          problemText={problemText}
+          answerPairText={answerPairText}
+          variant="workflow"
+        />
       </div>
     )
   }
@@ -1012,7 +1222,20 @@ function StepsPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#111827] p-4">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <StepStatePopulated boardActionContext={boardActionContext} onBoardAction={onBoardAction} variant="detail" />
+        <StepStatePopulated
+          boardActionContext={boardActionContext}
+          onBoardAction={onBoardAction}
+          onRetryAnalysis={onRetryAnalysis}
+          analysisLoading={analysisLoading}
+          analysisPendingConfirmation={analysisPendingConfirmation}
+          analysisSourceLabel={analysisSourceLabel}
+          stepCards={stepCards}
+          primaryDiagnosisIssue={primaryDiagnosisIssue}
+          primaryKeyStep={primaryKeyStep}
+          problemText={problemText}
+          answerPairText={answerPairText}
+          variant="detail"
+        />
       </div>
     </div>
   )
@@ -1089,6 +1312,8 @@ function TutorAssistPopulatedState({
   onUseReply,
   boardActionContext,
   onBoardAction,
+  actionCards,
+  focusStepNumber,
   variant = 'detail',
 }: {
   privateNotes: string
@@ -1097,6 +1322,8 @@ function TutorAssistPopulatedState({
   onUseReply: (value: string) => void
   boardActionContext: BoardActionContext | null
   onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  actionCards: TutorAssistActionCard[]
+  focusStepNumber: number
   variant?: PanelVariant
 }): React.JSX.Element {
   const [openRationale, setOpenRationale] = useState<Record<TutorAssistActionCardId, boolean>>({
@@ -1111,7 +1338,7 @@ function TutorAssistPopulatedState({
   }
 
   const handleAnnotateIssue = () => {
-    onBoardAction(PRIMARY_KEY_STEP.number, 'annotate', 'assist')
+    onBoardAction(focusStepNumber, 'annotate', 'assist')
   }
 
   return (
@@ -1123,7 +1350,7 @@ function TutorAssistPopulatedState({
         </div>
       ) : null}
 
-      {TUTOR_ASSIST_ACTION_CARDS.map((card) => (
+      {actionCards.map((card) => (
         <section
           key={card.id}
           className={`rounded-[12px] border px-3 py-3 ${card.optional ? 'border-white/8 bg-white/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}
@@ -1145,10 +1372,10 @@ function TutorAssistPopulatedState({
               <>
                 <button
                   type="button"
-                  onClick={() => onBoardAction(PRIMARY_KEY_STEP.number, 'mark', 'assist')}
-                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', PRIMARY_KEY_STEP.number)}
+                  onClick={() => onBoardAction(focusStepNumber, 'mark', 'assist')}
+                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', focusStepNumber)}
                   className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
-                    isBoardActionActive(boardActionContext, 'assist', 'mark', PRIMARY_KEY_STEP.number)
+                    isBoardActionActive(boardActionContext, 'assist', 'mark', focusStepNumber)
                       ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
                       : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
                   }`}
@@ -1159,9 +1386,9 @@ function TutorAssistPopulatedState({
                 <button
                   type="button"
                   onClick={handleAnnotateIssue}
-                  aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'annotate', PRIMARY_KEY_STEP.number)}
+                  aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'annotate', focusStepNumber)}
                   className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
-                    isBoardActionActive(boardActionContext, 'assist', 'annotate', PRIMARY_KEY_STEP.number)
+                    isBoardActionActive(boardActionContext, 'assist', 'annotate', focusStepNumber)
                       ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
                       : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
                   }`}
@@ -1221,6 +1448,8 @@ function TutorAssistPanel({
   initialState = 'populated',
   analysisLoading,
   onStartAnalysis,
+  actionCards,
+  focusStepNumber,
   variant = 'detail',
   onUseReply,
   boardActionContext,
@@ -1229,6 +1458,8 @@ function TutorAssistPanel({
   initialState?: TutorAssistViewState
   analysisLoading: boolean
   onStartAnalysis: () => void
+  actionCards: TutorAssistActionCard[]
+  focusStepNumber: number
   variant?: PanelVariant
   onUseReply: (value: string) => void
   boardActionContext: BoardActionContext | null
@@ -1311,6 +1542,8 @@ function TutorAssistPanel({
             onUseReply={onUseReply}
             boardActionContext={boardActionContext}
             onBoardAction={onBoardAction}
+            actionCards={actionCards}
+            focusStepNumber={focusStepNumber}
             variant="workflow"
           />
         ) : null}
@@ -1331,6 +1564,8 @@ function TutorAssistPanel({
             onUseReply={onUseReply}
             boardActionContext={boardActionContext}
             onBoardAction={onBoardAction}
+            actionCards={actionCards}
+            focusStepNumber={focusStepNumber}
           />
         ) : null}
       </div>
@@ -1415,13 +1650,18 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   initialTab = 'steps',
   activeTab,
   initialChatMessages,
-  initialTutorAssistState = 'populated',
+  initialTutorAssistState,
   studentName = 'Student',
   studentPresence = 'offline',
   studentLastSeenText = 'Last seen 2 hrs ago',
   panelMode = 'tutor',
+  analysis,
+  analysisResult,
   analysisLoading,
+  analysisPendingConfirmation = false,
+  analysisError,
   onStartAnalysis,
+  onRetryAnalysis,
   onMarkStep,
   onBoardActionContextChange,
   width = 'clamp(380px, 35vw, 560px)',
@@ -1430,12 +1670,49 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   const requestedTab = useMemo(() => resolveVisibleTab(activeTab ?? initialTab), [activeTab, initialTab])
   const [detailTab, setDetailTab] = useState<VisibleTabId | null>(() => (requestedTab === 'steps' ? null : requestedTab))
   const [openSections, setOpenSections] = useState<WorkflowSectionState>(() => createInitialWorkflowSections(requestedTab))
-  const [chatMessages, setChatMessages] = useState<TutorMessage[]>(() => initialChatMessages ?? SAMPLE_MESSAGES)
+  const [chatMessages, setChatMessages] = useState<TutorMessage[]>(() => initialChatMessages ?? [])
   const [chatComposerValue, setChatComposerValue] = useState('')
   const [boardActionContext, setBoardActionContext] = useState<BoardActionContext | null>(null)
   const [panelToastMessage, setPanelToastMessage] = useState<string | null>(null)
   const previousPresenceRef = useRef(studentPresence)
   const previousActiveTabRef = useRef<TabType | undefined>(activeTab)
+  const resolvedAnalysisResult = useMemo(() => analysisResult ?? analysis?.analysisResult ?? null, [analysis, analysisResult])
+  const analysisSourceLabel = useMemo(() => getAnalysisSourceLabel(analysis), [analysis])
+  const stepCards = useMemo(() => buildStepCards(resolvedAnalysisResult), [resolvedAnalysisResult])
+  const primaryDiagnosisIssue = useMemo(() => getPrimaryDiagnosisIssue(stepCards), [stepCards])
+  const primaryKeyStep = useMemo(() => getPrimaryKeyStep(stepCards, primaryDiagnosisIssue), [stepCards, primaryDiagnosisIssue])
+  const primaryIssueStep = useMemo(() => getStructuredStep(resolvedAnalysisResult, primaryDiagnosisIssue), [resolvedAnalysisResult, primaryDiagnosisIssue])
+  const problemText = useMemo(() => getProblemText(analysis, resolvedAnalysisResult), [analysis, resolvedAnalysisResult])
+  const answerPairText = useMemo(() => getAnswerPairText(analysis, resolvedAnalysisResult), [analysis, resolvedAnalysisResult])
+  const responseRecommendation = useMemo(
+    () => buildResponseRecommendation(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, studentName),
+    [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, studentName],
+  )
+  const tutorAssistActionCards = useMemo(
+    () => buildTutorAssistActionCards(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, answerPairText),
+    [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, answerPairText],
+  )
+  const resolvedTutorAssistState = initialTutorAssistState ?? (resolvedAnalysisResult ? 'populated' : 'ready')
+
+  useEffect(() => {
+    tutorFixDebug('rendered-workflow-summary', {
+      studentName,
+      cacheSource: analysis?.cacheSource ?? null,
+      analysisSourceLabel,
+      hasStructuredAnalysis: Boolean(resolvedAnalysisResult),
+      problemText,
+      primaryDiagnosisIssue: {
+        number: primaryDiagnosisIssue.number,
+        title: primaryDiagnosisIssue.title,
+        detail: primaryDiagnosisIssue.detail,
+      },
+      recommendedNextMove: responseRecommendation ? {
+        title: responseRecommendation.title,
+        detail: responseRecommendation.detail,
+      } : null,
+      assistCards: tutorAssistActionCards.map((card) => card.title),
+    })
+  }, [analysis?.cacheSource, analysisSourceLabel, problemText, primaryDiagnosisIssue, resolvedAnalysisResult, responseRecommendation, studentName, tutorAssistActionCards])
 
   const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
 
@@ -1481,6 +1758,10 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   }, [activeTab])
 
   useEffect(() => {
+    setChatMessages(initialChatMessages ?? [])
+  }, [initialChatMessages])
+
+  useEffect(() => {
     onBoardActionContextChange?.(boardActionContext)
   }, [boardActionContext, onBoardActionContextChange])
 
@@ -1523,7 +1804,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   }
 
   const handleBoardAction = (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => {
-    setBoardActionContext(createBoardActionContext(stepNumber, mode, source))
+    setBoardActionContext(createBoardActionContext(stepCards, stepNumber, mode, source))
 
     if (mode === 'mark') {
       onMarkStep?.(stepNumber)
@@ -1545,20 +1826,39 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           studentPresence={studentPresence}
           studentLastSeenText={studentLastSeenText}
           viewerMode="tutor"
+          recommendation={responseRecommendation}
+          focusStepNumber={primaryDiagnosisIssue.number}
         />
       )
     }
 
     if (tabId === 'steps') {
-      return <StepsPanel boardActionContext={boardActionContext} onBoardAction={handleBoardAction} />
+      return (
+        <StepsPanel
+          boardActionContext={boardActionContext}
+          onBoardAction={handleBoardAction}
+          onStartAnalysis={onStartAnalysis}
+          onRetryAnalysis={onRetryAnalysis}
+          analysisLoading={analysisLoading}
+          analysisPendingConfirmation={analysisPendingConfirmation}
+          analysisSourceLabel={analysisSourceLabel}
+          stepCards={stepCards}
+          primaryDiagnosisIssue={primaryDiagnosisIssue}
+          primaryKeyStep={primaryKeyStep}
+          problemText={problemText}
+          answerPairText={answerPairText}
+        />
+      )
     }
 
     if (tabId === 'ai-tutor') {
       return (
         <TutorAssistPanel
-          initialState={initialTutorAssistState}
+          initialState={resolvedTutorAssistState}
           analysisLoading={analysisLoading}
           onStartAnalysis={onStartAnalysis}
+          actionCards={tutorAssistActionCards}
+          focusStepNumber={primaryDiagnosisIssue.number}
           onUseReply={handleUseAssistReply}
           boardActionContext={boardActionContext}
           onBoardAction={handleBoardAction}
@@ -1655,6 +1955,44 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         )}
       </div>
 
+      {analysisPendingConfirmation ? (
+        <div className="shrink-0 border-b border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] text-amber-50" aria-live="polite">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100/80">AI request pending</div>
+          <div className="mt-1 font-semibold">Confirm AI assistance to start analysis.</div>
+          <div className="mt-1 text-amber-100/80">One run gathers diagnosis, response guidance, and assist recommendations for this board.</div>
+        </div>
+      ) : null}
+
+      {analysisLoading ? (
+        <div className="shrink-0 border-b border-sky-400/20 bg-sky-500/10 px-4 py-3 text-[13px] text-sky-50" aria-live="polite">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-100/80">
+            <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            AI thinking
+          </div>
+          <div className="mt-1 font-semibold">Analyzing the current board…</div>
+          <div className="mt-1 text-sky-100/80">Gathering solution steps, response guidance, and assist recommendations.</div>
+        </div>
+      ) : null}
+
+      {analysisError ? (
+        <div className="shrink-0 border-b border-rose-400/20 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-50" role="alert">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-rose-100/80">AI request failed</div>
+              <div className="mt-1 font-semibold">Could not analyze this board.</div>
+              <div className="mt-1 text-rose-100/85">{analysisError}</div>
+            </div>
+            <button
+              type="button"
+              onClick={onRetryAnalysis}
+              className="shrink-0 rounded-[10px] border border-rose-200/25 bg-rose-500/10 px-3 py-2 text-[12px] font-semibold text-rose-50 transition hover:bg-rose-500/15"
+            >
+              Retry AI
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {boardActionContext ? (
         <div className="shrink-0 border-b border-white/10 bg-[linear-gradient(180deg,rgba(69,39,13,0.9),rgba(17,24,39,0.98))] px-4 py-2.5 shadow-[0_14px_28px_rgba(245,158,11,0.08)]" aria-live="polite">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-100/85">
@@ -1699,7 +2037,21 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
                   onOpenDetail={() => handleOpenDetail(section.id)}
                 >
                   {section.id === 'steps' ? (
-                    <StepsPanel boardActionContext={boardActionContext} onBoardAction={handleBoardAction} variant="workflow" />
+                    <StepsPanel
+                      boardActionContext={boardActionContext}
+                      onBoardAction={handleBoardAction}
+                      onStartAnalysis={onStartAnalysis}
+                      onRetryAnalysis={onRetryAnalysis}
+                      analysisLoading={analysisLoading}
+                      analysisPendingConfirmation={analysisPendingConfirmation}
+                      analysisSourceLabel={analysisSourceLabel}
+                      stepCards={stepCards}
+                      primaryDiagnosisIssue={primaryDiagnosisIssue}
+                      primaryKeyStep={primaryKeyStep}
+                      problemText={problemText}
+                      answerPairText={answerPairText}
+                      variant="workflow"
+                    />
                   ) : section.id === 'chat' ? (
                     <ChatPanel
                       messages={chatMessages}
@@ -1714,12 +2066,16 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
                       studentLastSeenText={studentLastSeenText}
                       variant="workflow"
                       viewerMode="tutor"
+                      recommendation={responseRecommendation}
+                      focusStepNumber={primaryDiagnosisIssue.number}
                     />
                   ) : (
                     <TutorAssistPanel
-                      initialState={initialTutorAssistState}
+                      initialState={resolvedTutorAssistState}
                       analysisLoading={analysisLoading}
                       onStartAnalysis={onStartAnalysis}
+                      actionCards={tutorAssistActionCards}
+                      focusStepNumber={primaryDiagnosisIssue.number}
                       variant="workflow"
                       onUseReply={handleUseAssistReply}
                       boardActionContext={boardActionContext}
