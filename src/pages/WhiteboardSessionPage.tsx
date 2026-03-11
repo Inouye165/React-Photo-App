@@ -25,6 +25,7 @@ import TutorOverlay from '../components/whiteboard/TutorOverlay'
 import useTutorPlayback from '../components/whiteboard/useTutorPlayback'
 import type { TutorLessonMessage } from '../components/whiteboard/tabs/AITutorTab'
 import type { WhiteboardBoardFrame } from '../components/whiteboard/types'
+import { computeContainedRect } from '../components/whiteboard/whiteboardAspect'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import type {
   AnnotationTool,
@@ -32,7 +33,7 @@ import type {
   BackgroundInfo,
   WhiteboardCanvasHandle,
 } from '../components/whiteboard/WhiteboardCanvas'
-import RightSidePanel, { type BoardActionContext as RightSidePanelBoardActionContext, type TabType } from '../components/whiteboard/RightSidePanel'
+import RightSidePanel, { type BoardActionContext as RightSidePanelBoardActionContext, type ChatPreviewMessage, type TabType } from '../components/whiteboard/RightSidePanel'
 import { AITutorTab, ChatTab, HelpRequestTab } from '../components/whiteboard/tabs'
 import {
   analyzeWhiteboardPhoto,
@@ -43,18 +44,20 @@ import {
   getWhiteboardSessionDetails,
   updateWhiteboardTitle,
 } from '../api/whiteboards'
+import { ApiError } from '../api/httpClient'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
 import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
-import { buildTutorAnalysisDeviceCacheKey, readTutorAnalysisDeviceCache, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
+import { buildTutorAnalysisDeviceCacheKey, clearTutorAnalysisDeviceCache, readLatestTutorAnalysisDeviceCache, readTutorAnalysisDeviceCache, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
-type SessionState = 'queued' | 'live' | 'async'
+type SessionState = 'idle' | 'queued' | 'live' | 'async'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 type MobileWhiteboardTab = 'homework' | 'support' | 'chat'
 type HomeworkInputMode = 'photo' | 'text'
+type BackgroundFitMode = 'width' | 'contain'
 type FormattedProblemLineType = 'question' | 'data' | 'section' | 'context' | 'empty'
 type PhotoTransformState = {
   rotation: 0 | 90 | 180 | 270
@@ -104,6 +107,23 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
   }
 }
 
+function formatRelativeSessionTimestamp(value?: string | null): string {
+  if (!value) return 'Waiting for updates'
+
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp)) return 'Waiting for updates'
+
+  const deltaMinutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000))
+  if (deltaMinutes < 1) return 'Just now'
+  if (deltaMinutes < 60) return `${deltaMinutes} min ago`
+
+  const deltaHours = Math.round(deltaMinutes / 60)
+  if (deltaHours < 24) return `${deltaHours} hr${deltaHours === 1 ? '' : 's'} ago`
+
+  const deltaDays = Math.round(deltaHours / 24)
+  return `${deltaDays} day${deltaDays === 1 ? '' : 's'} ago`
+}
+
 function buildNextMessages(messages: WhiteboardTutorMessage[], draft: string): WhiteboardTutorMessage[] {
   return [...messages, { role: 'user', content: draft.trim() }]
 }
@@ -142,6 +162,24 @@ function parseAudienceAge(value: string): number | undefined {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+function getExistingHelpRequestFromError(error: unknown): WhiteboardHelpRequest | null {
+  if (!(error instanceof ApiError) || error.status !== 409 || !error.details || typeof error.details !== 'object') {
+    return null
+  }
+
+  const data = (error.details as { data?: unknown }).data
+  if (!data || typeof data !== 'object') {
+    return null
+  }
+
+  const request = data as Partial<WhiteboardHelpRequest>
+  if (typeof request.id !== 'string' || typeof request.boardId !== 'string' || typeof request.status !== 'string') {
+    return null
+  }
+
+  return request as WhiteboardHelpRequest
 }
 
 function classifyProblemLine(line: string): FormattedProblemLineType {
@@ -196,6 +234,46 @@ function logTutorAnalysisSource(
     mode: details.mode,
     inputMode: details.inputMode,
   })
+}
+
+const SHOULD_LOG_TUTOR_FIX_DEBUG = import.meta.env.DEV
+
+function tutorFixDebug(label: string, details: Record<string, unknown>): void {
+  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
+  console.info('[TUTOR-FIX-DEBUG]', label, details)
+}
+
+function resolveTutorOverlayFrame(
+  boardFrame: WhiteboardBoardFrame | null,
+  backgroundInfo: BackgroundInfo | null,
+  backgroundFitMode: BackgroundFitMode,
+): WhiteboardBoardFrame | null {
+  if (!boardFrame) return null
+
+  const aspectRatio = backgroundInfo?.aspectRatio
+  if (!aspectRatio || !Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    return boardFrame
+  }
+
+  if (backgroundFitMode === 'contain') {
+    const contained = computeContainedRect(boardFrame.width, boardFrame.height, aspectRatio)
+    return {
+      left: boardFrame.left + contained.left,
+      top: boardFrame.top + contained.top,
+      width: contained.width,
+      height: contained.height,
+    }
+  }
+
+  const width = boardFrame.width
+  const height = width / aspectRatio
+
+  return {
+    left: boardFrame.left,
+    top: boardFrame.top + ((boardFrame.height - height) / 2),
+    width,
+    height,
+  }
 }
 
 function ToolButton({
@@ -288,6 +366,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [hasBoardContent, setHasBoardContent] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [boardFrame, setBoardFrame] = useState<WhiteboardBoardFrame | null>(null)
+  const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('contain')
   const [backgroundImageAsset, setBackgroundImageAsset] = useState<BackgroundImageAsset | null>(null)
   const [mobilePhotoObjectUrl, setMobilePhotoObjectUrl] = useState<string | null>(null)
   const [mobilePhotoVersion, setMobilePhotoVersion] = useState(0)
@@ -320,12 +399,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
   const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('steps')
   const [activeBoardActionContext, setActiveBoardActionContext] = useState<RightSidePanelBoardActionContext | null>(null)
-  const [sessionState, setSessionState] = useState<SessionState>('queued')
+  const [sessionState, setSessionState] = useState<SessionState>('idle')
   const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
   const [liveSessionElapsedSeconds, setLiveSessionElapsedSeconds] = useState(0)
   const [studentPresence, setStudentPresence] = useState<'online' | 'offline'>('offline')
   const [mobileActiveTab, setMobileActiveTab] = useState<MobileWhiteboardTab>('homework')
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
+  const [confirmAiAssistRequest, setConfirmAiAssistRequest] = useState<{ forceFresh: boolean } | null>(null)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
   const [photoGuidanceFading, setPhotoGuidanceFading] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
@@ -340,6 +420,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const shapeMenuRef = useRef<HTMLDivElement | null>(null)
   const hasBackgroundRef = useRef(false)
   const lastBackgroundAssetSignatureRef = useRef<string | null>(null)
+  const helpRequestMutationVersionRef = useRef(0)
   const mobileToolbarHideTimeoutRef = useRef<number | null>(null)
   const formatProblemTextTimeoutRef = useRef<number | null>(null)
   const touchPanStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
@@ -358,28 +439,91 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     [currentUserId, members],
   )
   const studentDisplayName = useMemo(() => studentMember?.username?.trim() || 'Student', [studentMember])
+  const participantDisplayName = useMemo(
+    () => (panelMode === 'tutor' ? studentDisplayName : activeHelpRequest?.claimedByUsername?.trim() || 'Tutor'),
+    [activeHelpRequest?.claimedByUsername, panelMode, studentDisplayName],
+  )
+  const participantLastSeenText = useMemo(() => {
+    if (studentPresence === 'online') {
+      return 'Online now'
+    }
+
+    const referenceTime = activeHelpRequest?.claimedAt || activeHelpRequest?.updatedAt || activeHelpRequest?.createdAt || null
+    return activeHelpRequest
+      ? `Updated ${formatRelativeSessionTimestamp(referenceTime)}`
+      : 'Waiting for updates'
+  }, [activeHelpRequest, studentPresence])
+  const sessionChatMessages = useMemo<ChatPreviewMessage[]>(() => {
+    if (!activeHelpRequest) {
+      return []
+    }
+
+    const messages: ChatPreviewMessage[] = []
+    const requestText = activeHelpRequest.requestText?.trim()
+    if (requestText) {
+      messages.push({
+        id: `help-request-${activeHelpRequest.id}`,
+        sender: 'student',
+        body: requestText,
+        timestamp: formatRelativeSessionTimestamp(activeHelpRequest.createdAt),
+        unread: panelMode === 'tutor' && activeHelpRequest.status === 'pending',
+      })
+    }
+
+    if (activeHelpRequest.status === 'claimed') {
+      messages.push({
+        id: `help-claimed-${activeHelpRequest.id}`,
+        sender: 'tutor',
+        body: `${activeHelpRequest.claimedByUsername?.trim() || 'Tutor'} joined this board and can respond here.`,
+        timestamp: formatRelativeSessionTimestamp(activeHelpRequest.claimedAt || activeHelpRequest.updatedAt),
+      })
+    }
+
+    return messages
+  }, [activeHelpRequest, panelMode])
   const hasHelpRequest = helpRequestDraft.trim().length > 0
   const hasTextInput = textContent.trim().length > 0
   const effectiveTutorInputMode: HomeworkInputMode = inputMode === 'text' || (!hasBackground && (hasTextInput || hasHelpRequest)) ? 'text' : 'photo'
   const hasTutorInput = hasBackground || hasTextInput || hasHelpRequest
-  const tutorAnalysisDeviceCacheKey = useMemo(() => buildTutorAnalysisDeviceCacheKey({
-    boardId,
-    inputMode: effectiveTutorInputMode,
-    audienceAge,
-    textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
-    imageDataUrl: backgroundImageAsset?.dataUrl,
-    imageMimeType: backgroundImageAsset?.mimeType,
-    imageName: backgroundImageAsset?.name,
-  }), [audienceAge, backgroundImageAsset?.dataUrl, backgroundImageAsset?.mimeType, backgroundImageAsset?.name, boardId, effectiveTutorInputMode, helpRequestDraft, textContent])
   const mobileSupportLabel = canUseTutorAssist ? 'Tutor Assist' : 'Help'
   const showFormattedProblemOverlay = !isTextInputFocused && formattedProblemLines.length > 0
   const tutorPlayback = useTutorPlayback({
     steps: structuredAnalysisResult?.steps ?? [],
     reducedMotion: Boolean(prefersReducedMotion),
   })
+  const tutorOverlayFrame = useMemo(
+    () => resolveTutorOverlayFrame(hasBackground && backgroundInfo ? boardFrame : null, backgroundInfo, backgroundFitMode),
+    [backgroundFitMode, backgroundInfo, boardFrame, hasBackground],
+  )
+  const analysisDeviceCacheKey = useMemo(
+    () => buildTutorAnalysisDeviceCacheKey({
+      boardId,
+      inputMode: effectiveTutorInputMode,
+      mode: 'analysis',
+      audienceAge,
+      messages: effectiveTutorInputMode === 'photo' && textContent.trim()
+        ? [{
+            role: 'user',
+            content: `Use this corrected problem statement if the photo text is unclear or inaccurate:\n\n${textContent.trim()}`,
+          }, ...buildInitialTutorMessages(tutorReadyIntent, helpRequestDraft, Boolean(hasBackground || textContent.trim()))]
+        : buildInitialTutorMessages(tutorReadyIntent, helpRequestDraft, Boolean(hasBackground || textContent.trim())),
+      textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
+      imageDataUrl: backgroundImageAsset?.dataUrl,
+      imageMimeType: backgroundImageAsset?.mimeType,
+      imageName: backgroundImageAsset?.name,
+    }),
+    [audienceAge, backgroundImageAsset?.dataUrl, backgroundImageAsset?.mimeType, backgroundImageAsset?.name, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, textContent, tutorReadyIntent],
+  )
 
   const sessionStatusMeta = useMemo(() => {
     if (isTutorView) {
+      if (sessionState === 'idle') {
+        return {
+          pillClassName: 'bg-white/5 text-[#CBD5E1]',
+          pillText: 'No active request',
+        }
+      }
+
       if (sessionState === 'live') {
         return {
           pillClassName: 'bg-[#064E3B] text-[#10B981]',
@@ -414,6 +558,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       }
     }
 
+    if (sessionState === 'idle') {
+      return {
+        pillClassName: 'bg-white/5 text-[#CBD5E1]',
+        pillText: 'Ready for help',
+      }
+    }
+
     return {
       pillClassName: 'bg-[#172554] text-[#93C5FD]',
       pillText: '💬 Help Request Sent',
@@ -433,12 +584,17 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       return 'Your work is saved for tutor follow-up  ·  Algebra  ·  Grade 9'
     }
 
+    if (sessionState === 'idle') {
+      return 'Request help when you want a tutor to join this board  ·  Algebra  ·  Grade 9'
+    }
+
     return 'A tutor will join here when one is available  ·  Algebra  ·  Grade 9'
   }, [isTutorView, sessionState, studentDisplayName])
 
   const studentSessionAside = useMemo(() => {
     if (sessionState === 'live') return 'Working together now'
     if (sessionState === 'async') return 'Tutor review pending'
+    if (sessionState === 'idle') return 'No tutor requested'
     return 'Waiting for tutor'
   }, [sessionState])
 
@@ -490,9 +646,38 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     ) => {
       if (!boardId) throw new Error('Missing board id')
 
+      const deviceCacheKey = mode === 'analysis'
+        ? buildTutorAnalysisDeviceCacheKey({
+            boardId,
+            inputMode: effectiveTutorInputMode,
+            mode,
+            audienceAge,
+            messages,
+            textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
+            imageDataUrl: backgroundImageAsset?.dataUrl,
+            imageMimeType: backgroundImageAsset?.mimeType,
+            imageName: backgroundImageAsset?.name,
+          })
+        : null
+
+      tutorFixDebug('request tutor analysis start', {
+        boardId,
+        mode,
+        inputMode: effectiveTutorInputMode,
+        forceFresh: Boolean(options?.forceFresh),
+        deviceCacheKey,
+        messageCount: messages.length,
+      })
+
       if (mode === 'analysis' && !options?.forceFresh) {
-        const cachedResponse = readTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey)
+        const cachedResponse = readTutorAnalysisDeviceCache(deviceCacheKey)
         if (cachedResponse) {
+          tutorFixDebug('request tutor analysis resolved from local cache', {
+            boardId,
+            deviceCacheKey,
+            cacheSource: cachedResponse.cacheSource ?? 'local-cache',
+            stepCount: cachedResponse.analysisResult?.steps?.length ?? 0,
+          })
           logTutorAnalysisSource(cachedResponse.cacheSource, {
             boardId,
             mode,
@@ -533,8 +718,17 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       }
 
       if (mode === 'analysis') {
-        writeTutorAnalysisDeviceCache(tutorAnalysisDeviceCacheKey, response)
+        writeTutorAnalysisDeviceCache(deviceCacheKey, response)
       }
+
+      tutorFixDebug('request tutor analysis response received', {
+        boardId,
+        mode,
+        inputMode: effectiveTutorInputMode,
+        cacheSource: response.cacheSource ?? 'fresh',
+        stepCount: response.analysisResult?.steps?.length ?? 0,
+        hasProblemText: Boolean(response.analysisResult?.problemText?.trim()),
+      })
 
       logTutorAnalysisSource(response.cacheSource, {
         boardId,
@@ -544,7 +738,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
       return response
     },
-    [audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, helpRequestDraft, textContent, tutorAnalysisDeviceCacheKey],
+    [audienceAge, backgroundImageAsset, boardId, effectiveTutorInputMode, helpRequestDraft, textContent],
   )
 
   const resetPhotoTransform = useCallback(() => {
@@ -637,16 +831,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setStudentPresence('offline')
   }, [])
 
-  const handleRequestHelp = useCallback(() => {
-    if (canUseTutorAssist) {
-      setTutorReadyIntent('analyze')
-      openDesktopSidePanel('ai-tutor')
-      return
-    }
-
-    openDesktopSidePanel('help-request')
-  }, [canUseTutorAssist, openDesktopSidePanel])
-
   const handleSubmitHelpRequest = useCallback(async () => {
     if (!boardId || canUseTutorAssist) return
 
@@ -657,7 +841,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         requestText: helpRequestDraft.trim(),
         problemDraft: textContent.trim(),
       })
+      helpRequestMutationVersionRef.current += 1
       setActiveHelpRequest(created)
+      setSessionState('queued')
       if (created.requestText) {
         setHelpRequestDraft(created.requestText)
       }
@@ -665,11 +851,40 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setDesktopSidePanelTab('help-request')
       setMobileActiveTab('support')
     } catch (error) {
+      const existingRequest = getExistingHelpRequestFromError(error)
+      if (existingRequest) {
+        helpRequestMutationVersionRef.current += 1
+        setActiveHelpRequest(existingRequest)
+        setHelpRequestError(null)
+        setDesktopSidePanelOpen(true)
+        setDesktopSidePanelTab('help-request')
+        setMobileActiveTab('support')
+        return
+      }
+
       setHelpRequestError(error instanceof Error ? error.message : 'Unable to send help request.')
+      setDesktopSidePanelOpen(true)
+      setDesktopSidePanelTab('help-request')
+      setMobileActiveTab('support')
     } finally {
       setHelpRequestSubmitting(false)
     }
   }, [boardId, canUseTutorAssist, helpRequestDraft, textContent])
+
+  const handleRequestHelp = useCallback(() => {
+    if (canUseTutorAssist) {
+      setTutorReadyIntent('analyze')
+      openDesktopSidePanel('ai-tutor')
+      return
+    }
+
+    if (!activeHelpRequest && (hasTutorInput || hasBoardContent)) {
+      void handleSubmitHelpRequest()
+      return
+    }
+
+    openDesktopSidePanel('help-request')
+  }, [activeHelpRequest, canUseTutorAssist, handleSubmitHelpRequest, hasBoardContent, hasTutorInput, openDesktopSidePanel])
 
   const scheduleMobileToolbarHide = useCallback(() => {
     if (mobileToolbarHideTimeoutRef.current) {
@@ -695,6 +910,31 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setTutorOverlayVisible(true)
     handleAnnotationToolSelect('pen')
   }, [handleAnnotationToolSelect])
+
+  useEffect(() => {
+    if (!boardId || analysis || analysisLoading) return
+
+    const hydratedResponse = readTutorAnalysisDeviceCache(analysisDeviceCacheKey)
+      ?? readLatestTutorAnalysisDeviceCache({ boardId })
+
+    if (!hydratedResponse) return
+
+    tutorFixDebug('hydrate analysis on load', {
+      boardId,
+      requestedCacheKey: analysisDeviceCacheKey,
+      cacheSource: hydratedResponse.cacheSource ?? 'local-cache',
+      problemText: hydratedResponse.analysisResult?.problemText ?? hydratedResponse.problem ?? '',
+      stepCount: hydratedResponse.analysisResult?.steps?.length ?? 0,
+    })
+
+    logTutorAnalysisSource(hydratedResponse.cacheSource, {
+      boardId,
+      mode: 'analysis',
+      inputMode: effectiveTutorInputMode,
+    })
+
+    applyAnalysisResponse(hydratedResponse)
+  }, [analysis, analysisDeviceCacheKey, analysisLoading, applyAnalysisResponse, boardId, effectiveTutorInputMode])
 
   const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = [], options?: { forceFresh?: boolean }) => {
     if (!boardId) throw new Error('Missing board id')
@@ -862,6 +1102,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setAnalysis(null)
     setAnalysisError(null)
     setAnalysisLoading(false)
+    setConfirmAiAssistRequest(null)
     setTutorOverlayVisible(true)
     setTutorLessonMessage(null)
     setTutorReadyIntent('analyze')
@@ -897,16 +1138,22 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   )
 
   const handleBackgroundImageAssetChange = useCallback((asset: BackgroundImageAsset | null) => {
-    const nextSignature = asset ? `${asset.name}:${asset.mimeType}:${asset.dataUrl.length}` : null
+    const nextSignature = asset ? `${asset.name}:${asset.mimeType}:${asset.dataUrl}` : null
     if (lastBackgroundAssetSignatureRef.current === nextSignature) {
       return
+    }
+
+    const previousSignature = lastBackgroundAssetSignatureRef.current
+    if (previousSignature && previousSignature !== nextSignature && boardId) {
+      clearTutorAnalysisDeviceCache({ boardId })
+      resetTutorState()
     }
 
     lastBackgroundAssetSignatureRef.current = nextSignature
     setBackgroundImageAsset(asset)
     setMobilePhotoVersion(Date.now())
     resetPhotoTransform()
-  }, [resetPhotoTransform])
+  }, [boardId, resetPhotoTransform, resetTutorState])
 
   const handleWhiteboardAccessDenied = useCallback(() => {
     setAccessState('denied')
@@ -953,6 +1200,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
     setPhotoUploadError(null)
     setInputMode('photo')
+    if (boardId) {
+      clearTutorAnalysisDeviceCache({ boardId })
+    }
     resetTutorState()
     resetPhotoTransform()
 
@@ -969,7 +1219,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     } catch (error) {
       setPhotoUploadError(error instanceof Error ? error.message : 'Unable to add photo to the whiteboard.')
     }
-  }, [handleAnnotationToolSelect, mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
+  }, [boardId, handleAnnotationToolSelect, mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
 
   const handleRemovePhoto = useCallback(() => {
     whiteboardPadRef.current?.clearBackground()
@@ -977,6 +1227,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       URL.revokeObjectURL(mobilePhotoObjectUrl)
     }
     lastBackgroundAssetSignatureRef.current = null
+    if (boardId) {
+      clearTutorAnalysisDeviceCache({ boardId })
+    }
     setMobilePhotoObjectUrl(null)
     setBackgroundImageAsset(null)
     setHasBackground(false)
@@ -986,7 +1239,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setPhotoGuidanceFading(false)
     resetPhotoTransform()
     resetTutorState()
-  }, [mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
+  }, [boardId, mobilePhotoObjectUrl, resetPhotoTransform, resetTutorState])
 
   const handleRemovePhotoRequest = useCallback(() => {
     setConfirmRemovePhoto(true)
@@ -1031,7 +1284,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     resetTutorState()
   }, [hasTextInput, inputMode, resetPhotoTransform, resetTutorState])
 
-  const handleStartAnalysis = useCallback(async (options?: { forceFresh?: boolean }) => {
+  const performStartAnalysis = useCallback(async (options?: { forceFresh?: boolean }) => {
     const textSource = textContent.trim() || helpRequestDraft.trim()
     const forceFresh = options?.forceFresh ?? Boolean(analysis)
     const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
@@ -1050,6 +1303,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     ]
 
     if (!boardId || (!backgroundImageAsset && !textSource)) return
+    console.info('[WB-TUTOR] analysis:start', {
+      boardId,
+      inputMode: effectiveTutorInputMode,
+      forceFresh,
+      hasBackgroundImage: Boolean(backgroundImageAsset),
+      hasTextSource: Boolean(textSource),
+      readyIntent: tutorReadyIntent,
+    })
+    tutorFixDebug('request tutor analysis start', {
+      boardId,
+      inputMode: effectiveTutorInputMode,
+      forceFresh,
+      readyIntent: tutorReadyIntent,
+    })
     setAnalysisLoading(true)
     setAnalysisError(null)
     setPhotoGuidanceVisible(false)
@@ -1064,20 +1331,82 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         forceFresh,
       })
       applyAnalysisResponse(response)
+      console.info('[WB-TUTOR] analysis:success', {
+        boardId,
+        inputMode: effectiveTutorInputMode,
+        cacheSource: response.cacheSource ?? 'fresh',
+        stepCount: response.analysisResult?.steps?.length ?? 0,
+        hasProblemText: Boolean(response.analysisResult?.problemText?.trim()),
+      })
+      tutorFixDebug('request tutor analysis response received', {
+        boardId,
+        inputMode: effectiveTutorInputMode,
+        forceFresh,
+        cacheSource: response.cacheSource ?? 'fresh',
+        stepCount: response.analysisResult?.steps?.length ?? 0,
+      })
     } catch (error) {
+      console.warn('[WB-TUTOR] analysis:error', {
+        boardId,
+        inputMode: effectiveTutorInputMode,
+        forceFresh,
+        error: error instanceof Error ? error.message : String(error),
+      })
       setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not read that photo yet. Please try again.'))
     } finally {
       setAnalysisLoading(false)
     }
   }, [analysis, analyzeText, applyAnalysisResponse, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, runTutorRequest, textContent, tutorReadyIntent])
 
-  const handleMobileAnalyze = useCallback(() => {
-    if (!hasTutorInput || analysisLoading || responseAgeInvalid) return
-    setMobileActiveTab('support')
-    if (canUseTutorAssist) {
-      void handleStartAnalysis()
+  const requestAiAssistConfirmation = useCallback((options?: { forceFresh?: boolean }) => {
+    if (!hasTutorInput || analysisLoading || responseAgeInvalid) {
+      console.warn('[WB-TUTOR] analysis:confirmation-blocked', {
+        hasTutorInput,
+        analysisLoading,
+        responseAgeInvalid,
+      })
+      return
     }
-  }, [analysisLoading, canUseTutorAssist, handleStartAnalysis, hasTutorInput, responseAgeInvalid])
+
+    console.info('[WB-TUTOR] analysis:confirmation-open', {
+      boardId,
+      forceFresh: Boolean(options?.forceFresh ?? analysis),
+      inputMode: effectiveTutorInputMode,
+    })
+    setConfirmAiAssistRequest({ forceFresh: Boolean(options?.forceFresh ?? analysis) })
+  }, [analysis, analysisLoading, boardId, effectiveTutorInputMode, hasTutorInput, responseAgeInvalid])
+
+  const handleConfirmAiAssistRequest = useCallback(() => {
+    if (!confirmAiAssistRequest) return
+
+    const nextOptions = { forceFresh: confirmAiAssistRequest.forceFresh }
+    console.info('[WB-TUTOR] analysis:confirmation-accepted', {
+      boardId,
+      forceFresh: nextOptions.forceFresh,
+    })
+    setConfirmAiAssistRequest(null)
+    void performStartAnalysis(nextOptions)
+  }, [boardId, confirmAiAssistRequest, performStartAnalysis])
+
+  const handleCancelAiAssistRequest = useCallback(() => {
+    console.info('[WB-TUTOR] analysis:confirmation-cancelled', { boardId })
+    setConfirmAiAssistRequest(null)
+  }, [boardId])
+
+  const handleMobileAnalyze = useCallback(() => {
+    if (canUseTutorAssist) {
+      if (!hasTutorInput || analysisLoading || responseAgeInvalid) return
+      setMobileActiveTab('support')
+      return
+    }
+
+    if (!activeHelpRequest && (hasTutorInput || hasBoardContent)) {
+      void handleSubmitHelpRequest()
+      return
+    }
+
+    setMobileActiveTab('support')
+  }, [activeHelpRequest, analysisLoading, canUseTutorAssist, handleSubmitHelpRequest, hasBoardContent, hasTutorInput, responseAgeInvalid])
 
   const handleTutorFollowUp = useCallback(async () => {
     if (!analysis || !tutorDraft.trim()) return
@@ -1206,23 +1535,47 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     if (accessState !== 'allowed' || !boardId) return
 
     let cancelled = false
+    let intervalId: number | null = null
 
-    ;(async () => {
+    const loadActiveHelpRequest = async () => {
+      const requestVersion = helpRequestMutationVersionRef.current
+
       try {
         const request = await getActiveWhiteboardHelpRequest(boardId)
-        if (!cancelled) {
+        if (!cancelled && requestVersion === helpRequestMutationVersionRef.current) {
           setActiveHelpRequest(request)
           setHelpRequestError(null)
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && requestVersion === helpRequestMutationVersionRef.current) {
           setHelpRequestError(error instanceof Error ? error.message : 'Unable to load help request status.')
         }
       }
+    }
+
+    ;(async () => {
+      await loadActiveHelpRequest()
     })()
+
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void loadActiveHelpRequest()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityRefresh)
+    window.addEventListener('focus', handleVisibilityRefresh)
+    intervalId = window.setInterval(() => {
+      void loadActiveHelpRequest()
+    }, 10000)
 
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
+      window.removeEventListener('focus', handleVisibilityRefresh)
+      if (intervalId !== null) {
+        window.clearInterval(intervalId)
+      }
     }
   }, [accessState, boardId])
 
@@ -1250,7 +1603,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [activeHelpRequest, canUseTutorAssist, helpRequestDraft])
 
   useEffect(() => {
-    if (!activeHelpRequest) return
+    if (!activeHelpRequest) {
+      setSessionState('idle')
+      setLiveSessionStartedAt(null)
+      setLiveSessionElapsedSeconds(0)
+      setStudentPresence('offline')
+      return
+    }
 
     if (activeHelpRequest.status === 'claimed') {
       const startedAt = Date.now() - ((4 * 60) + 23) * 1000
@@ -2166,10 +2525,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                         isLoading={analysisLoading}
                         error={analysisError}
                         onStartAnalysis={() => {
-                          void handleStartAnalysis()
+                          requestAiAssistConfirmation()
                         }}
                         onRetryAnalysis={() => {
-                          void handleStartAnalysis({ forceFresh: true })
+                          requestAiAssistConfirmation({ forceFresh: true })
                         }}
                         responseAge={responseAge}
                         responseAgeInvalid={responseAgeInvalid}
@@ -2372,6 +2731,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   onRealtimeStatusChange={handleRealtimeStatusChange}
                   onHasBoardContentChange={setHasBoardContent}
                   onHasBackgroundChange={handleBackgroundChange}
+                  onBackgroundFitModeChange={setBackgroundFitMode}
                   onBackgroundInfoChange={setBackgroundInfo}
                   onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
                   onBoardFrameChange={setBoardFrame}
@@ -2400,7 +2760,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     analysisResult={structuredAnalysisResult}
                     activeStepId={tutorPlayback.activeStepId}
                     lessonMessage={tutorLessonMessage}
-                    boardFrame={hasBackground && backgroundInfo ? boardFrame : null}
+                    boardFrame={tutorOverlayFrame}
                     visible={tutorOverlayVisible}
                     reducedMotion={Boolean(prefersReducedMotion)}
                     onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
@@ -2468,9 +2828,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               <RightSidePanel
                 className="whiteboard-side-panel"
                 activeTab={desktopSidePanelTab}
-                studentName={studentDisplayName}
+                studentName={participantDisplayName}
                 studentPresence={studentPresence}
-                studentLastSeenText="Last seen 2 hrs ago"
+                studentLastSeenText={participantLastSeenText}
+                initialChatMessages={sessionChatMessages}
                 panelMode={panelMode}
                 hasPhoto={hasBackground}
                 hasInput={hasTutorInput}
@@ -2491,11 +2852,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 analysisResult={structuredAnalysisResult}
                 analysisLoading={analysisLoading}
                 analysisError={analysisError}
+                analysisPendingConfirmation={Boolean(confirmAiAssistRequest)}
                 onStartAnalysis={() => {
-                  void handleStartAnalysis()
+                  requestAiAssistConfirmation()
                 }}
                 onRetryAnalysis={() => {
-                  void handleStartAnalysis({ forceFresh: true })
+                  requestAiAssistConfirmation({ forceFresh: true })
                 }}
                 responseAge={responseAge}
                 responseAgeInvalid={responseAgeInvalid}
@@ -2542,6 +2904,45 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         onSearchUsers={handleSearchUsers}
         onInviteMember={handleInviteMember}
       />
+
+      {confirmAiAssistRequest ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 px-4" role="dialog" aria-modal="true" aria-labelledby="confirm-ai-assist-title">
+          <div className="w-full max-w-md rounded-[20px] border border-amber-400/25 bg-[#111827] p-5 text-[#F9FAFB] shadow-[0_28px_64px_rgba(0,0,0,0.38)]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-300/25 bg-amber-500/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-100">
+              <span aria-hidden="true">$</span>
+              Paid AI request
+            </div>
+            <h2 id="confirm-ai-assist-title" className="mt-4 text-[20px] font-semibold">
+              Confirm request AI assistance
+            </h2>
+            <p className="mt-3 text-[14px] leading-6 text-[#D1D5DB]">
+              {confirmAiAssistRequest.forceFresh
+                ? 'This will send another paid AI request for this homework image or problem.'
+                : 'This will send a paid AI request for this homework image or problem.'}
+            </p>
+            <p className="mt-2 text-[13px] leading-6 text-[#9CA3AF]">
+              If the tutor can handle it without AI, cancel now and no AI call will be made.
+            </p>
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={handleCancelAiAssistRequest}
+                className="rounded-[10px] border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[14px] font-medium text-[#D1D5DB] transition hover:bg-white/[0.06]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmAiAssistRequest}
+                className="rounded-[10px] bg-amber-500 px-4 py-2.5 text-[14px] font-semibold text-slate-950 transition hover:bg-amber-400"
+              >
+                Confirm AI assistance
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </motion.div>
   )
 }

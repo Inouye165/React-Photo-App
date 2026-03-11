@@ -1,13 +1,77 @@
 import type { ComponentProps } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import RightSidePanel, { __resetTutorAssistPersistenceForTests } from './RightSidePanel'
+import RightSidePanel from './RightSidePanel'
+import { resetTutorAssistPersistenceForTests } from './tutorAssistPersistence'
+import type { WhiteboardTutorResponse } from '../../types/whiteboard'
+
+const liveAnalysis: WhiteboardTutorResponse = {
+  reply: 'Problem: Solve for x: 5x - 17 = 18',
+  messages: [{ role: 'assistant', content: 'Solve for x: 5x - 17 = 18' }],
+  analysisResult: {
+    problemText: 'Solve for x: 5x - 17 = 18',
+    finalAnswers: ['x = 7'],
+    overallSummary: 'Nice start. You are close.',
+    regions: [],
+    steps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '5x - 17 = 18',
+        status: 'partial',
+        shortLabel: 'Add 17 to both sides',
+        kidFriendlyExplanation: 'Undo the minus 17 first so the x term is easier to isolate.',
+        correction: 'Write +17 on both sides before simplifying.',
+        hint: 'What should you add to both sides to cancel the -17?',
+      },
+      {
+        id: 'step-2',
+        index: 1,
+        studentText: '5x = 35',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 5',
+        kidFriendlyExplanation: 'Now divide both sides by 5 to get x by itself.',
+      },
+    ],
+    validatorWarnings: [],
+    canAnimate: false,
+  },
+  sections: {
+    problem: 'Solve for x: 5x - 17 = 18',
+    stepsAnalysis: '1. Add 17 to both sides.\n2. Divide both sides by 5.',
+    errorsFound: 'Step 1: Show the balancing move.',
+    encouragement: 'Nice start. You are close.',
+  },
+  problem: 'Solve for x: 5x - 17 = 18',
+  correctSolution: 'x = 7',
+  scoreCorrect: 1,
+  scoreTotal: 2,
+  steps: [],
+  errorsFound: [],
+  closingEncouragement: 'Nice start. You are close.',
+}
+
+const chatFixture = [
+  {
+    id: 'student-1',
+    sender: 'student' as const,
+    body: "I'm not sure what I did wrong on step 3",
+    timestamp: '35 min ago',
+    unread: true,
+  },
+  {
+    id: 'tutor-1',
+    sender: 'tutor' as const,
+    body: 'Let me take a look!',
+    timestamp: '10 min ago',
+  },
+]
 
 describe('RightSidePanel', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     window.localStorage.clear()
-    __resetTutorAssistPersistenceForTests()
+    resetTutorAssistPersistenceForTests()
   })
 
   afterEach(() => {
@@ -20,10 +84,12 @@ describe('RightSidePanel', () => {
       <div style={{ height: '640px' }}>
         <RightSidePanel
           studentName="Maya Chen"
+          initialChatMessages={chatFixture}
           hasPhoto={false}
           analysis={null}
           analysisLoading={false}
           analysisError={null}
+          analysisPendingConfirmation={false}
           onStartAnalysis={vi.fn()}
           onRetryAnalysis={vi.fn()}
           responseAge=""
@@ -44,34 +110,115 @@ describe('RightSidePanel', () => {
     renderPanel()
 
     expect(screen.getByText('Tutor workflow')).toBeInTheDocument()
-    expect(screen.getByText('Diagnosis')).toBeInTheDocument()
+    expect(screen.getAllByText('Diagnosis').length).toBeGreaterThan(0)
     expect(screen.getByText('Response')).toBeInTheDocument()
     expect(screen.getByText('Assist')).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'CHAT' })).not.toBeInTheDocument()
   })
 
   it('shows diagnosis first in the default workflow shell', () => {
-    renderPanel()
+    const onStartAnalysis = vi.fn()
+    renderPanel({ onStartAnalysis })
 
-    expect(screen.getByText('Likely issue')).toBeInTheDocument()
-    expect(screen.getByText('Likely issue: Student missed the negative square root at step 2.')).toBeInTheDocument()
-    expect(screen.getByText('Key step: Take the square root of both sides')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' }).length).toBeGreaterThan(0)
+    expect(screen.getByText('No steps yet')).toBeInTheDocument()
+    expect(screen.getByText('Run AI analysis to generate solution steps.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run AI' }))
+    expect(onStartAnalysis).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark blocking step on board' })).not.toBeInTheDocument()
+  })
+
+  it('shows visible analysis status for confirmation, loading, and errors', () => {
+    const onRetryAnalysis = vi.fn()
+    const { rerender } = renderPanel({ analysisPendingConfirmation: true })
+
+    expect(screen.getByText('Confirm AI assistance to start analysis.')).toBeInTheDocument()
+
+    rerender(
+      <div style={{ height: '640px' }}>
+        <RightSidePanel
+          studentName="Maya Chen"
+          initialChatMessages={chatFixture}
+          hasPhoto={false}
+          analysis={null}
+          analysisLoading
+          analysisError={null}
+          analysisPendingConfirmation={false}
+          onStartAnalysis={vi.fn()}
+          onRetryAnalysis={onRetryAnalysis}
+          responseAge=""
+          responseAgeInvalid={false}
+          onResponseAgeChange={vi.fn()}
+          tutorDraft=""
+          tutorSubmitting={false}
+          onTutorDraftChange={vi.fn()}
+          onTutorSubmit={vi.fn()}
+          onRequestHumanTutor={vi.fn()}
+        />
+      </div>,
+    )
+
+    expect(screen.getByText('Analyzing the current board…')).toBeInTheDocument()
+
+    rerender(
+      <div style={{ height: '640px' }}>
+        <RightSidePanel
+          studentName="Maya Chen"
+          initialChatMessages={chatFixture}
+          hasPhoto={false}
+          analysis={null}
+          analysisLoading={false}
+          analysisError="Server returned an invalid tutor payload."
+          analysisPendingConfirmation={false}
+          onStartAnalysis={vi.fn()}
+          onRetryAnalysis={onRetryAnalysis}
+          responseAge=""
+          responseAgeInvalid={false}
+          onResponseAgeChange={vi.fn()}
+          tutorDraft=""
+          tutorSubmitting={false}
+          onTutorDraftChange={vi.fn()}
+          onTutorSubmit={vi.fn()}
+          onRequestHumanTutor={vi.fn()}
+        />
+      </div>,
+    )
+
+    expect(screen.getByText('Could not analyze this board.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry AI' }))
+    expect(onRetryAnalysis).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders diagnosis from structured analysis instead of conflicting legacy fields', () => {
+    renderPanel({
+      analysis: {
+        ...liveAnalysis,
+        cacheSource: 'server-cache',
+        problem: 'Legacy problem should not render',
+        correctSolution: 'x = 999',
+      },
+      analysisResult: liveAnalysis.analysisResult,
+    })
+
+    expect(screen.getByText('Solve for x: 5x - 17 = 18')).toBeInTheDocument()
+    expect(screen.getByText('Answer pair: x = 7')).toBeInTheDocument()
+    expect(screen.getByText('Showing server-cached analysis')).toBeInTheDocument()
+    expect(screen.queryByText('Legacy problem should not render')).not.toBeInTheDocument()
+    expect(screen.queryByText(/x = 999/)).not.toBeInTheDocument()
   })
 
   it('shows the response section content in the unified shell', () => {
     renderPanel()
 
-    expect(screen.getByText('Recommended next move')).toBeInTheDocument()
-    expect(screen.getByText('Guide Maya Chen back to the missing negative root.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use suggested reply' })).toBeInTheDocument()
-    expect(screen.getByText('Tutoring moves')).toBeInTheDocument()
-    expect(screen.getByText('Encourage progress')).toBeInTheDocument()
-    expect(screen.getByText('Ask a guiding question')).toBeInTheDocument()
-    expect(screen.getByText('Board action')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Annotate issue' })).toBeInTheDocument()
-    expect(screen.getByText('Last seen 2 hrs ago')).toBeInTheDocument()
+    expect(screen.getByText('Response guidance')).toBeInTheDocument()
+    expect(screen.getByText('Run tutoring help once to generate guidance from the current board.')).toBeInTheDocument()
+    expect(screen.getByText('Use the Run AI action in Diagnosis to gather the steps, response guidance, and assist recommendations in one pass.')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Run AI' })).toHaveLength(1)
+    expect(screen.queryByText('Recommended next move')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use suggested reply' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Tutoring moves')).not.toBeInTheDocument()
+    expect(screen.queryByText('Board action')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Annotate issue' })).not.toBeInTheDocument()
     expect(screen.getByText("I'm not sure what I did wrong on step 3")).toBeInTheDocument()
     expect(screen.getByText('Let me take a look!')).toBeInTheDocument()
     expect(screen.getByText("Student is offline. They'll see your note when they return.")).toBeInTheDocument()
@@ -88,16 +235,16 @@ describe('RightSidePanel', () => {
     expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
     expect(screen.queryByText('Best coaching move')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Annotate issue' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Mark key step on board' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Mark blocking step on board' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message your tutor' })).toBeInTheDocument()
   })
 
   it('inserts quick reply chip text into the message input', () => {
-    renderPanel()
+    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.click(screen.getByRole('button', { name: /Ask a guiding question/i }))
 
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What other number, besides 5, also squares to 25?')
+    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What should you add to both sides to cancel the -17?')
   })
 
   it('shows the empty state when no chat messages exist', () => {
@@ -118,16 +265,26 @@ describe('RightSidePanel', () => {
 
   it('calls the mark-step handler from the populated steps state', () => {
     const onMarkStep = vi.fn()
-    renderPanel({ onMarkStep })
+    renderPanel({ onMarkStep, analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark key step on board' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mark blocking step on board' })[0])
 
-    expect(onMarkStep).toHaveBeenCalledWith(2)
+    expect(onMarkStep).toHaveBeenCalledWith(1)
+  })
+
+  it('shows a visible refresh diagnosis action after analysis is available', () => {
+    const onRetryAnalysis = vi.fn()
+    renderPanel({ onRetryAnalysis, analysis: { ...liveAnalysis, cacheSource: 'local-cache' }, analysisResult: liveAnalysis.analysisResult })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh diagnosis' }))
+
+    expect(onRetryAnalysis).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Showing saved analysis')).toBeInTheDocument()
   })
 
   it('keeps the supporting diagnosis step actions available', () => {
     const onMarkStep = vi.fn()
-    renderPanel({ onMarkStep })
+    renderPanel({ onMarkStep, analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Mark on board' })[0])
 
@@ -135,30 +292,30 @@ describe('RightSidePanel', () => {
   })
 
   it('shows persistent board focus feedback after marking a key step', () => {
-    renderPanel()
+    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark key step on board' })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: 'Mark blocking step on board' })[0])
 
     expect(screen.getByText('Board focus')).toBeInTheDocument()
-    expect(screen.getAllByText('Marking step 2').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Take the square root of both sides').length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Reply about step 2' }).length).toBeGreaterThan(0)
-    expect(screen.getByText('Send response about step 2')).toBeInTheDocument()
+    expect(screen.getAllByText('Marking step 1').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Add 17 to both sides').length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Reply about step 1' }).length).toBeGreaterThan(0)
+    expect(screen.getByText('Send response about step 1')).toBeInTheDocument()
     expect(screen.getByText('Focused on board')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' })[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getAllByRole('button', { name: 'Mark blocking step on board' })[0]).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('updates the board focus context when a supporting diagnosis step is marked', () => {
-    renderPanel()
+    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Mark on board' })[0])
 
     expect(screen.getAllByText('Marking step 1').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Add 5 to both sides').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Add 17 to both sides').length).toBeGreaterThan(0)
   })
 
   it('maps the legacy help-request tab into the assist detail view', () => {
-    renderPanel({ activeTab: 'help-request' })
+    renderPanel({ activeTab: 'help-request', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     expect(screen.getByRole('tab', { name: 'Assist' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByText('Best coaching move')).toBeInTheDocument()
@@ -175,7 +332,13 @@ describe('RightSidePanel', () => {
 
   it('runs tutor assist analysis only when requested and transitions through loading to populated', () => {
     const onStartAnalysis = vi.fn()
-    renderPanel({ activeTab: 'ai-tutor', initialTutorAssistState: 'ready', onStartAnalysis })
+    renderPanel({
+      activeTab: 'ai-tutor',
+      initialTutorAssistState: 'ready',
+      onStartAnalysis,
+      analysis: liveAnalysis,
+      analysisResult: liveAnalysis.analysisResult,
+    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Analyze Student Work' }))
 
@@ -193,7 +356,7 @@ describe('RightSidePanel', () => {
   })
 
   it('persists tutor private notes across remounts', () => {
-    const firstRender = renderPanel({ activeTab: 'ai-tutor' })
+    const firstRender = renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Private tutor notes' }), {
       target: { value: 'Check whether Maya is mixing up FOIL and square roots.' },
@@ -201,34 +364,55 @@ describe('RightSidePanel', () => {
 
     firstRender.unmount()
 
-    renderPanel({ activeTab: 'ai-tutor' })
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     expect(screen.getByRole('textbox', { name: 'Private tutor notes' })).toHaveValue('Check whether Maya is mixing up FOIL and square roots.')
   })
 
   it('shows the tutor assist annotate action in the board move card', () => {
-    renderPanel({ activeTab: 'ai-tutor' })
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     expect(screen.getByRole('button', { name: 'Annotate' })).toBeInTheDocument()
   })
 
   it('shows board focus feedback when assist starts an annotation action', () => {
-    renderPanel({ activeTab: 'ai-tutor' })
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.click(screen.getByRole('button', { name: 'Annotate' }))
 
     expect(screen.getByText('Board focus')).toBeInTheDocument()
-    expect(screen.getByText('Annotating step 2')).toBeInTheDocument()
+    expect(screen.getByText('Annotating step 1')).toBeInTheDocument()
     expect(screen.getByText('From Assist')).toBeInTheDocument()
   })
 
   it('applies the best coaching move into the response composer from assist detail view', () => {
-    renderPanel({ activeTab: 'ai-tutor' })
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
     fireEvent.click(screen.getByRole('button', { name: 'Use best coaching move' }))
 
     expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What other number, besides 5, also squares to 25?')
+    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What should you add to both sides to cancel the -17?')
+  })
+
+  it('renders live diagnosis and assist content from analysis when available', () => {
+    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
+
+    expect(screen.getByText('Solve for x: 5x - 17 = 18')).toBeInTheDocument()
+    expect(screen.getByText('Likely issue: Undo the minus 17 first so the x term is easier to isolate.')).toBeInTheDocument()
+    expect(screen.getByText('Guide Maya to fix step 1.')).toBeInTheDocument()
+    expect(screen.getByText('Answer pair: x = 7')).toBeInTheDocument()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open detail' })[2])
+
+    expect(screen.getByText('Best coaching move')).toBeInTheDocument()
+    expect(screen.getByText('What should you add to both sides to cancel the -17?')).toBeInTheDocument()
+  })
+
+  it('uses a safe generic student label in the recommended next move copy', () => {
+    renderPanel({ studentName: 'Test', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
+
+    expect(screen.getByText('Guide the student to fix step 1.')).toBeInTheDocument()
+    expect(screen.queryByText(/Guide Test back to/i)).not.toBeInTheDocument()
   })
 
   it('shows an online toast when the student comes online and allows manual dismissal', () => {
@@ -258,7 +442,6 @@ describe('RightSidePanel', () => {
     )
 
     expect(screen.getByText('Maya Chen just came online')).toBeInTheDocument()
-    expect(screen.getByText('Online now')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Dismiss presence notification' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss presence notification' }))

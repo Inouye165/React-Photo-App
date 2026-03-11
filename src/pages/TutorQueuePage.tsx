@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, CheckCircle2, Clock3, RefreshCcw } from 'lucide-react'
 import { claimWhiteboardHelpRequest, listTutorQueueRequests } from '../api/whiteboards'
@@ -24,11 +24,12 @@ export default function TutorQueuePage(): React.JSX.Element {
   const [claimedRequests, setClaimedRequests] = useState<WhiteboardHelpRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [claimingId, setClaimingId] = useState<string | null>(null)
 
   const heading = useMemo(() => (canUseTutorQueue ? 'Tutor queue' : 'Tutor access required'), [canUseTutorQueue])
 
-  const loadQueue = async () => {
+  const loadQueue = useCallback(async () => {
     if (!canUseTutorQueue) {
       setLoading(false)
       return
@@ -48,18 +49,48 @@ export default function TutorQueuePage(): React.JSX.Element {
     } finally {
       setLoading(false)
     }
-  }
+  }, [canUseTutorQueue])
 
   useEffect(() => {
     void loadQueue()
-  }, [canUseTutorQueue])
+  }, [loadQueue])
+
+  useEffect(() => {
+    if (!canUseTutorQueue) return undefined
+
+    const handleRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void loadQueue()
+      }
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadQueue()
+    }, 10000)
+
+    document.addEventListener('visibilitychange', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+    }
+  }, [canUseTutorQueue, loadQueue])
 
   const handleClaim = async (requestId: string) => {
     setClaimingId(requestId)
     setError(null)
+    setSuccessMessage(null)
     try {
       const claimed = await claimWhiteboardHelpRequest(requestId)
-      navigate(`/whiteboards/${claimed.boardId}`)
+      setPendingRequests((current) => current.filter((item) => item.id !== requestId))
+      setClaimedRequests((current) => {
+        const next = [claimed, ...current.filter((item) => item.id !== requestId && item.id !== claimed.id)]
+        return next
+      })
+      setSuccessMessage(`Claimed ${claimed.boardName || 'whiteboard'}. It is now in your queue.`)
+      void loadQueue()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to claim help request')
     } finally {
@@ -106,6 +137,12 @@ export default function TutorQueuePage(): React.JSX.Element {
         {error ? (
           <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-sm text-red-200">
             {error}
+          </div>
+        ) : null}
+
+        {successMessage ? (
+          <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-sm text-emerald-200">
+            {successMessage}
           </div>
         ) : null}
 

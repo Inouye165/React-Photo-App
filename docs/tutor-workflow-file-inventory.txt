@@ -1,0 +1,129 @@
+README.md
+Role: Test/preflight instructions for this fix pass.
+Status: read-only
+Why it matters: Defines required validation commands and test expectations.
+
+src/pages/WhiteboardSessionPage.tsx
+Role: Main client orchestration for whiteboard tutor analysis requests, cache use, confirmation flow, side panel props, and overlay state.
+Status: modified
+Why it matters: Entry point for Run AI, request lifecycle, and data passed into the tutor workflow UI.
+
+src/api/whiteboards.ts
+Role: Client API wrapper for the whiteboard tutor route.
+Status: read-only
+Why it matters: Sends tutor analysis requests and returns normalized client response objects.
+
+src/types/whiteboard.ts
+Role: Shared frontend tutor request/response and analysis typing.
+Status: read-only
+Why it matters: Defines the shape consumed by the panel, overlay, and cache layers.
+
+src/utils/tutorAnalysisCache.ts
+Role: Frontend local cache read/write/eviction for tutor analysis responses.
+Status: modified
+Why it matters: Can suppress fresh requests or replay stale tutor payloads.
+
+src/utils/tutorAnalysisCache.test.ts
+Role: Frontend regression coverage for tutor analysis local cache behavior.
+Status: read-only
+Why it matters: Needed for validating stale-cache fixes.
+
+src/pages/WhiteboardSessionPage.test.tsx
+Role: Frontend orchestration regression tests for tutor request flow, cache use, and panel wiring.
+Status: modified
+Why it matters: Verifies hydration, rerun, and real page-to-panel analysis wiring.
+
+src/components/whiteboard/RightSidePanel.tsx
+Role: Tutor workflow right rail rendering for diagnosis, response, assist, recommendation, and board-action CTA wiring.
+Status: modified
+Why it matters: Main UI where contradictory states, CTA overload, and recommendation ordering appear.
+
+src/components/whiteboard/whiteboardTutor.ts
+Role: Client-side normalization of tutor payloads into shared response structures.
+Status: read-only
+Why it matters: Secondary client normalization layer that can preserve or amplify contradictory legacy step/error copy.
+
+src/components/whiteboard/RightSidePanel.test.tsx
+Role: Frontend regression tests for tutor workflow rendering and CTA behavior.
+Status: modified
+Why it matters: Must be updated if panel behavior changes.
+
+src/components/whiteboard/TutorOverlay.tsx
+Role: Overlay marker and tutor focus rendering above the whiteboard.
+Status: modified
+Why it matters: Displays step status and correction text tied to selected step regions.
+
+src/components/whiteboard/TutorOverlay.test.tsx
+Role: Overlay integration regression tests.
+Status: modified
+Why it matters: Covers region focus behavior and tutor lesson messaging.
+
+src/components/whiteboard/tabs/StepsTab.tsx
+Role: Structured step walkthrough tab and overlay/validator note renderer.
+Status: read-only
+Why it matters: Displays badge/explanation combinations that must stay consistent with sanitized tutor analysis.
+
+src/components/whiteboard/WhiteboardCanvas.tsx
+Role: Real whiteboard background fitting and board-frame measurement source.
+Status: read-only
+Why it matters: Determines the displayed image rect that overlay coordinates must match.
+
+src/components/whiteboard/whiteboardAspect.ts
+Role: Shared board/image containment math helpers.
+Status: read-only
+Why it matters: Provides the same fit math needed to align overlay regions to the displayed image frame.
+
+src/components/whiteboard/tabs/AITutorTab.tsx
+Role: Legacy tutor tab rendering helpers for step status/copy.
+Status: read-only
+Why it matters: Uses tutor response fields that may still need consistency with normalized payloads.
+
+src/components/whiteboard/tutorAssistPersistence.ts
+Role: Frontend persistence helper for tutor assist panel local UI state.
+Status: read-only
+Why it matters: Related to tutor workflow state persistence and Fast Refresh compatibility.
+
+src/components/whiteboard/tabs/AITutorTab.tsx
+Role: Legacy/parallel tutor tab step/message rendering helpers.
+Status: read-only
+Why it matters: May still influence overlay/lesson data conventions and status presentation.
+
+server/routes/whiteboard.ts
+Role: Backend whiteboard tutor API route, prompt construction, provider calls, cache read/write, and payload preparation.
+Status: modified
+Why it matters: End-to-end server pipeline for transcription, evaluation, and returned tutor guidance.
+
+server/tutor/analysisParser.ts
+Role: Structured AI tutor payload parsing and legacy payload building.
+Status: read-only
+Why it matters: Main normalization boundary between raw AI JSON and app-facing tutor analysis data.
+
+server/tutor/mathValidator.ts
+Role: Deterministic math verification and step/final-answer validation.
+Status: modified
+Why it matters: Current deterministic layer for simple algebra correctness and warning generation.
+
+server/tests/whiteboard.analysis-parser.test.ts
+Role: Backend parser tests for structured tutor payload recovery and validation.
+Status: modified
+Why it matters: Good place to add contradiction-normalization regressions.
+
+server/tests/whiteboard.math-validator.test.ts
+Role: Backend deterministic validator regression tests.
+Status: modified
+Why it matters: Good place to add simple linear-equation arithmetic and final-answer checks.
+
+server/tests/whiteboard.tutor.route.test.ts
+Role: Backend route tests for whiteboard tutor analysis endpoint.
+Status: read-only
+Why it matters: Verifies end-to-end route behavior and payload shape.
+
+server/tests/whiteboard.help-requests.route.test.ts
+Role: Backend route tests for help-request claim and active-request flows.
+Status: read-only
+Why it matters: Caught the preflight membership fallback regression surfaced after the tutor pass.
+
+server/tests/whiteboard.invites.route.test.ts
+Role: Backend route tests for invite creation, join flow, fallback membership, and reuse behavior.
+Status: modified
+Why it matters: Validates the join/membership paths that failed during full backend preflight.

@@ -47,6 +47,7 @@ type MockDbState = {
   helpRequests: HelpRequestRow[]
   roomMembers: RoomMemberRow[]
   users: string[]
+  roomMembersConflictConstraintMissing?: boolean
 }
 
 type RequestWithUser = Request & {
@@ -77,9 +78,36 @@ function createMockDb(state: MockDbState) {
     }
 
     if (tableName === 'room_members') {
+      const performInsert = async (row: RoomMemberRow, viaOnConflict: boolean) => {
+        if (viaOnConflict && state.roomMembersConflictConstraintMissing) {
+          const error = new Error(
+            'insert into "room_members" ("is_owner", "room_id", "user_id") values ($1, $2, $3) on conflict ("room_id", "user_id") do nothing - there is no unique or exclusion constraint matching the ON CONFLICT specification',
+          ) as Error & { code?: string }
+          error.code = '42P10'
+          throw error
+        }
+
+        if (row.user_id === 'tutor-2' && !state.users.includes('tutor-2')) {
+          const error = new Error(
+            'insert or update on table "room_members" violates foreign key constraint "room_members_user_id_foreign"',
+          ) as Error & { code?: string; constraint?: string }
+          error.code = '23503'
+          error.constraint = 'room_members_user_id_foreign'
+          throw error
+        }
+
+        const exists = state.roomMembers.some(
+          (member) => member.room_id === row.room_id && member.user_id === row.user_id,
+        )
+        if (!exists) {
+          state.roomMembers.push(row)
+        }
+      }
+
       const query: any = {
         _where: {} as Record<string, unknown>,
         _insertRow: null as RoomMemberRow | null,
+        _usesOnConflict: false,
         where: jest.fn(function where(conditions: Record<string, unknown>) {
           Object.assign(query._where, conditions)
           return query
@@ -92,28 +120,20 @@ function createMockDb(state: MockDbState) {
         }),
         insert: jest.fn(function insert(row: RoomMemberRow) {
           query._insertRow = row
+          query._usesOnConflict = false
           return query
         }),
-        onConflict: jest.fn().mockReturnThis(),
+        onConflict: jest.fn(function onConflict() {
+          query._usesOnConflict = true
+          return query
+        }),
         ignore: jest.fn(async () => {
           if (!query._insertRow) return
-
-          if (query._insertRow.user_id === 'tutor-2') {
-            const error = new Error(
-              'insert or update on table "room_members" violates foreign key constraint "room_members_user_id_foreign"',
-            ) as Error & { code?: string; constraint?: string }
-            error.code = '23503'
-            error.constraint = 'room_members_user_id_foreign'
-            throw error
-          }
-
-          const exists = state.roomMembers.some(
-            (member) => member.room_id === query._insertRow?.room_id && member.user_id === query._insertRow?.user_id,
-          )
-          if (!exists) {
-            state.roomMembers.push(query._insertRow)
-          }
+          await performInsert(query._insertRow, query._usesOnConflict)
         }),
+        then: function then(resolve: (value: unknown) => unknown, reject: (reason?: unknown) => unknown) {
+          return performInsert(query._insertRow, false).then(resolve, reject)
+        },
       }
       return query
     }
@@ -270,5 +290,43 @@ describe('whiteboard help request routes', () => {
 
     expect(res.status).toBe(200)
     expect(res.body).toBeNull()
+  })
+
+  test('claims help request when room_members lacks the composite on-conflict constraint locally', async () => {
+    const state: MockDbState = {
+      helpRequests: [
+        {
+          id: requestId,
+          board_id: boardId,
+          student_user_id: 'student-1',
+          claimed_by_user_id: null,
+          status: 'pending',
+          request_text: 'Need help with fractions',
+          problem_draft: null,
+          created_at: '2026-03-08T19:55:00.000Z',
+          updated_at: '2026-03-08T19:55:00.000Z',
+          claimed_at: null,
+          resolved_at: null,
+        },
+      ],
+      roomMembers: [],
+      users: ['tutor-2'],
+      roomMembersConflictConstraintMissing: true,
+    }
+    const db = createMockDb(state)
+    const app = createTestApp(db)
+
+    const res = await request(app).post(`/api/whiteboards/help-requests/${requestId}/claim`)
+
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe('claimed')
+    expect(state.helpRequests[0]?.claimed_by_user_id).toBe('tutor-2')
+    expect(state.roomMembers).toEqual([
+      {
+        room_id: boardId,
+        user_id: 'tutor-2',
+        is_owner: false,
+      },
+    ])
   })
 })

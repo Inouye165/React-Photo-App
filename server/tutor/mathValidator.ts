@@ -50,6 +50,7 @@ type ValidationFinding = {
   warning?: string
   correction?: string
   hint?: string
+  deterministic?: boolean
 }
 
 type FinalAnswerValidation = {
@@ -57,6 +58,20 @@ type FinalAnswerValidation = {
   warnings: string[]
   expectedAnswers: number[]
   matchedAnswers: number[]
+}
+
+type SimpleLinearEquation = {
+  leftCoefficient: number
+  leftConstant: number
+  rightCoefficient: number
+  rightConstant: number
+}
+
+const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.NODE_ENV !== 'production'
+
+function tutorFixDebug(label: string, details: Record<string, unknown>): void {
+  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
+  console.info('[TUTOR-FIX-DEBUG]', label, details)
 }
 
 function normalizeMathText(value: string): string {
@@ -324,6 +339,32 @@ function approxEqual(a: number, b: number, epsilon = 1e-6): boolean {
   return Math.abs(a - b) <= epsilon
 }
 
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return `${value}`
+  if (approxEqual(value, Math.round(value))) return `${Math.round(value)}`
+  return `${Number(value.toFixed(4))}`
+}
+
+function formatSignedNumber(value: number): string {
+  if (value < 0) return `- ${formatNumber(Math.abs(value))}`
+  return `+ ${formatNumber(value)}`
+}
+
+function formatLinearExpression(coefficient: number, constant: number): string {
+  const coeffText = approxEqual(coefficient, 1)
+    ? 'x'
+    : approxEqual(coefficient, -1)
+      ? '-x'
+      : `${formatNumber(coefficient)}x`
+
+  if (approxEqual(constant, 0)) return coeffText
+  return `${coeffText} ${formatSignedNumber(constant)}`
+}
+
+function formatLinearEquation(equation: SimpleLinearEquation): string {
+  return `${formatLinearExpression(equation.leftCoefficient - equation.rightCoefficient, equation.leftConstant)} = ${formatNumber(equation.rightConstant)}`
+}
+
 function uniqueNumbers(values: number[]): number[] {
   return values.filter((value, index) => values.findIndex((other) => approxEqual(other, value)) === index).sort((a, b) => a - b)
 }
@@ -468,6 +509,129 @@ function solveEquation(problemText: string): number[] {
   return []
 }
 
+function parseSimpleLinearEquation(text: string): SimpleLinearEquation | null {
+  const equation = parseEquation(text)
+  if (equation) {
+    const leftPoly = astToPolynomial(equation.left)
+    const rightPoly = astToPolynomial(equation.right)
+    if (leftPoly && rightPoly && Math.abs(leftPoly[2]) <= 1e-8 && Math.abs(rightPoly[2]) <= 1e-8) {
+      return {
+        leftCoefficient: leftPoly[1],
+        leftConstant: leftPoly[0],
+        rightCoefficient: rightPoly[1],
+        rightConstant: rightPoly[0],
+      }
+    }
+  }
+
+  const normalized = normalizeMathText(text)
+  const equalsIndex = normalized.indexOf('=')
+  if (equalsIndex <= 0 || equalsIndex === normalized.length - 1) return null
+
+  const parseSide = (side: string): { coefficient: number; constant: number } | null => {
+    if (!side.includes('x')) {
+      const constant = Number(side)
+      return Number.isFinite(constant) ? { coefficient: 0, constant } : null
+    }
+
+    const match = side.match(/^([+-]?(?:(?:\d+(?:\.\d+)?)\*)?)?x(?:([+-]\d+(?:\.\d+)?)?)?$/)
+    if (!match) return null
+
+    const rawCoefficient = (match[1] ?? '').replace('*', '')
+    const coefficient = rawCoefficient === '' || rawCoefficient === '+'
+      ? 1
+      : rawCoefficient === '-'
+        ? -1
+        : Number(rawCoefficient)
+    const constant = match[2] ? Number(match[2]) : 0
+
+    if (!Number.isFinite(coefficient) || !Number.isFinite(constant)) {
+      return null
+    }
+
+    return { coefficient, constant }
+  }
+
+  const leftSide = parseSide(normalized.slice(0, equalsIndex))
+  const rightSide = parseSide(normalized.slice(equalsIndex + 1))
+  if (!leftSide || !rightSide) return null
+
+  return {
+    leftCoefficient: leftSide.coefficient,
+    leftConstant: leftSide.constant,
+    rightCoefficient: rightSide.coefficient,
+    rightConstant: rightSide.constant,
+  }
+}
+
+function validateSimpleLinearTransition(previousStep: string, currentStep: string): ValidationFinding | null {
+  const previous = parseSimpleLinearEquation(previousStep)
+  const current = parseSimpleLinearEquation(currentStep)
+  if (!previous || !current) return null
+
+  if (!approxEqual(previous.rightCoefficient, 0) || !approxEqual(current.rightCoefficient, 0)) {
+    return null
+  }
+
+  if (
+    approxEqual(previous.leftCoefficient, current.leftCoefficient)
+    && !approxEqual(previous.leftConstant, 0)
+    && approxEqual(current.leftConstant, 0)
+  ) {
+    const expectedRight = previous.rightConstant - previous.leftConstant
+    const expectedEquation: SimpleLinearEquation = {
+      leftCoefficient: previous.leftCoefficient,
+      leftConstant: 0,
+      rightCoefficient: 0,
+      rightConstant: expectedRight,
+    }
+
+    if (!approxEqual(current.rightConstant, expectedRight)) {
+      const operation = previous.leftConstant > 0 ? 'Subtract' : 'Add'
+      const magnitude = Math.abs(previous.leftConstant)
+      return {
+        status: 'incorrect',
+        deterministic: true,
+        warning: `This arithmetic is off. ${formatNumber(previous.rightConstant)} ${previous.leftConstant > 0 ? '-' : '+'} ${formatNumber(magnitude)} should be ${formatNumber(expectedRight)}.`,
+        correction: `${operation} ${formatNumber(magnitude)} on both sides to get ${formatLinearEquation(expectedEquation)}.`,
+        hint: 'Fix this arithmetic step before checking the next line.',
+      }
+    }
+
+    return {
+      status: 'correct',
+      deterministic: true,
+      hint: 'Good. This keeps the equation balanced while removing the constant term.',
+    }
+  }
+
+  if (
+    approxEqual(previous.leftConstant, 0)
+    && !approxEqual(previous.leftCoefficient, 0)
+    && approxEqual(current.leftCoefficient, 1)
+    && approxEqual(current.leftConstant, 0)
+  ) {
+    const expectedRight = previous.rightConstant / previous.leftCoefficient
+    if (!approxEqual(current.rightConstant, expectedRight)) {
+      return {
+        status: 'incorrect',
+        deterministic: true,
+        warning: `This division is off. ${formatNumber(previous.rightConstant)} ÷ ${formatNumber(previous.leftCoefficient)} should be ${formatNumber(expectedRight)}.`,
+        correction: `Divide both sides by ${formatNumber(previous.leftCoefficient)} to get x = ${formatNumber(expectedRight)}.`,
+        hint: 'Finish isolating x by dividing both sides correctly.',
+      }
+    }
+
+    return {
+      status: 'correct',
+      deterministic: true,
+      hint: 'Good. Dividing both sides by the coefficient isolates x.',
+    }
+  }
+
+  return null
+}
+
 function parseCandidateAnswers(values: string[]): number[] {
   const answers: number[] = []
   for (const value of values) {
@@ -496,6 +660,13 @@ function parseCandidateAnswers(values: string[]): number[] {
 export function validateFinalAnswers(problemText: string, finalAnswers: string[]): FinalAnswerValidation {
   const expectedAnswers = solveEquation(problemText)
   const candidateAnswers = parseCandidateAnswers(finalAnswers)
+
+  tutorFixDebug('deterministic-final-answer-check', {
+    problemText,
+    finalAnswers,
+    expectedAnswers,
+    candidateAnswers,
+  })
 
   if (expectedAnswers.length === 0) {
     return {
@@ -552,6 +723,11 @@ export function validateFinalAnswers(problemText: string, finalAnswers: string[]
 }
 
 export function validateStepPair(previousStep: string, currentStep: string, problemText: string): ValidationFinding {
+  const linearTransitionFinding = validateSimpleLinearTransition(previousStep, currentStep)
+  if (linearTransitionFinding) {
+    return linearTransitionFinding
+  }
+
   const previousEquation = parseEquation(previousStep)
   const currentEquation = parseEquation(currentStep)
   const expectedAnswers = solveEquation(problemText)
@@ -561,6 +737,7 @@ export function validateStepPair(previousStep: string, currentStep: string, prob
     if (currentAnswers.length === 1 && expectedAnswers.some((expected) => approxEqual(expected, currentAnswers[0]))) {
       return {
         status: 'warning',
+        deterministic: true,
         warning: 'This step looks almost right, but square-root answers here should include both values.',
         correction: `Try writing both answers: ${expectedAnswers.join(' and ')}.`,
       }
@@ -577,6 +754,7 @@ export function validateStepPair(previousStep: string, currentStep: string, prob
       if (sameRoots) {
         return {
           status: 'correct',
+          deterministic: true,
           hint: 'You kept the equation balanced while moving to the next step.',
         }
       }
@@ -586,7 +764,8 @@ export function validateStepPair(previousStep: string, currentStep: string, prob
   const finalAnswerCheck = validateFinalAnswers(problemText, [currentStep])
   if (finalAnswerCheck.status === 'incorrect') {
     return {
-      status: 'warning',
+      status: 'incorrect',
+      deterministic: true,
       warning: finalAnswerCheck.warnings[0],
       correction: 'Check how this step changes both sides of the equation before moving on.',
     }
@@ -594,6 +773,7 @@ export function validateStepPair(previousStep: string, currentStep: string, prob
 
   return {
     status: 'partial',
+    deterministic: false,
     hint: 'This step may be okay, but the validator could not confirm it with high confidence.',
   }
 }
@@ -616,7 +796,9 @@ export function detectCommonMistakes(problemText: string, finalAnswers: string[]
 
 function mergeFinding(step: TutorStepAnalysis, finding: ValidationFinding): TutorStepAnalysis {
   const nextStep = { ...step }
-  if (step.status === 'correct' && finding.status !== 'correct') {
+  if (finding.deterministic) {
+    nextStep.status = finding.status
+  } else if (step.status === 'correct' && finding.status !== 'correct') {
     nextStep.status = finding.status
   }
   if (!nextStep.correction && finding.correction) {
@@ -631,6 +813,58 @@ function mergeFinding(step: TutorStepAnalysis, finding: ValidationFinding): Tuto
   return nextStep
 }
 
+function looksLikePraise(text: string | undefined): boolean {
+  if (!text) return false
+  return /(great job|great start|nice work|good job|well done|awesome|perfect|you are close|you did it|correctly)/i.test(text)
+}
+
+function sanitizeStepCopy(step: TutorStepAnalysis): TutorStepAnalysis {
+  if (step.status === 'correct') {
+    return step
+  }
+
+  const baseExplanation = step.status === 'incorrect'
+    ? 'This step is the first place where the math goes off track.'
+    : step.status === 'partial'
+      ? 'This step needs one more check before moving on.'
+      : 'Pause here and double-check this line before continuing.'
+
+  return {
+    ...step,
+    kidFriendlyExplanation: looksLikePraise(step.kidFriendlyExplanation)
+      ? baseExplanation
+      : step.kidFriendlyExplanation || baseExplanation,
+  }
+}
+
+function markDownstreamSteps(steps: TutorStepAnalysis[]): TutorStepAnalysis[] {
+  const firstBlockingIndex = steps.findIndex((step) => step.status !== 'correct')
+  if (firstBlockingIndex < 0) return steps
+
+  return steps.map((step, index) => {
+    if (index <= firstBlockingIndex) {
+      return sanitizeStepCopy(step)
+    }
+
+    return {
+      ...step,
+      status: 'warning',
+      kidFriendlyExplanation: `This line follows the earlier mistake from step ${firstBlockingIndex + 1}, so fix that step first.`,
+      correction: `Recheck step ${firstBlockingIndex + 1} first, then come back to this line.`,
+      hint: step.hint,
+    }
+  })
+}
+
+function buildConsistentSummary(summary: string, steps: TutorStepAnalysis[]): string {
+  const firstBlockingIndex = steps.findIndex((step) => step.status !== 'correct')
+  if (firstBlockingIndex < 0) {
+    return summary || 'The work is consistent and the final answer checks out.'
+  }
+
+  return `Start by fixing step ${firstBlockingIndex + 1}. After that, re-check the later work in order.`
+}
+
 export function applyMathValidator(result: TutorAnalysisResult): TutorAnalysisResult {
   const finalAnswerValidation = validateFinalAnswers(result.problemText, result.finalAnswers)
   const validatedSteps = result.steps.map((step, index) => {
@@ -639,6 +873,7 @@ export function applyMathValidator(result: TutorAnalysisResult): TutorAnalysisRe
       return mergeFinding(step, {
         status: finalAnswerValidation.status,
         warning: finalAnswerValidation.warnings[0],
+        deterministic: finalAnswerValidation.expectedAnswers.length > 0,
         correction:
           finalAnswerValidation.status !== 'correct' && finalAnswerValidation.expectedAnswers.length > 0
             ? `Try checking the answer by substitution. The validator found ${finalAnswerValidation.expectedAnswers.join(' and ')}.`
@@ -657,16 +892,31 @@ export function applyMathValidator(result: TutorAnalysisResult): TutorAnalysisRe
     )
   })
 
+  const consistentSteps = markDownstreamSteps(validatedSteps)
+  const firstBlockingStep = consistentSteps.find((step) => step.status !== 'correct') ?? null
+
   const warnings = [
     ...result.validatorWarnings,
     ...finalAnswerValidation.warnings,
     ...detectCommonMistakes(result.problemText, result.finalAnswers, result.steps),
   ].filter((warning, index, list) => warning.trim() && list.indexOf(warning) === index)
 
+  tutorFixDebug('deterministic-step-check-summary', {
+    problemText: result.problemText,
+    firstBlockingStep: firstBlockingStep ? {
+      index: firstBlockingStep.index,
+      shortLabel: firstBlockingStep.shortLabel,
+      status: firstBlockingStep.status,
+      studentText: firstBlockingStep.studentText,
+    } : null,
+    finalAnswerValidation,
+  })
+
   return {
     ...result,
-    steps: validatedSteps,
+    overallSummary: buildConsistentSummary(result.overallSummary, consistentSteps),
+    steps: consistentSteps,
     validatorWarnings: warnings,
-    canAnimate: result.canAnimate && validatedSteps.length > 1,
+    canAnimate: result.canAnimate && consistentSteps.length > 1,
   }
 }

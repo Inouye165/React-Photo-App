@@ -7,6 +7,10 @@ import request from 'supertest'
 
 const mockGenerateContent = jest.fn()
 const mockAnthropicCreate = jest.fn()
+const supabaseState = {
+  roomMembers: [] as Array<{ room_id: string; user_id: string }>,
+  rooms: [] as Array<{ id: string; created_by?: string | null }>,
+}
 
 jest.mock('@google/generative-ai', () => ({
   GoogleGenerativeAI: jest.fn().mockImplementation(() => ({
@@ -25,9 +29,40 @@ jest.mock('@anthropic-ai/sdk', () => ({
   })),
 }))
 
+jest.mock('../lib/supabaseClient', () => ({
+  from: jest.fn((tableName: string) => {
+    const filters: Record<string, unknown> = {}
+    const query: any = {
+      select: jest.fn(() => query),
+      eq: jest.fn((field: string, value: unknown) => {
+        filters[field] = value
+        return query
+      }),
+      maybeSingle: jest.fn(async () => {
+        if (tableName === 'room_members') {
+          const match = supabaseState.roomMembers.find(
+            (member) => member.room_id === filters.room_id && member.user_id === filters.user_id,
+          )
+          return { data: match ?? null, error: null }
+        }
+
+        if (tableName === 'rooms') {
+          const match = supabaseState.rooms.find((room) => room.id === filters.id)
+          return { data: match ?? null, error: null }
+        }
+
+        return { data: null, error: null }
+      }),
+    }
+
+    return query
+  }),
+}))
+
 const createWhiteboardRouter = require('../routes/whiteboard')
 
 type RoomMember = { room_id: string; user_id: string }
+type RoomRow = { id: string; created_by?: string | null }
 type TutorCacheRow = {
   board_id: string
   cache_key: string
@@ -38,11 +73,13 @@ type TutorCacheRow = {
 
 type MockDbState = {
   roomMembers: RoomMember[]
+  rooms?: RoomRow[]
   tutorCache?: TutorCacheRow[]
 }
 
 function createMockDb(state: MockDbState) {
   const tutorCache = state.tutorCache ?? []
+  const rooms = state.rooms ?? []
   const db = jest.fn((tableName: string) => {
     if (tableName === 'room_members') {
       const query: any = {
@@ -57,6 +94,22 @@ function createMockDb(state: MockDbState) {
           )
           return Promise.resolve(row ?? null)
         }),
+      }
+      return query
+    }
+
+    if (tableName === 'rooms') {
+      const query: any = {
+        insert: jest.fn().mockImplementation((payload: RoomRow) => ({
+          onConflict: jest.fn().mockImplementation(() => ({
+            ignore: jest.fn().mockImplementation(() => {
+              if (!rooms.some((room) => room.id === payload.id)) {
+                rooms.push(payload)
+              }
+              return Promise.resolve()
+            }),
+          })),
+        })),
       }
       return query
     }
@@ -80,6 +133,16 @@ function createMockDb(state: MockDbState) {
         insert: jest.fn().mockImplementation((payload: TutorCacheRow) => ({
           onConflict: jest.fn().mockImplementation(() => ({
             merge: jest.fn().mockImplementation((nextPayload: TutorCacheRow) => {
+              if (!rooms.some((room) => room.id === payload.board_id)) {
+                const error = new Error('insert or update on table "whiteboard_tutor_cache" violates foreign key constraint "whiteboard_tutor_cache_board_id_foreign"') as Error & {
+                  code?: string
+                  constraint?: string
+                }
+                error.code = '23503'
+                error.constraint = 'whiteboard_tutor_cache_board_id_foreign'
+                return Promise.reject(error)
+              }
+
               const existingIndex = tutorCache.findIndex(
                 (entry) => entry.board_id === payload.board_id && entry.cache_key === payload.cache_key,
               )
@@ -137,6 +200,8 @@ describe('whiteboard tutor route', () => {
   const originalWhiteboardTranscriptionModel = process.env.WHITEBOARD_TRANSCRIPTION_MODEL
 
   beforeEach(() => {
+    supabaseState.roomMembers = []
+    supabaseState.rooms = []
     process.env.GEMINI_API_KEY = 'test-gemini-key'
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     process.env.WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash'
@@ -217,7 +282,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('returns tutor response for authenticated members', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -252,7 +317,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('includes the requested response age in the tutor prompt', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -295,7 +360,7 @@ describe('whiteboard tutor route', () => {
       },
     })
 
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -332,7 +397,7 @@ describe('whiteboard tutor route', () => {
         },
       })
 
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const res = await request(app)
@@ -367,7 +432,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('reuses a cached analysis response for repeat requests', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const payload = {
@@ -408,7 +473,7 @@ describe('whiteboard tutor route', () => {
   })
 
   test('bypasses the server cache when skipCache is true', async () => {
-    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], tutorCache: [] })
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
 
     const payload = {
@@ -435,5 +500,41 @@ describe('whiteboard tutor route', () => {
     expect(second.body.cacheSource).toBe('fresh')
     expect(mockGenerateContent).toHaveBeenCalledTimes(2)
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
+  })
+
+  test('hydrates a missing local room before writing tutor cache rows', async () => {
+    supabaseState.rooms = [{ id: boardId, created_by: 'owner-1' }]
+
+    const db = createMockDb({
+      roomMembers: [{ room_id: boardId, user_id: 'user-1' }],
+      rooms: [],
+      tutorCache: [],
+    })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const first = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+      })
+
+    const second = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+      })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(first.body.cacheSource).toBe('fresh')
+    expect(second.body.cacheSource).toBe('server-cache')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
   })
 })

@@ -11,8 +11,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const googleMapsApiKey = env.VITE_GOOGLE_MAPS_API_KEY || env.GOOGLE_API_KEY || ''
-  console.log(`[vite] Running in mode: ${mode}`);
-  console.log(`[vite] VITE_E2E: ${process.env.VITE_E2E}`);
   return {
   define: {
     'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(googleMapsApiKey),

@@ -77,6 +77,13 @@ const WhiteboardTutorBodySchema = z.object({
 const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
 const WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 const WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514';
+const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.NODE_ENV !== 'production';
+
+function tutorFixDebug(label: string, details: Record<string, unknown>): void {
+  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return;
+  console.info('[TUTOR-FIX-DEBUG]', label, details);
+}
+
 const WHITEBOARD_TRANSCRIPTION_PROMPT = `Look at this homework photo and return only JSON.
 
 Tasks:
@@ -137,6 +144,9 @@ Rules for the JSON:
 - steps: split the visible work into small readable steps
 - kidFriendlyExplanation: short, warm, and simple
 - status: choose the best fit for each step
+- for simple arithmetic or one-variable linear equations, verify the math before choosing status
+- if a step is incorrect, do not praise it
+- focus the earliest blocking mistake before later downstream consequences
 - regions: optional; include only if reasonably visible
 - if region matching is weak, keep the step and omit regionId
 - validatorWarnings: leave empty unless the model sees an obvious caution
@@ -334,22 +344,34 @@ async function writeWhiteboardTutorCache(
 ): Promise<void> {
   if (!shouldWriteWhiteboardTutorCache(body)) return;
 
-  try {
-    const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
-    const payload = {
-      board_id: boardId,
-      cache_key: cacheKey,
-      input_mode: body.inputMode === 'text' ? 'text' : 'photo',
-      response_json: response,
-      updated_at: db.fn.now(),
-    };
+  const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
+  const payload = {
+    board_id: boardId,
+    cache_key: cacheKey,
+    input_mode: body.inputMode === 'text' ? 'text' : 'photo',
+    response_json: response,
+    updated_at: db.fn.now(),
+  };
 
+  try {
     await db('whiteboard_tutor_cache')
       .insert(payload)
       .onConflict(['board_id', 'cache_key'])
       .merge(payload);
   } catch (error) {
     if (isMissingRelationError(error)) {
+      return;
+    }
+    if (isTutorCacheRoomForeignKeyError(error)) {
+      const hydrated = await hydrateMissingRoomForTutorCache(db, boardId);
+      if (!hydrated) {
+        return;
+      }
+
+      await db('whiteboard_tutor_cache')
+        .insert(payload)
+        .onConflict(['board_id', 'cache_key'])
+        .merge(payload);
       return;
     }
     throw error;
@@ -689,7 +711,27 @@ async function callWhiteboardEvaluation(
       });
     }
 
-    return buildLegacyTutorPayload(parseStructuredTutorAnalysis(text));
+    tutorFixDebug('raw-ai-tutor-payload', {
+      inputMode: body.inputMode,
+      preview: text.slice(0, 500),
+      length: text.length,
+    });
+
+    const parsedAnalysis = parseStructuredTutorAnalysis(text);
+
+    tutorFixDebug('normalized-ai-tutor-payload', {
+      problemText: parsedAnalysis.problemText,
+      finalAnswers: parsedAnalysis.finalAnswers,
+      overallSummary: parsedAnalysis.overallSummary,
+      stepStatuses: parsedAnalysis.steps.map((step) => ({
+        index: step.index,
+        shortLabel: step.shortLabel,
+        status: step.status,
+      })),
+      validatorWarnings: parsedAnalysis.validatorWarnings,
+    });
+
+    return buildLegacyTutorPayload(parsedAnalysis);
   } catch (error) {
     const summary = summarizeAnthropicError(error);
     throw toTutorPipelineError(summary.message, {
@@ -778,6 +820,22 @@ function isInviteRoomForeignKeyError(error: unknown): boolean {
   return typeof dbError.message === 'string' && dbError.message.includes('whiteboard_invites_room_id_foreign');
 }
 
+function isTutorCacheRoomForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const dbError = error as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+  };
+
+  if (dbError.code === '23503' && dbError.constraint === 'whiteboard_tutor_cache_board_id_foreign') {
+    return true;
+  }
+
+  return typeof dbError.message === 'string' && dbError.message.includes('whiteboard_tutor_cache_board_id_foreign');
+}
+
 function isRoomMemberUserForeignKeyError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
 
@@ -794,6 +852,36 @@ function isRoomMemberUserForeignKeyError(error: unknown): boolean {
   return typeof dbError.message === 'string' && dbError.message.includes('room_members_user_id_foreign');
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const dbError = error as { code?: unknown };
+  return dbError.code === '23505';
+}
+
+async function insertRoomMembershipLocally(
+  db: Knex,
+  roomId: string,
+  userId: string,
+  isOwner: boolean,
+): Promise<void> {
+  const existingMembership = await db('room_members')
+    .where({ room_id: roomId, user_id: userId })
+    .first();
+
+  if (existingMembership) {
+    return;
+  }
+
+  try {
+    await db('room_members').insert({ room_id: roomId, user_id: userId, is_owner: isOwner });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
 async function ensureLocalUserShadow(db: Knex, userId: string): Promise<void> {
   if (!userId) return;
 
@@ -805,6 +893,46 @@ async function ensureLocalUserShadow(db: Knex, userId: string): Promise<void> {
     })
     .onConflict('id')
     .ignore();
+}
+
+async function hydrateMissingRoomForTutorCache(db: Knex, boardId: string): Promise<boolean> {
+  try {
+    const { data: roomData, error: roomErr } = await supabase
+      .from('rooms')
+      .select('id,created_by')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomErr) {
+      console.warn('[WB-TUTOR] cache-room-hydrate:supabase-query-failed', {
+        boardId,
+        code: roomErr.code,
+        message: roomErr.message,
+      });
+      return false;
+    }
+
+    const roomId = String((roomData as { id?: unknown } | null)?.id ?? '');
+    if (!roomId) {
+      console.warn('[WB-TUTOR] cache-room-hydrate:supabase-room-missing', { boardId });
+      return false;
+    }
+
+    const createdBy = String((roomData as { created_by?: unknown } | null)?.created_by ?? '');
+    const roomInsert: { id: string; created_by?: string } = { id: roomId };
+    if (createdBy) roomInsert.created_by = createdBy;
+
+    await db('rooms').insert(roomInsert).onConflict('id').ignore();
+
+    console.info('[WB-TUTOR] cache-room-hydrate:success', { boardId });
+    return true;
+  } catch (error) {
+    console.warn('[WB-TUTOR] cache-room-hydrate:error', {
+      boardId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 async function ensureRoomMembershipWithFallback(
@@ -819,10 +947,7 @@ async function ensureRoomMembershipWithFallback(
   },
 ): Promise<void> {
   try {
-    await db('room_members')
-      .insert({ room_id: roomId, user_id: userId, is_owner: isOwner })
-      .onConflict(['room_id', 'user_id'])
-      .ignore();
+    await insertRoomMembershipLocally(db, roomId, userId, isOwner);
   } catch (membershipError) {
     if (!isRoomMemberUserForeignKeyError(membershipError)) {
       throw membershipError;
@@ -886,10 +1011,7 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
       .ignore();
 
     try {
-      await db('room_members')
-        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
-        .onConflict(['room_id', 'user_id'])
-        .ignore();
+      await insertRoomMembershipLocally(db, roomId, createdBy, true);
     } catch (error) {
       if (!isRoomMemberUserForeignKeyError(error)) throw error;
 
@@ -944,10 +1066,7 @@ async function hydrateMissingRoomForJoin(db: Knex, boardId: string, inviteCreate
 
     if (createdBy) {
       try {
-        await db('room_members')
-          .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
-          .onConflict(['room_id', 'user_id'])
-          .ignore();
+        await insertRoomMembershipLocally(db, roomId, createdBy, true);
       } catch (error) {
         if (!isRoomMemberUserForeignKeyError(error)) throw error;
 
@@ -1931,8 +2050,6 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         }
 
         await db.transaction(async (trx) => {
-          await ensureLocalUserShadow(trx as Knex, userId);
-
           await trx('whiteboard_help_requests')
             .where({ id: requestId })
             .update({
@@ -2029,6 +2146,12 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
             boardId,
             source: 'server-cache',
           });
+          tutorFixDebug('server analysis response summary', {
+            boardId,
+            cacheSource: 'server-cache',
+            problemText: cachedTutorResponse.analysisResult?.problemText ?? cachedTutorResponse.problem ?? '',
+            stepCount: cachedTutorResponse.analysisResult?.steps?.length ?? cachedTutorResponse.steps?.length ?? 0,
+          });
           return res.status(200).json({ ...withTutorCacheSource(cachedTutorResponse, 'server-cache'), messages, boardId });
         }
 
@@ -2038,6 +2161,12 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         console.info('[WB-TUTOR] assistant-data-source', {
           boardId,
           source: 'fresh',
+        });
+        tutorFixDebug('server analysis response summary', {
+          boardId,
+          cacheSource: 'fresh',
+          problemText: tutorResponse.analysisResult.problemText,
+          stepCount: tutorResponse.analysisResult.steps.length,
         });
 
         return res.status(200).json({ ...withTutorCacheSource(tutorResponse, 'fresh'), messages, boardId });

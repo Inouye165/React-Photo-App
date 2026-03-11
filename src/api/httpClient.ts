@@ -504,13 +504,6 @@ export async function request<T>(options: RequestOptions): Promise<T> {
         status: response.status,
         contentType: _dbgContentType,
       })
-    } else {
-      console.info('[HTTP][PROXY-DEBUG] Request completed', {
-        url,
-        method,
-        status: response.status,
-        contentType: _dbgContentType,
-      })
     }
     // --- END DEBUG ---
 
