@@ -537,7 +537,7 @@ function parseSimpleLinearEquation(text: string): SimpleLinearEquation | null {
     const match = side.match(/^([+-]?(?:(?:\d+(?:\.\d+)?)\*)?)?x(?:([+-]\d+(?:\.\d+)?)?)?$/)
     if (!match) return null
 
-    const rawCoefficient = (match[1] ?? '').replace('*', '')
+    const rawCoefficient = (match[1] ?? '').replace(/\*/g, '')
     const coefficient = rawCoefficient === '' || rawCoefficient === '+'
       ? 1
       : rawCoefficient === '-'
