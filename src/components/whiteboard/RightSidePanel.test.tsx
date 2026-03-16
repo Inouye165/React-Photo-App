@@ -24,6 +24,12 @@ describe('RightSidePanel', () => {
           analysis={null}
           analysisLoading={false}
           analysisError={null}
+          sessionState="queued"
+          sessionBadgeText="Queue open"
+          sessionSummaryText="Maya is waiting for live help on this algebra problem."
+          sessionMetaText="Waiting now"
+          onPickUpSession={vi.fn()}
+          onPassSession={vi.fn()}
           onStartAnalysis={vi.fn()}
           onRetryAnalysis={vi.fn()}
           responseAge=""
@@ -44,39 +50,35 @@ describe('RightSidePanel', () => {
     renderPanel()
 
     expect(screen.getByText('Tutor workflow')).toBeInTheDocument()
-    expect(screen.getByText('Diagnosis')).toBeInTheDocument()
-    expect(screen.getByText('Response')).toBeInTheDocument()
-    expect(screen.getByText('Assist')).toBeInTheDocument()
+    expect(screen.getByText('Session summary')).toBeInTheDocument()
+    expect(screen.getByText('Likely misconception')).toBeInTheDocument()
+    expect(screen.getByText('What to say next')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /pick up session/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^pass$/i })).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'CHAT' })).not.toBeInTheDocument()
   })
 
-  it('shows diagnosis first in the default workflow shell', () => {
+  it('shows the misconception and next-move hierarchy in the default workflow shell', () => {
     renderPanel()
 
-    expect(screen.getByText('Likely issue')).toBeInTheDocument()
-    expect(screen.getByText('Likely issue: Student missed the negative square root at step 2.')).toBeInTheDocument()
-    expect(screen.getByText('Key step: Take the square root of both sides')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' }).length).toBeGreaterThan(0)
+    expect(screen.getByText('The student is likely treating the square root as a single positive value and missing the second case.')).toBeInTheDocument()
+    expect(screen.getByText('Ask')).toBeInTheDocument()
+    expect(screen.getByText('Hint')).toBeInTheDocument()
+    expect(screen.getByText('Explain')).toBeInTheDocument()
+    expect(screen.getByText('Check understanding')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use first response' })).toBeInTheDocument()
   })
 
-  it('shows the response section content in the unified shell', () => {
+  it('keeps spoiler content collapsed by default and makes supporting details accessible', () => {
     renderPanel()
 
-    expect(screen.getByText('Recommended next move')).toBeInTheDocument()
-    expect(screen.getByText('Guide Maya Chen back to the missing negative root.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Use suggested reply' })).toBeInTheDocument()
-    expect(screen.getByText('Tutoring moves')).toBeInTheDocument()
-    expect(screen.getByText('Encourage progress')).toBeInTheDocument()
-    expect(screen.getByText('Ask a guiding question')).toBeInTheDocument()
-    expect(screen.getByText('Board action')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' }).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Annotate issue' })).toBeInTheDocument()
-    expect(screen.getByText('Last seen 2 hrs ago')).toBeInTheDocument()
-    expect(screen.getByText("I'm not sure what I did wrong on step 3")).toBeInTheDocument()
-    expect(screen.getByText('Let me take a look!')).toBeInTheDocument()
-    expect(screen.getByText("Student is offline. They'll see your note when they return.")).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
+    expect(screen.queryByText('x = 2 or x = -8')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /reveal solution/i }))
+    expect(screen.getByText('x = 2 or x = -8')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /evidence from student work/i }))
+    expect(screen.getByText('Student wrote √(25) = +5 only - missed the negative root')).toBeInTheDocument()
   })
 
   it('renders a student-specific panel without tutor workflow scaffolding', () => {
@@ -92,69 +94,47 @@ describe('RightSidePanel', () => {
     expect(screen.getByRole('textbox', { name: 'Message your tutor' })).toBeInTheDocument()
   })
 
-  it('inserts quick reply chip text into the message input', () => {
-    renderPanel()
+  it('keeps only one primary board-focus action in the main surface and uses it', () => {
+    const onMarkStep = vi.fn()
+    renderPanel({ onMarkStep })
 
-    fireEvent.click(screen.getByRole('button', { name: /Ask a guiding question/i }))
+    expect(screen.getAllByRole('button', { name: 'Focus board here' })).toHaveLength(1)
 
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What other number, besides 5, also squares to 25?')
+    fireEvent.click(screen.getByRole('button', { name: 'Focus board here' }))
+
+    expect(onMarkStep).toHaveBeenCalledWith(2)
+    expect(screen.getByText('Board focus')).toBeInTheDocument()
+    expect(screen.getAllByText('Marking step 2').length).toBeGreaterThan(0)
   })
 
-  it('shows the empty state when no chat messages exist', () => {
-    renderPanel({ initialChatMessages: [] })
+  it('routes the first response into the conversation detail view', () => {
+    renderPanel()
 
-    expect(screen.getByText('No messages yet. Start the conversation here.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Use first response' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open conversation' }))
+
+    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What two numbers square to 25?')
   })
 
   it('opens a focused detail view when requested', () => {
     renderPanel()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Open detail' })[1])
+    fireEvent.click(screen.getByRole('button', { name: 'Open full steps' }))
 
     expect(screen.getByText('Workflow detail')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Diagnosis' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('button', { name: 'Back to workflow' })).toBeInTheDocument()
-  })
-
-  it('calls the mark-step handler from the populated steps state', () => {
-    const onMarkStep = vi.fn()
-    renderPanel({ onMarkStep })
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark key step on board' })[0])
-
-    expect(onMarkStep).toHaveBeenCalledWith(2)
-  })
-
-  it('keeps the supporting diagnosis step actions available', () => {
-    const onMarkStep = vi.fn()
-    renderPanel({ onMarkStep })
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark on board' })[0])
-
-    expect(onMarkStep).toHaveBeenCalledWith(1)
   })
 
   it('shows persistent board focus feedback after marking a key step', () => {
     renderPanel()
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark key step on board' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Focus board here' }))
 
     expect(screen.getByText('Board focus')).toBeInTheDocument()
     expect(screen.getAllByText('Marking step 2').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Take the square root of both sides').length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Reply about step 2' }).length).toBeGreaterThan(0)
-    expect(screen.getByText('Send response about step 2')).toBeInTheDocument()
-    expect(screen.getByText('Focused on board')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: 'Mark key step on board' })[0]).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('updates the board focus context when a supporting diagnosis step is marked', () => {
-    renderPanel()
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Mark on board' })[0])
-
-    expect(screen.getAllByText('Marking step 1').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Add 5 to both sides').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Focus board here' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('maps the legacy help-request tab into the assist detail view', () => {
@@ -258,7 +238,6 @@ describe('RightSidePanel', () => {
     )
 
     expect(screen.getByText('Maya Chen just came online')).toBeInTheDocument()
-    expect(screen.getByText('Online now')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Dismiss presence notification' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss presence notification' }))

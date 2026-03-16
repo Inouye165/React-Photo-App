@@ -2447,6 +2447,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 analysisResult={structuredAnalysisResult}
                 analysisLoading={analysisLoading}
                 analysisError={analysisError}
+                sessionState={sessionState}
+                sessionBadgeText={sessionStatusMeta.pillText}
+                sessionSummaryText={sessionSummaryText}
+                sessionMetaText={sessionState === 'live' ? `Started 4 min ago · ${liveSessionTimerLabel}` : sessionState === 'async' ? 'Submitted yesterday at 3:22 PM' : 'Waiting now'}
+                onPickUpSession={handlePickUpSession}
+                onPassSession={handlePassSession}
                 onStartAnalysis={() => {
                   void handleStartAnalysis()
                 }}
