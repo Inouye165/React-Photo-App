@@ -5,6 +5,13 @@ import type { TutorAnalysisResult, TutorStepAnalysis } from '../../types/whitebo
 import type { WhiteboardBoardFrame } from './types'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
 
+const SHOULD_LOG_TUTOR_FIX_DEBUG = import.meta.env.DEV
+
+function tutorFixDebug(label: string, details: Record<string, unknown>): void {
+  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
+  console.info('[TUTOR-FIX-DEBUG]', label, details)
+}
+
 type TutorOverlayProps = {
   analysisResult: TutorAnalysisResult | null
   activeStepId: string | null
@@ -34,6 +41,15 @@ function getActiveStep(analysisResult: TutorAnalysisResult | null, activeStepId:
   return analysisResult.steps.find((step) => step.id === activeStepId) ?? analysisResult.steps[0] ?? null
 }
 
+function getRegionFrame(boardFrame: WhiteboardBoardFrame, region: TutorAnalysisResult['regions'][number]) {
+  return {
+    left: boardFrame.left + region.x * boardFrame.width,
+    top: boardFrame.top + region.y * boardFrame.height,
+    width: region.width * boardFrame.width,
+    height: region.height * boardFrame.height,
+  }
+}
+
 const TutorOverlay: React.FC<TutorOverlayProps> = ({
   analysisResult,
   activeStepId,
@@ -46,6 +62,18 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
 }) => {
   const activeStep = getActiveStep(analysisResult, activeStepId)
   const activeRegion = activeStep?.regionId ? analysisResult?.regions.find((region) => region.id === activeStep.regionId) ?? null : null
+
+  React.useEffect(() => {
+    if (!visible || !boardFrame || !activeRegion || !activeStep) return
+
+    tutorFixDebug('overlay transform input/output', {
+      activeStepId: activeStep.id,
+      regionId: activeRegion.id,
+      boardFrame,
+      region: activeRegion,
+      transformedRegionFrame: getRegionFrame(boardFrame, activeRegion),
+    })
+  }, [activeRegion, activeStep, boardFrame, visible])
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
@@ -77,10 +105,7 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
 
           {boardFrame && analysisResult.regions.map((region, index) => {
             const isActive = activeStep?.regionId === region.id
-            const left = boardFrame.left + region.x * boardFrame.width
-            const top = boardFrame.top + region.y * boardFrame.height
-            const width = region.width * boardFrame.width
-            const height = region.height * boardFrame.height
+            const frame = getRegionFrame(boardFrame, region)
             const stepForRegion = analysisResult.steps.find((step) => step.regionId === region.id)
 
             return (
@@ -92,10 +117,10 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
                 data-testid={`tutor-region-${region.id}`}
                 data-active={isActive ? 'true' : 'false'}
                 style={{
-                  left,
-                  top,
-                  width,
-                  height,
+                  left: frame.left,
+                  top: frame.top,
+                  width: frame.width,
+                  height: frame.height,
                   borderColor: isActive ? getStatusTone(stepForRegion ?? analysisResult.steps[index] ?? activeStep ?? analysisResult.steps[0]) : 'rgba(255,255,255,0.14)',
                   boxShadow: isActive ? `0 0 0 3px ${getStatusTone(stepForRegion ?? activeStep ?? analysisResult.steps[0]).replace('0.9', '0.18')}, 0 24px 40px rgba(0,0,0,0.18)` : 'none',
                   background: isActive ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.02)',

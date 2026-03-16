@@ -2,8 +2,58 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
+import { ApiError } from '../api/httpClient'
+import { buildTutorAnalysisDeviceCacheKey, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
+import type { WhiteboardTutorResponse } from '../types/whiteboard'
 
 const TEXT_MODE_PLACEHOLDER = 'The Weekend Problem\n\nSara has 3 apples...\n\nHow many apples does she have left?'
+const localStorageState = new Map<string, string>()
+
+const sampleAnalysisResponse: WhiteboardTutorResponse = {
+  reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
+  messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
+  analysisResult: {
+    problemText: 'Solve 2x = 10',
+    finalAnswers: ['x = 5'],
+    overallSummary: 'Nice work.',
+    regions: [],
+    steps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '2x ÷ 2 = 10 ÷ 2',
+        normalizedMath: 'x = 5',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 2',
+        kidFriendlyExplanation: 'You divided both sides by 2 correctly.',
+      },
+    ],
+    validatorWarnings: [],
+    canAnimate: false,
+  },
+  sections: {
+    problem: 'Solve 2x = 10',
+    stepsAnalysis: '1. Dividing both sides by 2 is correct.',
+    errorsFound: '',
+    encouragement: 'Nice work.',
+  },
+  problem: 'Solve 2x = 10',
+  correctSolution: 'x = 5',
+  scoreCorrect: 1,
+  scoreTotal: 1,
+  steps: [
+    {
+      number: 1,
+      label: 'Divide both sides by 2',
+      studentWork: '2x ÷ 2 = 10 ÷ 2',
+      correct: true,
+      neutral: false,
+      explanation: 'You divided both sides by 2 correctly.',
+    },
+  ],
+  errorsFound: [],
+  closingEncouragement: 'Nice work.',
+}
 
 function setViewport(width: number): void {
   Object.defineProperty(window, 'innerWidth', {
@@ -125,7 +175,11 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
       <div data-testid="right-side-panel" id="whiteboard-side-panel" data-active-tab={props.activeTab ?? props.initialTab ?? ''}>
         <div>Active tab: {props.activeTab ?? props.initialTab ?? ''}</div>
         <div>Panel mode: {props.panelMode ?? 'student'}</div>
+        <div>Participant name: {props.studentName ?? ''}</div>
+        <div>Participant status text: {props.studentLastSeenText ?? ''}</div>
         <div>Ready intent: {props.readyIntent ?? 'analyze'}</div>
+        <div>Analysis problem: {props.analysis?.problem ?? ''}</div>
+        <div>Initial chat message: {props.initialChatMessages?.[0]?.body ?? ''}</div>
         <button type="button" onClick={() => props.onReadyIntentChange?.('analyze')}>Set analyze intent</button>
         <button type="button" onClick={() => props.onReadyIntentChange?.('solve')}>Set solve intent</button>
         <button type="button" onClick={() => props.onReadyIntentChange?.('steps')}>Set steps intent</button>
@@ -146,6 +200,9 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
         />
         <button type="button" onClick={() => props.onStartAnalysis?.()}>
           Start analysis
+        </button>
+        <button type="button" onClick={() => props.onRetryAnalysis?.()}>
+          Rerun analysis
         </button>
         <button type="button" onClick={() => props.onSubmitHelpRequest?.()}>
           Send help request
@@ -192,6 +249,17 @@ vi.mock('../components/whiteboard/WhiteboardPad', async () => {
 describe('WhiteboardSessionPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorageState.clear()
+    vi.mocked(window.localStorage.getItem).mockImplementation((key: string) => localStorageState.get(String(key)) ?? null)
+    vi.mocked(window.localStorage.setItem).mockImplementation((key: string, value: string) => {
+      localStorageState.set(String(key), String(value))
+    })
+    vi.mocked(window.localStorage.removeItem).mockImplementation((key: string) => {
+      localStorageState.delete(String(key))
+    })
+    vi.mocked(window.localStorage.clear).mockImplementation(() => {
+      localStorageState.clear()
+    })
     setViewport(1280)
     installMatchMediaMock()
     mockAuthState.value = {
@@ -202,58 +270,14 @@ describe('WhiteboardSessionPage', () => {
     whiteboardPadState.asset = null
     whiteboardPadState.clearBackground.mockReset()
 
-    analyzeWhiteboardPhoto.mockResolvedValue({
-      reply: 'Problem: Solve 2x = 10\n\nSteps Analysis:\n1. Dividing both sides by 2 is correct.\n\nErrors Found: None.\n\nEncouragement: Nice work.',
-      messages: [{ role: 'assistant', content: 'Problem: Solve 2x = 10' }],
-      analysisResult: {
-        problemText: 'Solve 2x = 10',
-        finalAnswers: ['x = 5'],
-        overallSummary: 'Nice work.',
-        regions: [],
-        steps: [
-          {
-            id: 'step-1',
-            index: 0,
-            studentText: '2x ÷ 2 = 10 ÷ 2',
-            normalizedMath: 'x = 5',
-            status: 'correct',
-            shortLabel: 'Divide both sides by 2',
-            kidFriendlyExplanation: 'You divided both sides by 2 correctly.',
-          },
-        ],
-        validatorWarnings: [],
-        canAnimate: false,
-      },
-      sections: {
-        problem: 'Solve 2x = 10',
-        stepsAnalysis: '1. Dividing both sides by 2 is correct.',
-        errorsFound: '',
-        encouragement: 'Nice work.',
-      },
-      problem: 'Solve 2x = 10',
-      correctSolution: 'x = 5',
-      scoreCorrect: 1,
-      scoreTotal: 1,
-      steps: [
-        {
-          number: 1,
-          label: 'Divide both sides by 2',
-          studentWork: '2x ÷ 2 = 10 ÷ 2',
-          correct: true,
-          neutral: false,
-          explanation: 'You divided both sides by 2 correctly.',
-        },
-      ],
-      errorsFound: [],
-      closingEncouragement: 'Nice work.',
-    })
+    analyzeWhiteboardPhoto.mockResolvedValue(sampleAnalysisResponse)
     ensureWhiteboardMembership.mockResolvedValue({ ok: true })
     createWhiteboardInvite.mockResolvedValue({ joinUrl: 'https://example.com/join', expiresAt: new Date().toISOString() })
     createWhiteboardHelpRequest.mockResolvedValue({
       id: 'request-1',
       boardId: 'board-1',
-      requesterUserId: 'user-1',
-      requesterUsername: 'ron',
+      studentUserId: 'user-1',
+      studentUsername: 'ron',
       requestText: 'Need help',
       problemDraft: '',
       status: 'pending',
@@ -375,11 +399,11 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('💬 Help Request Sent')).toBeInTheDocument()
+      expect(screen.getByText('Ready for help')).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/A tutor will join here when one is available\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
-    expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
+    expect(screen.getByText(/Request help when you want a tutor to join this board\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
+    expect(screen.getByText('No tutor requested')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pick Up Session' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pass' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tutor queue' })).not.toBeInTheDocument()
@@ -400,18 +424,12 @@ describe('WhiteboardSessionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
+      expect(screen.getByText('No active request')).toBeInTheDocument()
     })
 
     expect(screen.getByText(/Student submitted 23 minutes ago\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Pick Up Session' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Pass' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pick Up Session' }))
-
-    expect(screen.getByText('● Live Session')).toBeInTheDocument()
-    expect(screen.getByText('Started 4 min ago')).toBeInTheDocument()
-    expect(screen.getByText(/🕐 04:23|🕐 04:24/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pick Up Session' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Pass' })).not.toBeInTheDocument()
   })
 
   it('keeps desktop annotation controls on the canvas when a background photo is present without auto-starting tutor analysis', async () => {
@@ -477,6 +495,11 @@ describe('WhiteboardSessionPage', () => {
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Response age' }), { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
 
     await waitFor(() => {
       expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
@@ -642,12 +665,6 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /See Homework/i })).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Send help request' }))
-
-    await waitFor(() => {
       expect(createWhiteboardHelpRequest).toHaveBeenCalledWith(
         'board-1',
         expect.objectContaining({
@@ -656,6 +673,9 @@ describe('WhiteboardSessionPage', () => {
         }),
       )
     })
+
+    expect(screen.getByText('💬 Help Request Sent')).toBeInTheDocument()
+    expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
 
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
     expect(createWhiteboardHelpRequest).not.toHaveBeenCalledWith(
@@ -808,6 +828,111 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
   })
 
+  it('hydrates an existing active help request when the create call returns a duplicate conflict', async () => {
+    createWhiteboardHelpRequest.mockRejectedValueOnce(new ApiError('This whiteboard already has an active help request.', {
+      status: 409,
+      details: {
+        data: {
+          id: 'request-existing',
+          boardId: 'board-1',
+          studentUserId: 'user-1',
+          studentUsername: 'ron',
+          claimedByUserId: null,
+          claimedByUsername: null,
+          requestText: 'Need help with the setup',
+          problemDraft: '2x + 4 = 18',
+          status: 'pending',
+          createdAt: '2026-03-10T12:00:00.000Z',
+          updatedAt: '2026-03-10T12:00:00.000Z',
+          claimedAt: null,
+          resolvedAt: null,
+          boardName: 'Whiteboard',
+        },
+      },
+    }))
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
+      target: { value: 'Need help with the setup' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send help request' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('💬 Help Request Sent')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Waiting for tutor')).toBeInTheDocument()
+    expect(screen.getByText('Initial chat message: Need help with the setup')).toBeInTheDocument()
+  })
+
+  it('passes real help-request data into the student side panel instead of mock chat content', async () => {
+    createWhiteboardHelpRequest.mockResolvedValueOnce({
+      id: 'request-2',
+      boardId: 'board-1',
+      studentUserId: 'user-1',
+      studentUsername: 'Student One',
+      claimedByUserId: null,
+      claimedByUsername: null,
+      requestText: 'Please help me check whether I added 7 correctly.',
+      problemDraft: '5x - 7 = 18',
+      status: 'pending',
+      createdAt: '2026-03-10T12:00:00.000Z',
+      updatedAt: '2026-03-10T12:00:00.000Z',
+      claimedAt: null,
+      resolvedAt: null,
+      boardName: 'Algebra board',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Request help' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Send help request' })).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
+      target: { value: 'Please help me check whether I added 7 correctly.' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send help request' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Participant name: Tutor')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Initial chat message: Please help me check whether I added 7 correctly.')).toBeInTheDocument()
+    expect(screen.queryByText("Initial chat message: I'm not sure what I did wrong on step 3")).not.toBeInTheDocument()
+  })
+
   it('wires solve and step-by-step help intents into the tutor analysis request', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
@@ -839,6 +964,10 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set solve intent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
 
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
+
     await waitFor(() => {
       expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
         'board-1',
@@ -855,6 +984,10 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Set steps intent' }))
     fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
 
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
+
     await waitFor(() => {
       expect(analyzeWhiteboardPhoto).toHaveBeenLastCalledWith(
         'board-1',
@@ -869,16 +1002,262 @@ describe('WhiteboardSessionPage', () => {
     })
   })
 
+  it('uses the cached tutor analysis when the tutor asks for help again', async () => {
+    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+        },
+      ],
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    expect(cacheKey).toBeTruthy()
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'local-cache',
+      }),
+    )
+  })
+
+  it('hydrates the most recent cached analysis on load without requiring another AI request', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+        },
+      ],
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
+
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+  })
+
+  it('lets tutors explicitly rerun AI after a cached analysis result is reused', async () => {
+    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+        },
+      ],
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+    analyzeWhiteboardPhoto.mockResolvedValue({
+      ...sampleAnalysisResponse,
+      cacheSource: 'server-cache',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rerun analysis' }))
+
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          inputMode: 'photo',
+          skipCache: true,
+        }),
+      )
+    })
+
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'local-cache',
+      }),
+    )
+    expect(consoleInfoSpy).toHaveBeenCalledWith(
+      '[WB-TUTOR] assistant-data-source',
+      expect.objectContaining({
+        boardId: 'board-1',
+        inputMode: 'photo',
+        mode: 'analysis',
+        source: 'server-cache',
+      }),
+    )
+  })
+
+  it('does not call AI until the tutor confirms the paid request', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+    expect(screen.getByText('$')).toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByText('Confirm request AI assistance')).not.toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+  })
+
   it('shows tutor assist mode and lets tutors resolve claimed requests', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
     }
-    getActiveWhiteboardHelpRequest.mockResolvedValueOnce({
+    getActiveWhiteboardHelpRequest.mockResolvedValue({
       id: 'request-claimed',
       boardId: 'board-1',
-      requesterUserId: 'user-1',
-      requesterUsername: 'ron',
+      studentUserId: 'user-1',
+      studentUsername: 'ron',
       requestText: 'Please check my work',
       problemDraft: '2x = 10',
       status: 'claimed',

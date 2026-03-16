@@ -79,6 +79,35 @@ function createMockDb(state: MockDbState) {
     }
 
     if (tableName === 'room_members') {
+      const performInsert = async (row: RoomMemberRow | null) => {
+        if (!row) return
+        if (row.user_id === 'force-fk-user-missing') {
+          const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_user_id_foreign"') as Error & {
+            code?: string
+            constraint?: string
+          }
+          error.code = '23503'
+          error.constraint = 'room_members_user_id_foreign'
+          throw error
+        }
+        const roomExists = state.rooms.some((room) => room.id === row.room_id)
+        if (!roomExists) {
+          const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_room_id_foreign"') as Error & {
+            code?: string
+            constraint?: string
+          }
+          error.code = '23503'
+          error.constraint = 'room_members_room_id_foreign'
+          throw error
+        }
+        const exists = state.roomMembers.some(
+          (member) => member.room_id === row.room_id && member.user_id === row.user_id,
+        )
+        if (!exists) {
+          state.roomMembers.push(row)
+        }
+      }
+
       const query = {
         _where: {} as Record<string, unknown>,
         _insertRow: null as RoomMemberRow | null,
@@ -104,33 +133,11 @@ function createMockDb(state: MockDbState) {
         }),
         onConflict: jest.fn().mockReturnThis(),
         ignore: jest.fn(async () => {
-          if (!query._insertRow) return
-          if (query._forceUserFkError) {
-            const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_user_id_foreign"') as Error & {
-              code?: string
-              constraint?: string
-            }
-            error.code = '23503'
-            error.constraint = 'room_members_user_id_foreign'
-            throw error
-          }
-          const roomExists = state.rooms.some((room) => room.id === query._insertRow?.room_id)
-          if (!roomExists) {
-            const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_room_id_foreign"') as Error & {
-              code?: string
-              constraint?: string
-            }
-            error.code = '23503'
-            error.constraint = 'room_members_room_id_foreign'
-            throw error
-          }
-          const exists = state.roomMembers.some(
-            (member) => member.room_id === query._insertRow?.room_id && member.user_id === query._insertRow?.user_id,
-          )
-          if (!exists) {
-            state.roomMembers.push(query._insertRow)
-          }
+          await performInsert(query._insertRow)
         }),
+        then: function then(resolve: (value: unknown) => unknown, reject: (reason?: unknown) => unknown) {
+          return performInsert(query._insertRow).then(resolve, reject)
+        },
       }
       return query
     }

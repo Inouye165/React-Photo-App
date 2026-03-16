@@ -90,4 +90,28 @@ describe('Tutor overlay integration', () => {
     expect(screen.getByText('Here’s what I notice')).toBeInTheDocument()
     expect(screen.getByText(/Keep the equation balanced on both sides/i)).toBeInTheDocument()
   })
+
+  it('maps region coordinates into the displayed image frame', () => {
+    render(
+      <div className="relative" style={{ width: 900, height: 600 }}>
+        <TutorOverlay
+          analysisResult={analysisResult}
+          activeStepId="step-1"
+          lessonMessage={null}
+          boardFrame={{ left: 40, top: 132, width: 700, height: 315 }}
+          visible
+          reducedMotion
+          onToggleVisible={() => undefined}
+          onSelectStep={() => undefined}
+        />
+      </div>,
+    )
+
+    expect(screen.getByTestId('tutor-region-region-1')).toHaveStyle({
+      left: '110px',
+      top: '195px',
+      width: '175px',
+      height: '37.8px',
+    })
+  })
 })

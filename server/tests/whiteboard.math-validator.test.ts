@@ -1,7 +1,7 @@
 /* eslint-env jest */
 
 import { describe, expect, test } from '@jest/globals'
-import { validateFinalAnswers } from '../tutor/mathValidator'
+import { validateFinalAnswers, validateStepPair } from '../tutor/mathValidator'
 
 describe('whiteboard math validator', () => {
   test('catches the missing plus-minus square root case', () => {
@@ -21,5 +21,23 @@ describe('whiteboard math validator', () => {
 
     expect(incorrect.status).toBe('incorrect')
     expect(incorrect.warnings.join(' ')).toMatch(/does not match the original equation/i)
+  })
+
+  test('catches incorrect subtraction in a simple linear equation step', () => {
+    const result = validateStepPair('3x + 8 = 26', '3x = 16', '3x + 8 = 26')
+
+    expect(result.status).toBe('incorrect')
+    expect(result.warning).toMatch(/26 - 8 should be 18/i)
+    expect(result.correction).toMatch(/3x = 18/i)
+  })
+
+  test('validates simple linear final answers deterministically', () => {
+    const incorrect = validateFinalAnswers('3x + 8 = 26', ['x = 4'])
+    const correct = validateFinalAnswers('3x + 8 = 26', ['x = 6'])
+
+    expect(incorrect.status).toBe('incorrect')
+    expect(incorrect.expectedAnswers).toEqual([6])
+    expect(correct.status).toBe('correct')
+    expect(correct.matchedAnswers).toEqual([6])
   })
 })
