@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
-  ChevronRight,
   Lightbulb,
   List,
   LoaderCircle,
@@ -12,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
 import type { TutorAnalysisResult, TutorStepAnalysis, WhiteboardTutorResponse } from '../../types/whiteboard'
+import type { TutorStepStatus } from '../../types/whiteboard'
 import { readStoredTutorAssistState, writeStoredTutorAssistState } from './tutorAssistPersistence'
 
 export type TabType = 'ai-tutor' | 'help-request' | 'chat' | 'steps'
@@ -72,11 +72,17 @@ export interface RightSidePanelProps {
   onTutorStepSelect?: (stepId: string) => void
   onMarkStep?: (stepNumber: number) => void
   onBoardActionContextChange?: (context: BoardActionContext | null) => void
+  sessionState?: 'queued' | 'live' | 'async'
+  sessionBadgeText?: string
+  sessionSummaryText?: string
+  sessionMetaText?: string | null
+  sessionSubjectText?: string | null
+  sessionGradeText?: string | null
+  onPickUpSession?: () => void
+  onPassSession?: () => void
 }
 
 type VisibleTabId = 'chat' | 'steps' | 'ai-tutor'
-
-type WorkflowSectionState = Record<VisibleTabId, boolean>
 type PanelVariant = 'workflow' | 'detail'
 
 type EmptyStateConfig = {
@@ -158,12 +164,6 @@ const EMPTY_STATES: Record<VisibleTabId, EmptyStateConfig> = {
     headline: 'Ready to analyze',
     subtext: 'Request AI help to see coaching guidance',
   },
-}
-
-const DEFAULT_WORKFLOW_SECTION_STATE: WorkflowSectionState = {
-  steps: true,
-  chat: true,
-  'ai-tutor': false,
 }
 
 const WORKFLOW_SECTION_ORDER: Array<{
@@ -450,11 +450,197 @@ function resolveVisibleTab(tab?: TabType): VisibleTabId {
   return 'chat'
 }
 
-function createInitialWorkflowSections(preferredTab: VisibleTabId): WorkflowSectionState {
-  return {
-    ...DEFAULT_WORKFLOW_SECTION_STATE,
-    [preferredTab]: true,
+type WorkflowStep = {
+  id: string
+  number: number
+  title: string
+  detail: string
+  status?: TutorStepStatus | 'neutral'
+  studentText?: string
+  correction?: string
+  hint?: string
+  explanation?: string
+  tag?: StepCard['tag']
+}
+
+type NextMovePlaybook = {
+  ask: string
+  hint: string
+  explain: string
+  checkUnderstanding: string
+}
+
+const SAMPLE_STEP_CARDS: StepCard[] = [
+  {
+    number: 1,
+    title: 'Add 3 to both sides',
+    detail: 'Move the constant first so the square-root step is easier to isolate.',
+  },
+  {
+    number: 2,
+    title: 'Take the square root of both sides',
+    detail: 'Student wrote √(25) = +5 only - missed the negative root',
+    tag: 'KEY STEP',
+  },
+  {
+    number: 3,
+    title: 'Split into both cases',
+    detail: 'The student is likely treating the square root as a single positive value and missing the second case.',
+    tag: 'STUDENT ERROR',
+  },
+]
+
+const PRIMARY_KEY_STEP: StepCard = SAMPLE_STEP_CARDS[1] ?? {
+  number: 2,
+  title: 'Take the square root of both sides',
+  detail: 'Student wrote √(25) = +5 only - missed the negative root',
+  tag: 'KEY STEP',
+}
+
+function isCoachingStatus(status?: TutorStepStatus | 'neutral'): boolean {
+  return status === 'incorrect' || status === 'partial' || status === 'warning'
+}
+
+function getWorkflowSteps(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult?: TutorAnalysisResult | null,
+): WorkflowStep[] {
+  const structuredSteps = analysisResult?.steps ?? analysis?.analysisResult?.steps ?? []
+
+  if (structuredSteps.length > 0) {
+    const highlightedStepId = structuredSteps.find((step) => isCoachingStatus(step.status))?.id
+
+    return structuredSteps.map((step, index) => ({
+      id: step.id || `analysis-step-${index + 1}`,
+      number: index + 1,
+      title: step.shortLabel?.trim() || `Step ${index + 1}`,
+      detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || step.studentText?.trim() || 'Review this step.',
+      status: step.status,
+      studentText: step.studentText?.trim() || '',
+      correction: step.correction?.trim() || '',
+      hint: step.hint?.trim() || '',
+      explanation: step.kidFriendlyExplanation?.trim() || '',
+      tag: step.id === highlightedStepId ? 'STUDENT ERROR' : undefined,
+    }))
   }
+
+  return SAMPLE_STEP_CARDS.map((step) => ({
+    id: `sample-step-${step.number}`,
+    number: step.number,
+    title: step.title,
+    detail: step.detail,
+    status: step.tag === 'STUDENT ERROR' ? 'incorrect' : step.tag === 'KEY STEP' ? 'partial' : 'neutral',
+    studentText: step.detail,
+    correction: step.detail,
+    hint: step.tag === 'KEY STEP' ? 'Pause on this transition before revealing the answer.' : '',
+    explanation: step.detail,
+    tag: step.tag,
+  }))
+}
+
+function getCurrentWorkflowStep(steps: WorkflowStep[]): WorkflowStep {
+  return steps.find((step) => isCoachingStatus(step.status)) ?? steps[0] ?? {
+    id: 'fallback-step',
+    number: PRIMARY_KEY_STEP.number,
+    title: PRIMARY_KEY_STEP.title,
+    detail: PRIMARY_KEY_STEP.detail,
+    status: 'partial',
+    studentText: PRIMARY_KEY_STEP.detail,
+    correction: PRIMARY_KEY_STEP.detail,
+    hint: 'Guide the student back to this step first.',
+    explanation: PRIMARY_KEY_STEP.detail,
+    tag: 'KEY STEP',
+  }
+}
+
+function getSolutionText(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult?: TutorAnalysisResult | null,
+): string {
+  const answers = analysisResult?.finalAnswers ?? analysis?.analysisResult?.finalAnswers ?? []
+  if (answers.length > 0) {
+    return answers.join(' or ')
+  }
+
+  if (analysis?.correctSolution?.trim()) {
+    return analysis.correctSolution.trim()
+  }
+
+  return 'x = 2 or x = -8'
+}
+
+function extractFirstSentence(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  const match = trimmed.match(/^(.+?[.!?])(?:\s|$)/)
+  return (match?.[1] ?? trimmed).trim()
+}
+
+function hasMissingDualCaseSignal(values: string[]): boolean {
+  const joined = values.join(' ').toLowerCase()
+  return /square root|sqrt|\+\-|±|negative root|both roots|second answer/.test(joined)
+}
+
+function getLikelyMisconception(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult: TutorAnalysisResult | null | undefined,
+  currentStep: WorkflowStep,
+): string {
+  const candidateTexts = [
+    currentStep.correction ?? '',
+    currentStep.hint ?? '',
+    currentStep.explanation ?? '',
+    analysis?.sections?.errorsFound ?? '',
+    analysisResult?.overallSummary ?? '',
+  ].filter(Boolean)
+
+  if (hasMissingDualCaseSignal(candidateTexts)) {
+    return 'The student is likely treating the square root as a single positive value and missing the second case.'
+  }
+
+  const firstSentence = candidateTexts.map(extractFirstSentence).find(Boolean)
+  if (firstSentence) {
+    return firstSentence
+  }
+
+  return `The student is likely stuck on ${currentStep.title.toLowerCase()} and needs help reconnecting the rule to this step.`
+}
+
+function buildNextMovePlaybook(
+  analysis: WhiteboardTutorResponse | null,
+  analysisResult: TutorAnalysisResult | null | undefined,
+  currentStep: WorkflowStep,
+): NextMovePlaybook {
+  const contextTexts = [
+    currentStep.title,
+    currentStep.detail,
+    currentStep.correction ?? '',
+    currentStep.hint ?? '',
+    analysis?.sections?.errorsFound ?? '',
+    analysisResult?.overallSummary ?? '',
+  ]
+
+  if (hasMissingDualCaseSignal(contextTexts)) {
+    return {
+      ask: 'What two numbers square to 25?',
+      hint: 'Think of all values whose square is 25.',
+      explain: 'When you take the square root of both sides, you must consider both +5 and -5.',
+      checkUnderstanding: 'If one case is x + 3 = 5, what is the other case?',
+    }
+  }
+
+  return {
+    ask: currentStep.hint || `What should happen at ${currentStep.title.toLowerCase()} before you move on?`,
+    hint: currentStep.explanation || currentStep.detail,
+    explain: currentStep.correction || analysisResult?.overallSummary || analysis?.sections?.stepsAnalysis || 'Reveal the rule only after the student commits to a next step.',
+    checkUnderstanding: `Ask the student to explain ${currentStep.title.toLowerCase()} in their own words before you confirm it.`,
+  }
+}
+
+function getSessionBadgeClass(sessionState?: 'queued' | 'live' | 'async'): string {
+  if (sessionState === 'live') return 'border-emerald-400/30 bg-emerald-500/12 text-emerald-100'
+  if (sessionState === 'async') return 'border-sky-400/25 bg-sky-500/10 text-sky-100'
+  return 'border-amber-400/30 bg-amber-500/12 text-amber-100'
 }
 
 function buildStudentInitials(name: string): string {
@@ -1589,59 +1775,240 @@ function EmptyPanelState({ tabId }: { tabId: VisibleTabId }): React.JSX.Element 
   )
 }
 
-function WorkflowSectionCard({
-  title,
-  subtitle,
-  Icon,
-  accentClassName,
-  sectionClassName,
-  isOpen,
-  onToggle,
+function TutorWorkflowOverview({
+  analysis,
+  analysisResult,
+  boardActionContext,
+  onBoardAction,
+  onUseReply,
   onOpenDetail,
-  children,
+  sessionState,
+  sessionBadgeText,
+  sessionSummaryText,
+  sessionMetaText,
+  sessionSubjectText,
+  sessionGradeText,
+  onPickUpSession,
+  onPassSession,
 }: {
-  title: string
-  subtitle: string
-  Icon: LucideIcon
-  accentClassName: string
-  sectionClassName?: string
-  isOpen: boolean
-  onToggle: () => void
-  onOpenDetail: () => void
-  children: React.ReactNode
+  analysis: WhiteboardTutorResponse | null
+  analysisResult?: TutorAnalysisResult | null
+  boardActionContext: BoardActionContext | null
+  onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  onUseReply: (value: string) => void
+  onOpenDetail: (tabId: VisibleTabId) => void
+  sessionState?: 'queued' | 'live' | 'async'
+  sessionBadgeText?: string
+  sessionSummaryText?: string
+  sessionMetaText?: string | null
+  sessionSubjectText?: string | null
+  sessionGradeText?: string | null
+  onPickUpSession?: () => void
+  onPassSession?: () => void
 }): React.JSX.Element {
-  const ChevronIcon = isOpen ? ChevronDown : ChevronRight
+  const [detailsOpen, setDetailsOpen] = useState(true)
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
+  const [explanationOpen, setExplanationOpen] = useState(false)
+  const [solutionOpen, setSolutionOpen] = useState(false)
+  const steps = useMemo(() => getWorkflowSteps(analysis, analysisResult), [analysis, analysisResult])
+  const currentStep = useMemo(() => getCurrentWorkflowStep(steps), [steps])
+  const misconception = useMemo(() => getLikelyMisconception(analysis, analysisResult, currentStep), [analysis, analysisResult, currentStep])
+  const playbook = useMemo(() => buildNextMovePlaybook(analysis, analysisResult, currentStep), [analysis, analysisResult, currentStep])
+  const solutionText = useMemo(() => getSolutionText(analysis, analysisResult), [analysis, analysisResult])
+  const detailedExplanation = analysisResult?.overallSummary?.trim() || analysis?.sections?.stepsAnalysis?.trim() || currentStep.explanation || currentStep.detail
+  const evidenceText = currentStep.studentText || analysis?.sections?.errorsFound?.trim() || currentStep.detail
+  const hasSessionSummary = Boolean(sessionBadgeText || sessionSummaryText || sessionMetaText || sessionSubjectText || sessionGradeText || onPickUpSession || onPassSession)
 
   return (
-    <section className={`rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(31,41,55,0.96),rgba(17,24,39,0.98))] shadow-[0_18px_36px_rgba(0,0,0,0.22)] ${sectionClassName ?? ''}`}>
-      <div className="flex items-start gap-3 px-4 py-3">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-start gap-3 rounded-[12px] text-left outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
-          aria-expanded={isOpen}
-        >
-          <span className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${accentClassName}`}>
-            <Icon className="h-4 w-4" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{title}</span>
-            <span className="mt-1 block text-[13px] leading-[1.5] text-[#9CA3AF]">{subtitle}</span>
-          </span>
-          <ChevronIcon className="mt-1 h-4 w-4 shrink-0 text-[#6B7280]" aria-hidden="true" />
-        </button>
+    <div className="h-full overflow-y-auto p-4">
+      <div className="space-y-4 pb-6">
+        {hasSessionSummary ? (
+          <section className="rounded-[16px] border border-white/10 bg-white/[0.02] px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Session summary</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {sessionBadgeText ? (
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getSessionBadgeClass(sessionState)}`}>
+                      {sessionBadgeText}
+                    </span>
+                  ) : null}
+                  {sessionSubjectText ? <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#D1D5DB]">{sessionSubjectText}</span> : null}
+                  {sessionGradeText ? <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-[#D1D5DB]">{sessionGradeText}</span> : null}
+                </div>
+                {sessionSummaryText ? <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{sessionSummaryText}</p> : null}
+                {sessionMetaText ? <p className="mt-1 text-[12px] text-[#8f867d]">{sessionMetaText}</p> : null}
+              </div>
 
-        <button
-          type="button"
-          onClick={onOpenDetail}
-          className="shrink-0 rounded-[10px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#D1D5DB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
-        >
-          Open detail
-        </button>
+              {sessionState === 'queued' && (onPickUpSession || onPassSession) ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  {onPickUpSession ? (
+                    <button
+                      type="button"
+                      onClick={onPickUpSession}
+                      className="rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
+                    >
+                      Pick Up Session
+                    </button>
+                  ) : null}
+                  {onPassSession ? (
+                    <button
+                      type="button"
+                      onClick={onPassSession}
+                      className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+                    >
+                      Pass
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(36,28,20,0.88),rgba(17,24,39,0.98))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200/85">Likely misconception</div>
+              <h2 className="mt-2 text-[18px] font-semibold leading-tight text-[#F9FAFB]">{misconception}</h2>
+              <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">Current board focus: {currentStep.title}.</p>
+            </div>
+            {currentStep.tag ? <StepTag value={currentStep.tag} /> : null}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => onBoardAction(currentStep.number, 'mark', 'diagnosis')}
+              aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number)}
+              className={`inline-flex items-center gap-2 rounded-[12px] border px-3 py-2 text-[13px] font-semibold transition ${
+                isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number)
+                  ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
+                  : 'border-amber-400/25 bg-amber-500/12 text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/16'
+              }`}
+            >
+              <MapPin className="h-3.5 w-3.5" />
+              Focus board here
+            </button>
+            <span className="text-[12px] text-[#9CA3AF]">One clear board move first. Deeper evidence stays below.</span>
+          </div>
+        </section>
+
+        <section className="rounded-[18px] border border-sky-400/18 bg-[linear-gradient(180deg,rgba(23,36,56,0.92),rgba(17,24,39,0.98))] px-4 py-4 shadow-[0_22px_40px_rgba(0,0,0,0.24)]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Best next move</div>
+              <h2 className="mt-2 text-[20px] font-semibold text-[#F9FAFB]">What to say next</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => onUseReply(playbook.ask)}
+              className="shrink-0 rounded-[12px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
+            >
+              Use first response
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            {[
+              ['Ask', playbook.ask],
+              ['Hint', playbook.hint],
+              ['Explain', playbook.explain],
+              ['Check understanding', playbook.checkUnderstanding],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{label}</div>
+                <p className="mt-1 text-[14px] leading-6 text-[#F9FAFB]">{value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setDetailsOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={detailsOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Supporting steps</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the active step visually distinct and the rest subordinate.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+
+          {detailsOpen ? (
+            <div className="border-t border-white/10 px-4 py-3">
+              <div className="space-y-2">
+                {steps.map((step) => {
+                  const isActive = step.number === currentStep.number
+                  return (
+                    <article key={step.id} className={`rounded-[12px] border px-3 py-3 ${isActive ? 'border-amber-300/30 bg-amber-500/[0.08]' : 'border-white/8 bg-white/[0.02]'}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${isActive ? 'bg-[#78350F] text-[#F59E0B]' : 'bg-[#1F2937] text-[#9CA3AF]'}`}>
+                          {step.number}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className={`text-[13px] font-medium ${isActive ? 'text-[#F9FAFB]' : 'text-[#D1D5DB]'}`}>{step.title}</h3>
+                            {isActive ? <span className="rounded-full border border-amber-300/25 bg-amber-500/12 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100">Current focus</span> : null}
+                          </div>
+                          <p className={`mt-1 text-[12px] leading-5 ${isActive ? 'text-[#D1D5DB]' : 'text-[#8f867d]'}`}>{step.detail}</p>
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setEvidenceOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={evidenceOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Evidence from student work</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the raw clue available, but not competing with the next move.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${evidenceOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+
+          {evidenceOpen ? <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">{evidenceText}</div> : null}
+        </section>
+
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setSolutionOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={solutionOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Reveal solution</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the answer pair demoted until the tutor actually needs it.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${solutionOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+
+          {solutionOpen ? <div className="border-t border-white/10 px-4 py-3 text-[15px] font-semibold text-[#F9FAFB]">{solutionText}</div> : null}
+        </section>
+
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setExplanationOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={explanationOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Detailed explanation</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Full rationale stays tucked behind disclosure instead of filling the top of the rail.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${explanationOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+
+          {explanationOpen ? <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">{detailedExplanation}</div> : null}
+        </section>
+
+        <div className="flex flex-wrap gap-2 px-1">
+          <button type="button" onClick={() => onOpenDetail('chat')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
+            Open conversation
+          </button>
+          <button type="button" onClick={() => onOpenDetail('steps')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
+            Open full steps
+          </button>
+          <button type="button" onClick={() => onOpenDetail('ai-tutor')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
+            Open assist detail
+          </button>
+        </div>
       </div>
-
-      {isOpen ? <div className="border-t border-white/10">{children}</div> : null}
-    </section>
+    </div>
   )
 }
 
@@ -1664,12 +2031,19 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   onRetryAnalysis,
   onMarkStep,
   onBoardActionContextChange,
+  sessionState,
+  sessionBadgeText,
+  sessionSummaryText,
+  sessionMetaText,
+  sessionSubjectText,
+  sessionGradeText,
+  onPickUpSession,
+  onPassSession,
   width = 'clamp(380px, 35vw, 560px)',
   onTabChange,
 }) => {
   const requestedTab = useMemo(() => resolveVisibleTab(activeTab ?? initialTab), [activeTab, initialTab])
   const [detailTab, setDetailTab] = useState<VisibleTabId | null>(() => (requestedTab === 'steps' ? null : requestedTab))
-  const [openSections, setOpenSections] = useState<WorkflowSectionState>(() => createInitialWorkflowSections(requestedTab))
   const [chatMessages, setChatMessages] = useState<TutorMessage[]>(() => initialChatMessages ?? [])
   const [chatComposerValue, setChatComposerValue] = useState('')
   const [boardActionContext, setBoardActionContext] = useState<BoardActionContext | null>(null)
@@ -1723,18 +2097,12 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
     fontFamily: '"DM Sans", sans-serif',
   }
 
-  const handleOpenSection = (tabId: VisibleTabId) => {
-    setOpenSections((current) => ({ ...current, [tabId]: !current[tabId] }))
-  }
-
   const handleOpenDetail = (tabId: VisibleTabId) => {
-    setOpenSections((current) => ({ ...current, [tabId]: true }))
     setDetailTab(tabId)
     onTabChange?.(tabId)
   }
 
   const handleDetailTabChange = (tabId: VisibleTabId) => {
-    setOpenSections((current) => ({ ...current, [tabId]: true }))
     setDetailTab(tabId)
     onTabChange?.(tabId)
   }
@@ -1750,7 +2118,6 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   useEffect(() => {
     if (activeTab && activeTab !== previousActiveTabRef.current) {
       const nextTab = resolveVisibleTab(activeTab)
-      setOpenSections((current) => ({ ...current, [nextTab]: true }))
       setDetailTab(nextTab === 'steps' ? null : nextTab)
     }
 
@@ -1794,7 +2161,6 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   const handleUseAssistReply = (value: string) => {
     if (!value) return
 
-    setOpenSections((current) => ({ ...current, chat: true, 'ai-tutor': true }))
     handleApplyComposerText(value, 'replace')
 
     if (detailTab === 'ai-tutor') {
@@ -2022,70 +2388,22 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             </div>
           </section>
         ) : (
-          <div className="h-full overflow-y-auto p-4">
-            <div className="space-y-4 pb-4">
-              {WORKFLOW_SECTION_ORDER.map((section) => (
-                <WorkflowSectionCard
-                  key={section.id}
-                  title={section.title}
-                  subtitle={section.subtitle}
-                  Icon={section.Icon}
-                  accentClassName={section.accentClassName}
-                  sectionClassName={section.sectionClassName}
-                  isOpen={openSections[section.id]}
-                  onToggle={() => handleOpenSection(section.id)}
-                  onOpenDetail={() => handleOpenDetail(section.id)}
-                >
-                  {section.id === 'steps' ? (
-                    <StepsPanel
-                      boardActionContext={boardActionContext}
-                      onBoardAction={handleBoardAction}
-                      onStartAnalysis={onStartAnalysis}
-                      onRetryAnalysis={onRetryAnalysis}
-                      analysisLoading={analysisLoading}
-                      analysisPendingConfirmation={analysisPendingConfirmation}
-                      analysisSourceLabel={analysisSourceLabel}
-                      stepCards={stepCards}
-                      primaryDiagnosisIssue={primaryDiagnosisIssue}
-                      primaryKeyStep={primaryKeyStep}
-                      problemText={problemText}
-                      answerPairText={answerPairText}
-                      variant="workflow"
-                    />
-                  ) : section.id === 'chat' ? (
-                    <ChatPanel
-                      messages={chatMessages}
-                      composerValue={chatComposerValue}
-                      onComposerValueChange={setChatComposerValue}
-                      onApplyComposerText={handleApplyComposerText}
-                      onSendMessage={handleSendChatMessage}
-                      boardActionContext={boardActionContext}
-                      onBoardAction={handleBoardAction}
-                      studentName={studentName}
-                      studentPresence={studentPresence}
-                      studentLastSeenText={studentLastSeenText}
-                      variant="workflow"
-                      viewerMode="tutor"
-                      recommendation={responseRecommendation}
-                      focusStepNumber={primaryDiagnosisIssue.number}
-                    />
-                  ) : (
-                    <TutorAssistPanel
-                      initialState={resolvedTutorAssistState}
-                      analysisLoading={analysisLoading}
-                      onStartAnalysis={onStartAnalysis}
-                      actionCards={tutorAssistActionCards}
-                      focusStepNumber={primaryDiagnosisIssue.number}
-                      variant="workflow"
-                      onUseReply={handleUseAssistReply}
-                      boardActionContext={boardActionContext}
-                      onBoardAction={handleBoardAction}
-                    />
-                  )}
-                </WorkflowSectionCard>
-              ))}
-            </div>
-          </div>
+          <TutorWorkflowOverview
+            analysis={analysis}
+            analysisResult={analysisResult}
+            boardActionContext={boardActionContext}
+            onBoardAction={handleBoardAction}
+            onUseReply={handleUseAssistReply}
+            onOpenDetail={handleOpenDetail}
+            sessionState={sessionState}
+            sessionBadgeText={sessionBadgeText}
+            sessionSummaryText={sessionSummaryText}
+            sessionMetaText={sessionMetaText}
+            sessionSubjectText={sessionSubjectText}
+            sessionGradeText={sessionGradeText}
+            onPickUpSession={onPickUpSession}
+            onPassSession={onPassSession}
+          />
         )}
       </div>
       </>

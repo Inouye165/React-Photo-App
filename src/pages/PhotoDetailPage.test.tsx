@@ -17,10 +17,39 @@ vi.mock('../api', async (importOriginal: () => Promise<unknown>) => {
   return {
     ...actual,
     API_BASE_URL: 'http://localhost:3001',
+    getPhoto: vi.fn(async () => ({ success: true, photo: null })),
+    getOrCreateRoom: vi.fn(),
     fetchProtectedBlobUrl: vi.fn().mockResolvedValue('blob:mock-image'),
     revokeBlobUrl: vi.fn(),
   };
 });
+
+vi.mock('../hooks/useCollectiblesForPhoto', () => ({
+  useCollectiblesForPhoto: () => ({ collectibleData: null }),
+}));
+
+vi.mock('../api/httpClient', () => ({
+  request: vi.fn(async ({ path }: { path?: string }) => {
+    if (typeof path === 'string' && path.startsWith('/api/comments/')) {
+      return { success: true, data: [] };
+    }
+
+    if (path === '/api/comments') {
+      return { success: true, data: null };
+    }
+
+    if (typeof path === 'string' && path.includes('/collectibles/')) {
+      return { success: true, photos: [] };
+    }
+
+    return { success: true };
+  }),
+}));
+
+vi.mock('../api/auth', () => ({
+  getAuthHeadersAsync: vi.fn(async () => ({})),
+  getHeadersForGetRequestAsync: vi.fn(async () => ({})),
+}));
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import LocationMapPanel from './LocationMapPanel';
 import { getPhotoLocation } from './LocationMapUtils';
@@ -15,6 +15,13 @@ type MapProps = React.HTMLAttributes<HTMLDivElement> & {
   children?: React.ReactNode;
   onCenterChanged?: (event: { detail?: { center?: MapCenter } }) => void;
   onZoomChanged?: (event: { detail?: { zoom?: number } }) => void;
+  mapId?: string;
+  disableDefaultUI?: boolean;
+  zoomControl?: boolean;
+  streetViewControl?: boolean;
+  mapTypeControl?: boolean;
+  fullscreenControl?: boolean;
+  mapTypeControlOptions?: unknown;
 };
 
 type AdvancedMarkerProps = {
@@ -27,7 +34,21 @@ vi.mock('@vis.gl/react-google-maps', () => ({
   APIProvider: ({ children }: { children?: React.ReactNode }) => (
     <div data-testid="api-provider">{children}</div>
   ),
-  Map: ({ center, zoom, children, ...props }: MapProps) => (
+  Map: ({
+    center,
+    zoom,
+    children,
+    onCenterChanged: _onCenterChanged,
+    onZoomChanged: _onZoomChanged,
+    mapId: _mapId,
+    disableDefaultUI: _disableDefaultUI,
+    zoomControl: _zoomControl,
+    streetViewControl: _streetViewControl,
+    mapTypeControl: _mapTypeControl,
+    fullscreenControl: _fullscreenControl,
+    mapTypeControlOptions: _mapTypeControlOptions,
+    ...props
+  }: MapProps) => (
     <div
       data-testid="google-map"
       data-center={JSON.stringify(center)}
@@ -43,6 +64,36 @@ vi.mock('@vis.gl/react-google-maps', () => ({
     </div>
   ),
 }));
+
+let originalIframeSrcDescriptor: PropertyDescriptor | undefined;
+
+beforeAll(() => {
+  originalIframeSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'src');
+
+  Object.defineProperty(HTMLIFrameElement.prototype, 'src', {
+    configurable: true,
+    enumerable: true,
+    get() {
+      return (this as HTMLIFrameElement & { __mockSrc?: string }).__mockSrc ?? '';
+    },
+    set(value: string) {
+      Object.defineProperty(this, '__mockSrc', {
+        configurable: true,
+        writable: true,
+        value,
+      });
+    },
+  });
+});
+
+afterAll(() => {
+  if (originalIframeSrcDescriptor) {
+    Object.defineProperty(HTMLIFrameElement.prototype, 'src', originalIframeSrcDescriptor);
+    return;
+  }
+
+  delete (HTMLIFrameElement.prototype as { src?: string }).src;
+});
 
 describe('getPhotoLocation', () => {
   describe('coordinate extraction', () => {
@@ -337,11 +388,12 @@ describe('LocationMapPanel component', () => {
       render(<LocationMapPanel photo={photo} />);
 
       const iframe = screen.getByTitle('Map (OpenStreetMap)');
+      const iframeSrc = iframe.getAttribute('src') ?? '';
       expect(iframe).toBeInTheDocument();
       expect(iframe).toHaveProperty('src');
-      expect((iframe as HTMLIFrameElement).src).toContain('openstreetmap.org/export/embed.html');
-      expect((iframe as HTMLIFrameElement).src).toContain('37.7749');
-      expect((iframe as HTMLIFrameElement).src).toContain('-122.4194');
+      expect(iframeSrc).toContain('openstreetmap.org/export/embed.html');
+      expect(iframeSrc).toContain('37.7749');
+      expect(iframeSrc).toContain('-122.4194');
     });
 
     it('displays OSM footer with link', () => {
