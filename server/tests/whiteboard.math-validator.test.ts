@@ -1,6 +1,5 @@
 /* eslint-env jest */
 
-import { describe, expect, test } from '@jest/globals'
 import { validateFinalAnswers, validateStepPair } from '../tutor/mathValidator'
 
 describe('whiteboard math validator', () => {

@@ -102,4 +102,72 @@ describe('tutorAnalysisCache', () => {
     expect(readTutorAnalysisDeviceCache(cacheKey)).toBeNull()
     expect(window.localStorage.getItem(cacheKey!)).toBeNull()
   })
+
+  it('builds different cache keys for different model tiers', () => {
+    const standardKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      modelTier: 'standard',
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      imageMimeType: 'image/png',
+      imageName: 'math-a.png',
+    })
+
+    const strongerKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      modelTier: 'stronger',
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      imageMimeType: 'image/png',
+      imageName: 'math-a.png',
+    })
+
+    expect(standardKey).toBeTruthy()
+    expect(strongerKey).toBeTruthy()
+    expect(standardKey).not.toBe(strongerKey)
+  })
+
+  it('builds different cache keys for different text and image request inputs', () => {
+    const textKeyA = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'text',
+      mode: 'analysis',
+      modelTier: 'standard',
+      textContent: 'Solve 2x = 10',
+    })
+    const textKeyB = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'text',
+      mode: 'analysis',
+      modelTier: 'standard',
+      textContent: 'Solve 3x = 12',
+    })
+    const imageKeyA = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      modelTier: 'standard',
+      imageDataUrl: 'data:image/png;base64,AAAA',
+      imageMimeType: 'image/png',
+      imageName: 'math-a.png',
+    })
+    const imageKeyB = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      modelTier: 'standard',
+      imageDataUrl: 'data:image/png;base64,BBBB',
+      imageMimeType: 'image/png',
+      imageName: 'math-b.png',
+    })
+
+    expect(textKeyA).toBeTruthy()
+    expect(textKeyB).toBeTruthy()
+    expect(imageKeyA).toBeTruthy()
+    expect(imageKeyB).toBeTruthy()
+    expect(textKeyA).not.toBe(textKeyB)
+    expect(imageKeyA).not.toBe(imageKeyB)
+  })
 })

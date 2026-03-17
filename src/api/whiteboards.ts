@@ -390,6 +390,7 @@ export async function analyzeWhiteboardPhoto(
   const response = await request<Omit<WhiteboardTutorResponse, 'messages'> & {
     messages: WhiteboardTutorResponse['messages']
     cacheSource?: WhiteboardTutorResponse['cacheSource']
+    modelMetadata?: WhiteboardTutorResponse['modelMetadata']
   }>({
     path: `/api/whiteboards/${boardId}/tutor`,
     method: 'POST',

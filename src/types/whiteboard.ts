@@ -204,10 +204,57 @@ export type WhiteboardTutorSections = {
 
 export type WhiteboardTutorCacheSource = 'fresh' | 'local-cache' | 'server-cache'
 
+export type WhiteboardTutorModelTier = 'standard' | 'stronger'
+
+export type WhiteboardTutorModelMetadata = {
+  tier: WhiteboardTutorModelTier
+  strongerModelAvailable: boolean
+  transcriptionModel: string | null
+  evaluationModel: string | null
+}
+
+export type WhiteboardTutorMathFactDomain = 'arithmetic' | 'algebra' | 'unknown'
+
+export type WhiteboardTutorMathFactConfidence = 'high' | 'medium' | 'low'
+
+export type WhiteboardTutorMathFactErrorType =
+  | 'arithmetic-slip'
+  | 'equation-transform'
+  | 'final-answer-mismatch'
+  | 'unsupported'
+  | 'unverified'
+
+export type WhiteboardTutorVerifiedMathStep = {
+  stepIndex: number
+  expression?: string
+  isValid: boolean
+  explanation?: string
+  errorType?: WhiteboardTutorMathFactErrorType
+}
+
+export type WhiteboardTutorDetectedMathError = {
+  stepIndex?: number
+  errorType?: WhiteboardTutorMathFactErrorType
+  explanation?: string
+}
+
+export type WhiteboardTutorMathFacts = {
+  supported: boolean
+  domain: WhiteboardTutorMathFactDomain
+  canonicalProblem: string | null
+  verifiedAnswer: string[] | null
+  verifiedSteps: WhiteboardTutorVerifiedMathStep[]
+  detectedError: WhiteboardTutorDetectedMathError | null
+  confidence: WhiteboardTutorMathFactConfidence
+  unsupportedReason?: string
+}
+
 export type WhiteboardTutorResponse = {
   reply: string
   messages: WhiteboardTutorMessage[]
   cacheSource?: WhiteboardTutorCacheSource
+  modelMetadata?: WhiteboardTutorModelMetadata
+  mathFacts?: WhiteboardTutorMathFacts | null
   analysisResult: TutorAnalysisResult | null
   sections: WhiteboardTutorSections
   problem: string
@@ -229,6 +276,7 @@ export type WhiteboardTutorRequest = {
   messages?: WhiteboardTutorMessage[]
   mode?: 'analysis' | 'tutor' | 'chat'
   skipCache?: boolean
+  modelTier?: WhiteboardTutorModelTier
 }
 
 export type CreateWhiteboardHelpRequestPayload = {

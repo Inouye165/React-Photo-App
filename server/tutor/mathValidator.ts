@@ -45,7 +45,7 @@ type AstNode =
   | { type: 'binary'; operator: '+' | '-' | '*' | '/' | '^'; left: AstNode; right: AstNode }
   | { type: 'function'; name: 'sqrt'; argument: AstNode }
 
-type ValidationFinding = {
+export type ValidationFinding = {
   status: TutorStepStatus
   warning?: string
   correction?: string
@@ -53,28 +53,28 @@ type ValidationFinding = {
   deterministic?: boolean
 }
 
-type FinalAnswerValidation = {
+export type FinalAnswerValidation = {
   status: TutorStepStatus
   warnings: string[]
   expectedAnswers: number[]
   matchedAnswers: number[]
 }
 
-type SimpleLinearEquation = {
+export type SimpleLinearEquation = {
   leftCoefficient: number
   leftConstant: number
   rightCoefficient: number
   rightConstant: number
 }
 
-const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.NODE_ENV !== 'production'
+const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.TUTOR_DEBUG === 'true'
 
 function tutorFixDebug(label: string, details: Record<string, unknown>): void {
   if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
   console.info('[TUTOR-FIX-DEBUG]', label, details)
 }
 
-function normalizeMathText(value: string): string {
+export function normalizeMathText(value: string): string {
   return value
     .replace(/[−–—]/g, '-')
     .replace(/[×xX](?=\d)/g, '*')
@@ -339,7 +339,7 @@ function approxEqual(a: number, b: number, epsilon = 1e-6): boolean {
   return Math.abs(a - b) <= epsilon
 }
 
-function formatNumber(value: number): string {
+export function formatNumber(value: number): string {
   if (!Number.isFinite(value)) return `${value}`
   if (approxEqual(value, Math.round(value))) return `${Math.round(value)}`
   return `${Number(value.toFixed(4))}`
@@ -452,7 +452,7 @@ function solveKnownForms(normalized: string): number[] {
   return []
 }
 
-function solveEquation(problemText: string): number[] {
+export function solveEquation(problemText: string): number[] {
   const normalized = extractEquationCandidate(problemText)
   const equation = parseEquation(normalized)
   const knownFormRoots = solveKnownForms(normalized)
@@ -509,7 +509,7 @@ function solveEquation(problemText: string): number[] {
   return []
 }
 
-function parseSimpleLinearEquation(text: string): SimpleLinearEquation | null {
+export function parseSimpleLinearEquation(text: string): SimpleLinearEquation | null {
   const equation = parseEquation(text)
   if (equation) {
     const leftPoly = astToPolynomial(equation.left)
@@ -776,6 +776,19 @@ export function validateStepPair(previousStep: string, currentStep: string, prob
     deterministic: false,
     hint: 'This step may be okay, but the validator could not confirm it with high confidence.',
   }
+}
+
+export function evaluateArithmeticExpression(expressionText: string): number | null {
+  const normalized = normalizeMathText(expressionText)
+  if (!normalized || normalized.includes('=') || /[a-z]/i.test(normalized)) {
+    return null
+  }
+
+  const ast = parseExpressionAst(normalized)
+  if (!ast) return null
+
+  const value = evaluateAst(ast, 0)
+  return Number.isFinite(value) ? value : null
 }
 
 export function detectCommonMistakes(problemText: string, finalAnswers: string[], steps: TutorStepAnalysis[]): string[] {

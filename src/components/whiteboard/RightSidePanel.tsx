@@ -40,16 +40,16 @@ export interface RightSidePanelProps {
   helpRequestSubmitting?: boolean
   helpRequestError?: string | null
   onSubmitHelpRequest?: () => void
-  readyIntent?: 'analyze' | 'solve' | 'steps'
-  onReadyIntentChange?: (value: 'analyze' | 'solve' | 'steps') => void
   onProblemDraftChange?: (value: string) => void
   analysis: WhiteboardTutorResponse | null
+  analysisMode?: 'quick' | 'full' | null
   analysisResult?: TutorAnalysisResult | null
   analysisLoading: boolean
   analysisError: string | null
   analysisPendingConfirmation?: boolean
-  onStartAnalysis: () => void
-  onRetryAnalysis: () => void
+  onStartAnalysis: (mode: 'quick' | 'full') => void
+  onRetryAnalysis: (mode: 'quick' | 'full') => void
+  onUseStrongerModel?: (mode: 'quick' | 'full') => void
   responseAge: string
   responseAgeInvalid: boolean
   onResponseAgeChange: (value: string) => void
@@ -59,17 +59,21 @@ export interface RightSidePanelProps {
   onTutorSubmit: () => void
   onRequestHumanTutor: () => void
   onLessonMessageChange?: (message: TutorLessonMessage | null) => void
+  assistContextKey?: string | null
   activeTutorStepId?: string | null
+  tutorWalkthroughActive?: boolean
   overlayVisible?: boolean
   tutorPlaybackCanPlay?: boolean
   tutorPlaybackIsPlaying?: boolean
+  onTutorWalkthroughEnter?: () => void
+  onTutorWalkthroughExit?: () => void
   onToggleTutorOverlay?: () => void
   onTutorPlaybackPlay?: () => void
   onTutorPlaybackPause?: () => void
   onTutorPlaybackPrevious?: () => void
   onTutorPlaybackNext?: () => void
   onTutorPlaybackReplay?: () => void
-  onTutorStepSelect?: (stepId: string) => void
+  onTutorStepSelect?: (stepId: string | null) => void
   onMarkStep?: (stepNumber: number) => void
   onBoardActionContextChange?: (context: BoardActionContext | null) => void
   sessionState?: 'queued' | 'live' | 'async'
@@ -84,6 +88,7 @@ export interface RightSidePanelProps {
 
 type VisibleTabId = 'chat' | 'steps' | 'ai-tutor'
 type PanelVariant = 'workflow' | 'detail'
+type TutorAssistRequestMode = 'simple' | 'deep'
 
 type EmptyStateConfig = {
   headline: string
@@ -101,9 +106,7 @@ type TutorMessage = {
 
 export type ChatPreviewMessage = TutorMessage
 
-type TutorAssistViewState = 'ready' | 'loading' | 'populated'
-
-type TutorAssistActionCardId = 'coaching' | 'board' | 'fallback' | 'encouragement'
+type TutorAssistViewState = 'ready' | 'loading' | 'simple' | 'deep'
 
 type StepCard = {
   number: number
@@ -119,20 +122,50 @@ type TutorQuickAction = {
   message: string
 }
 
-type TutorAssistActionCard = {
-  id: TutorAssistActionCardId
-  title: string
-  recommendation: string
-  rationale: string
-  composerText?: string
-  optional?: boolean
-}
-
 type ResponseRecommendation = {
   title: string
   detail: string
   suggestedReply: string
   quickActions: TutorQuickAction[]
+}
+
+type TutorConfidenceLevel = 'high' | 'medium' | 'low'
+
+type TutorConfidenceState = {
+  level: TutorConfidenceLevel
+  label: string
+  detail: string
+}
+
+type TutorModelSummary = {
+  label: string
+  detail: string | null
+  tier: 'standard' | 'stronger' | null
+  strongerModelAvailable: boolean
+}
+
+type TutorAssistSummaryState = {
+  diagnosis: string | null
+  nextMove: string | null
+  focusStep: StepCard | null
+  evidenceText: string
+  modelSummary: TutorModelSummary | null
+  confidence: TutorConfidenceState | null
+  canUseStrongerModel: boolean
+}
+
+type TutorResponseMode = 'quick' | 'full'
+
+type TutorResponseModeCard = {
+  id: TutorResponseMode
+  label: string
+  summary: string
+  detail: string
+  ctaLabel: string
+  emphasisClassName: string
+  buttonClassName: string
+  panelClassName: string
+  caution?: string
 }
 
 type BoardActionSource = 'diagnosis' | 'response' | 'assist'
@@ -200,29 +233,8 @@ const WORKFLOW_SECTION_ORDER: Array<{
 
 const QUICK_REPLY_CHIPS = ['Great effort! 👍', "You're close!", "Let's try again", 'Check step 2']
 
-const SHOULD_LOG_TUTOR_FIX_DEBUG = import.meta.env.DEV
-
-function tutorFixDebug(label: string, details: Record<string, unknown>): void {
-  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
-  console.info('[TUTOR-FIX-DEBUG]', label, details)
-}
-
-function toSentenceCase(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-  return trimmed.charAt(0).toLowerCase() + trimmed.slice(1)
-}
-
-function getReadableStudentReference(studentName: string): string {
-  const trimmed = studentName.trim()
-  if (!trimmed) return 'the student'
-
-  const firstName = trimmed.split(/\s+/)[0] ?? trimmed
-  if (/^(student|tutor|test|user|guest)$/i.test(firstName)) {
-    return 'the student'
-  }
-
-  return firstName
+function hasVisibleText(value?: string | null): boolean {
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 function getAnalysisSourceLabel(analysis: WhiteboardTutorResponse | null): string | null {
@@ -247,30 +259,30 @@ function buildStepCards(analysisResult: TutorAnalysisResult | null): StepCard[] 
   const fallbackKeyIndex = analysisResult.steps.findIndex((step) => step.status === 'correct')
   const keyIndex = issueIndex > 0 ? issueIndex - 1 : fallbackKeyIndex >= 0 ? fallbackKeyIndex : 0
 
-  return analysisResult.steps.map((step, index) => ({
-    number: index + 1,
-    title: step.shortLabel?.trim() || `Step ${index + 1}`,
-    detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || step.studentText?.trim() || step.normalizedMath?.trim() || 'Review this step.',
-    tag: index === issueIndex
-      ? 'STUDENT ERROR'
-      : index === keyIndex
-        ? 'KEY STEP'
-        : undefined,
-  }))
+  return analysisResult.steps
+    .map((step, index): StepCard => {
+      const tag: StepCard['tag'] = index === issueIndex
+        ? 'STUDENT ERROR'
+        : index === keyIndex
+          ? 'KEY STEP'
+          : undefined
+
+      return {
+        number: index + 1,
+        title: step.shortLabel?.trim() || '',
+        detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || '',
+        tag,
+      }
+    })
+    .filter((step) => hasVisibleText(step.title) || hasVisibleText(step.detail))
 }
 
-function getPrimaryDiagnosisIssue(stepCards: StepCard[]): StepCard {
-  return stepCards.find((step) => step.tag === 'STUDENT ERROR') ?? stepCards[1] ?? stepCards[0] ?? { number: 1, title: 'Step 1', detail: '' }
+function getPrimaryDiagnosisIssue(stepCards: StepCard[]): StepCard | null {
+  return stepCards.find((step) => step.tag === 'STUDENT ERROR') ?? stepCards[0] ?? null
 }
 
-function getPrimaryKeyStep(stepCards: StepCard[], issue: StepCard): StepCard {
-  return stepCards.find((step) => step.tag === 'KEY STEP')
-    ?? stepCards[Math.max(0, issue.number - 2)]
-    ?? issue
-    ?? { number: 1, title: 'Step 1', detail: '' }
-}
-
-function getStructuredStep(analysisResult: TutorAnalysisResult | null, stepCard: StepCard): TutorStepAnalysis | null {
+function getStructuredStep(analysisResult: TutorAnalysisResult | null, stepCard: StepCard | null): TutorStepAnalysis | null {
+  if (!stepCard) return null
   return analysisResult?.steps[stepCard.number - 1] ?? null
 }
 
@@ -290,129 +302,96 @@ function getAnswerPairText(analysis: WhiteboardTutorResponse | null, analysisRes
 function buildResponseRecommendation(
   analysis: WhiteboardTutorResponse | null,
   analysisResult: TutorAnalysisResult | null,
-  issueCard: StepCard,
+  issueCard: StepCard | null,
   issueStep: TutorStepAnalysis | null,
-  studentName: string,
 ): ResponseRecommendation | null {
   if (!analysis && !analysisResult) {
     return null
   }
 
-  const studentReference = getReadableStudentReference(studentName)
-
   const suggestedReply = issueStep?.hint?.trim()
-    || issueStep?.correction?.trim()
-    || issueStep?.kidFriendlyExplanation?.trim()
-    || 'What other number, besides 5, also squares to 25?'
+  if (!suggestedReply || !issueCard) {
+    return null
+  }
 
-  const summarySource = issueStep?.shortLabel?.trim() || issueCard.title
-  const consequenceText = issueStep?.kidFriendlyExplanation?.trim() || issueCard.detail
-  const correctionText = issueStep?.correction?.trim() || issueStep?.hint?.trim() || `Revisit ${toSentenceCase(summarySource)}.`
-  const detail = [
-    `First fix step ${issueCard.number}: ${toSentenceCase(summarySource)}.`,
-    consequenceText,
-    `Next correction: ${correctionText}`,
-  ].filter(Boolean).join(' ')
-
-  const encouragement = analysisResult?.overallSummary?.trim() || analysis?.closingEncouragement?.trim() || 'You set it up correctly. There is just one more thing to notice.'
-  const conciseCorrection = issueStep?.correction?.trim() || issueStep?.kidFriendlyExplanation?.trim() || `Revisit ${toSentenceCase(summarySource)}.`
+  const detail = issueStep?.correction?.trim() || issueStep?.kidFriendlyExplanation?.trim() || ''
 
   return {
-    title: `Guide ${studentReference} to fix step ${issueCard.number}.`,
+    title: 'Next tutor move',
     detail,
     suggestedReply,
-    quickActions: [
-      {
-        id: 'encourage',
-        label: 'Encourage progress',
-        hint: 'Keep confidence high before redirecting.',
-        message: encouragement,
-      },
-      {
-        id: 'guide-root',
-        label: 'Ask a guiding question',
-        hint: 'Use the shortest prompt that keeps the student thinking.',
-        message: suggestedReply,
-      },
-      {
-        id: 'return-step',
-        label: `Point to step ${issueCard.number}`,
-        hint: `Refocus on ${toSentenceCase(issueCard.title)}.`,
-        message: `Check step ${issueCard.number} again and focus on ${toSentenceCase(issueCard.title)}.`,
-      },
-      {
-        id: 'fallback',
-        label: 'Give the concise correction',
-        hint: 'Use this only if the student stays stuck.',
-        message: conciseCorrection,
-      },
-    ],
+    quickActions: [],
   }
 }
 
-function buildTutorAssistActionCards(
-  analysis: WhiteboardTutorResponse | null,
+function getTutorConfidenceState(
   analysisResult: TutorAnalysisResult | null,
-  issueCard: StepCard,
   issueStep: TutorStepAnalysis | null,
-  answerPairText: string,
-): TutorAssistActionCard[] {
-  if (!analysis && !analysisResult) {
-    return []
+): TutorConfidenceState | null {
+  void analysisResult
+  void issueStep
+  return null
+}
+
+function getTutorConfidenceBadgeClass(level: TutorConfidenceLevel): string {
+  switch (level) {
+    case 'high':
+      return 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200'
+    case 'medium':
+      return 'border-amber-400/25 bg-amber-500/10 text-amber-200'
+    default:
+      return 'border-slate-400/20 bg-slate-500/10 text-slate-200'
+  }
+}
+
+function getTutorModelSummary(analysis: WhiteboardTutorResponse | null): TutorModelSummary | null {
+  const modelMetadata = analysis?.modelMetadata
+  if (!modelMetadata) {
+    return null
   }
 
-  const coachingMove = issueStep?.hint?.trim() || issueStep?.kidFriendlyExplanation?.trim() || 'Ask one short guiding question before explaining the full correction.'
-  const fallbackExplanation = issueStep?.correction?.trim()
-    || issueStep?.kidFriendlyExplanation?.trim()
-    || `Show how the corrected work leads to ${answerPairText}.`
-  const confidencePhrase = analysisResult?.overallSummary?.trim()
-    || analysis?.closingEncouragement?.trim()
-    || 'You have the right setup. There is just one detail to fix.'
+  const label = modelMetadata.evaluationModel || modelMetadata.transcriptionModel || ''
+  if (!label) {
+    return null
+  }
 
-  return [
-    {
-      id: 'coaching',
-      title: 'Best coaching move',
-      recommendation: coachingMove,
-      rationale: `This keeps the tutor focused on the first blocking mistake at step ${issueCard.number} before giving away the full correction.`,
-      composerText: coachingMove,
-    },
-    {
-      id: 'board',
-      title: 'Best annotate-on-board move',
-      recommendation: `Mark step ${issueCard.number}, then annotate ${toSentenceCase(issueCard.title)} so the first blocking mistake is visible on the board.`,
-      rationale: `A quick board cue keeps the tutor focused on the earliest blocking step instead of later downstream work.`,
-    },
-    {
-      id: 'fallback',
-      title: 'Best fallback explanation',
-      recommendation: fallbackExplanation,
-      rationale: `Use the direct explanation only if the student stays stuck after the guiding move. It compresses the correction into one tutor-facing response.`,
-      composerText: fallbackExplanation,
-    },
-    {
-      id: 'encouragement',
-      title: 'Confidence phrase',
-      recommendation: confidencePhrase,
-      rationale: 'Keep the redirect warm so the student stays engaged while you correct the mistake.',
-      composerText: confidencePhrase,
-      optional: true,
-    },
-  ]
+  const detail = modelMetadata.transcriptionModel && modelMetadata.evaluationModel
+    ? `Photo read: ${modelMetadata.transcriptionModel}`
+    : null
+
+  return {
+    label,
+    detail,
+    tier: modelMetadata.tier,
+    strongerModelAvailable: modelMetadata.strongerModelAvailable,
+  }
+}
+
+function buildTutorAssistLessonMessage(summary: {
+  diagnosis: string | null
+  nextMove: string | null
+  focusStep: StepCard | null
+}): TutorLessonMessage | null {
+  if (!summary.diagnosis && !summary.nextMove) {
+    return null
+  }
+
+  return {
+    title: summary.focusStep?.title || summary.diagnosis || 'Tutor Assist',
+    body: summary.nextMove || summary.diagnosis || '',
+    tone: 'assistant',
+  }
 }
 
 function getStepCard(stepCards: StepCard[], stepNumber: number): StepCard {
   return stepCards.find((step) => step.number === stepNumber)
     ?? stepCards[stepNumber - 1]
-    ?? { number: stepNumber, title: `Step ${stepNumber}`, detail: '' }
+    ?? { number: stepNumber, title: '', detail: '' }
 }
 
-function getLikelyIssueSummary(issue: StepCard, keyStep: StepCard): string {
-  if (/negative root/i.test(issue.detail)) {
-    return `Student missed the negative square root at step ${keyStep.number}.`
-  }
-
-  return issue.detail || `Step ${issue.number} needs the first correction.`
+function getLikelyIssueSummary(issue: StepCard | null): string | null {
+  if (!issue) return null
+  return issue.detail || issue.title || null
 }
 
 function createBoardActionContext(stepCards: StepCard[], stepNumber: number, mode: BoardActionMode, source: BoardActionSource): BoardActionContext {
@@ -470,33 +449,6 @@ type NextMovePlaybook = {
   checkUnderstanding: string
 }
 
-const SAMPLE_STEP_CARDS: StepCard[] = [
-  {
-    number: 1,
-    title: 'Add 3 to both sides',
-    detail: 'Move the constant first so the square-root step is easier to isolate.',
-  },
-  {
-    number: 2,
-    title: 'Take the square root of both sides',
-    detail: 'Student wrote √(25) = +5 only - missed the negative root',
-    tag: 'KEY STEP',
-  },
-  {
-    number: 3,
-    title: 'Split into both cases',
-    detail: 'The student is likely treating the square root as a single positive value and missing the second case.',
-    tag: 'STUDENT ERROR',
-  },
-]
-
-const PRIMARY_KEY_STEP: StepCard = SAMPLE_STEP_CARDS[1] ?? {
-  number: 2,
-  title: 'Take the square root of both sides',
-  detail: 'Student wrote √(25) = +5 only - missed the negative root',
-  tag: 'KEY STEP',
-}
-
 function isCoachingStatus(status?: TutorStepStatus | 'neutral'): boolean {
   return status === 'incorrect' || status === 'partial' || status === 'warning'
 }
@@ -510,47 +462,31 @@ function getWorkflowSteps(
   if (structuredSteps.length > 0) {
     const highlightedStepId = structuredSteps.find((step) => isCoachingStatus(step.status))?.id
 
-    return structuredSteps.map((step, index) => ({
-      id: step.id || `analysis-step-${index + 1}`,
-      number: index + 1,
-      title: step.shortLabel?.trim() || `Step ${index + 1}`,
-      detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || step.studentText?.trim() || 'Review this step.',
-      status: step.status,
-      studentText: step.studentText?.trim() || '',
-      correction: step.correction?.trim() || '',
-      hint: step.hint?.trim() || '',
-      explanation: step.kidFriendlyExplanation?.trim() || '',
-      tag: step.id === highlightedStepId ? 'STUDENT ERROR' : undefined,
-    }))
+    return structuredSteps
+      .map((step, index): WorkflowStep => {
+        const tag: WorkflowStep['tag'] = step.id === highlightedStepId ? 'STUDENT ERROR' : undefined
+
+        return {
+          id: step.id || `analysis-step-${index + 1}`,
+          number: index + 1,
+          title: step.shortLabel?.trim() || step.studentText?.trim() || step.normalizedMath?.trim() || '',
+          detail: step.kidFriendlyExplanation?.trim() || step.correction?.trim() || step.hint?.trim() || '',
+          status: step.status,
+          studentText: step.studentText?.trim() || step.normalizedMath?.trim() || '',
+          correction: step.correction?.trim() || '',
+          hint: step.hint?.trim() || '',
+          explanation: step.kidFriendlyExplanation?.trim() || '',
+          tag,
+        }
+      })
+      .filter((step) => hasVisibleText(step.title) || hasVisibleText(step.detail) || hasVisibleText(step.studentText))
   }
 
-  return SAMPLE_STEP_CARDS.map((step) => ({
-    id: `sample-step-${step.number}`,
-    number: step.number,
-    title: step.title,
-    detail: step.detail,
-    status: step.tag === 'STUDENT ERROR' ? 'incorrect' : step.tag === 'KEY STEP' ? 'partial' : 'neutral',
-    studentText: step.detail,
-    correction: step.detail,
-    hint: step.tag === 'KEY STEP' ? 'Pause on this transition before revealing the answer.' : '',
-    explanation: step.detail,
-    tag: step.tag,
-  }))
+  return []
 }
 
-function getCurrentWorkflowStep(steps: WorkflowStep[]): WorkflowStep {
-  return steps.find((step) => isCoachingStatus(step.status)) ?? steps[0] ?? {
-    id: 'fallback-step',
-    number: PRIMARY_KEY_STEP.number,
-    title: PRIMARY_KEY_STEP.title,
-    detail: PRIMARY_KEY_STEP.detail,
-    status: 'partial',
-    studentText: PRIMARY_KEY_STEP.detail,
-    correction: PRIMARY_KEY_STEP.detail,
-    hint: 'Guide the student back to this step first.',
-    explanation: PRIMARY_KEY_STEP.detail,
-    tag: 'KEY STEP',
-  }
+function getCurrentWorkflowStep(steps: WorkflowStep[]): WorkflowStep | null {
+  return steps.find((step) => isCoachingStatus(step.status)) ?? steps[0] ?? null
 }
 
 function getSolutionText(
@@ -566,7 +502,7 @@ function getSolutionText(
     return analysis.correctSolution.trim()
   }
 
-  return 'x = 2 or x = -8'
+  return ''
 }
 
 function extractFirstSentence(value: string): string {
@@ -576,16 +512,13 @@ function extractFirstSentence(value: string): string {
   return (match?.[1] ?? trimmed).trim()
 }
 
-function hasMissingDualCaseSignal(values: string[]): boolean {
-  const joined = values.join(' ').toLowerCase()
-  return /square root|sqrt|\+\-|±|negative root|both roots|second answer/.test(joined)
-}
-
 function getLikelyMisconception(
   analysis: WhiteboardTutorResponse | null,
   analysisResult: TutorAnalysisResult | null | undefined,
-  currentStep: WorkflowStep,
-): string {
+  currentStep: WorkflowStep | null,
+): string | null {
+  if (!currentStep) return null
+
   const candidateTexts = [
     currentStep.correction ?? '',
     currentStep.hint ?? '',
@@ -594,46 +527,75 @@ function getLikelyMisconception(
     analysisResult?.overallSummary ?? '',
   ].filter(Boolean)
 
-  if (hasMissingDualCaseSignal(candidateTexts)) {
-    return 'The student is likely treating the square root as a single positive value and missing the second case.'
-  }
-
   const firstSentence = candidateTexts.map(extractFirstSentence).find(Boolean)
   if (firstSentence) {
     return firstSentence
   }
 
-  return `The student is likely stuck on ${currentStep.title.toLowerCase()} and needs help reconnecting the rule to this step.`
+  return null
+}
+
+function buildTutorResponseModeCard({
+  mode,
+  diagnosis,
+  nextMove,
+  fullHelp,
+  solutionText,
+  focusStep,
+}: {
+  mode: TutorResponseMode
+  diagnosis: string
+  nextMove: string
+  fullHelp: string
+  solutionText: string
+  focusStep: StepCard | null
+}): TutorResponseModeCard {
+  const focusText = focusStep?.title ? `Focus on ${focusStep.title.toLowerCase()}.` : ''
+
+  if (mode === 'full') {
+    return {
+      id: 'full',
+      label: 'Full help',
+      summary: 'Full explanation, worked steps, and teaching support.',
+      detail: fullHelp || nextMove || diagnosis,
+      ctaLabel: 'Use full-help response',
+      emphasisClassName: 'text-sky-200',
+      buttonClassName: 'border-sky-400/30 bg-sky-500/[0.08] text-[#F9FAFB] hover:border-sky-300/50 hover:bg-sky-500/[0.12]',
+      panelClassName: 'border-sky-400/22 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(20,38,61,0.98))]',
+    }
+  }
+
+  return {
+    id: 'quick',
+    label: 'Quick help',
+    summary: 'See the mistake and the correct answer fast.',
+    detail: [diagnosis, solutionText ? `Correct answer: ${solutionText}.` : null, nextMove || focusText || null].filter(Boolean).join(' '),
+    ctaLabel: 'Use quick-help response',
+    emphasisClassName: 'text-amber-100',
+    buttonClassName: 'border-amber-300/35 bg-amber-500/[0.12] text-[#F9FAFB] hover:border-amber-300/55 hover:bg-amber-500/[0.16]',
+    panelClassName: 'border-amber-300/25 bg-[linear-gradient(180deg,rgba(55,39,16,0.94),rgba(17,24,39,0.98))]',
+  }
 }
 
 function buildNextMovePlaybook(
   analysis: WhiteboardTutorResponse | null,
   analysisResult: TutorAnalysisResult | null | undefined,
-  currentStep: WorkflowStep,
+  currentStep: WorkflowStep | null,
 ): NextMovePlaybook {
-  const contextTexts = [
-    currentStep.title,
-    currentStep.detail,
-    currentStep.correction ?? '',
-    currentStep.hint ?? '',
-    analysis?.sections?.errorsFound ?? '',
-    analysisResult?.overallSummary ?? '',
-  ]
-
-  if (hasMissingDualCaseSignal(contextTexts)) {
+  if (!currentStep) {
     return {
-      ask: 'What two numbers square to 25?',
-      hint: 'Think of all values whose square is 25.',
-      explain: 'When you take the square root of both sides, you must consider both +5 and -5.',
-      checkUnderstanding: 'If one case is x + 3 = 5, what is the other case?',
+      ask: '',
+      hint: '',
+      explain: '',
+      checkUnderstanding: '',
     }
   }
 
   return {
-    ask: currentStep.hint || `What should happen at ${currentStep.title.toLowerCase()} before you move on?`,
+    ask: currentStep.hint || '',
     hint: currentStep.explanation || currentStep.detail,
-    explain: currentStep.correction || analysisResult?.overallSummary || analysis?.sections?.stepsAnalysis || 'Reveal the rule only after the student commits to a next step.',
-    checkUnderstanding: `Ask the student to explain ${currentStep.title.toLowerCase()} in their own words before you confirm it.`,
+    explain: currentStep.correction || analysisResult?.overallSummary || analysis?.sections?.stepsAnalysis || '',
+    checkUnderstanding: '',
   }
 }
 
@@ -1105,7 +1067,6 @@ function StepStatePopulated({
   analysisSourceLabel,
   stepCards,
   primaryDiagnosisIssue,
-  primaryKeyStep,
   problemText,
   answerPairText,
   variant = 'detail',
@@ -1118,7 +1079,6 @@ function StepStatePopulated({
   analysisSourceLabel: string | null
   stepCards: StepCard[]
   primaryDiagnosisIssue: StepCard
-  primaryKeyStep: StepCard
   problemText: string
   answerPairText: string
   variant?: PanelVariant
@@ -1130,8 +1090,8 @@ function StepStatePopulated({
       <div className="space-y-4 pb-1">
         <section className="rounded-[14px] border border-amber-400/25 bg-[linear-gradient(180deg,rgba(120,53,15,0.28),rgba(17,24,39,0.92))] px-4 py-4 shadow-[0_14px_28px_rgba(0,0,0,0.2)]">
           <div className="text-[10px] uppercase tracking-[0.08em] text-amber-200/80">Likely issue</div>
-          <div className="mt-1 text-[16px] font-semibold text-[#F9FAFB]">Likely issue: {getLikelyIssueSummary(primaryDiagnosisIssue, primaryKeyStep)}</div>
-          <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{primaryDiagnosisIssue.detail}</p>
+          <div className="mt-1 text-[16px] font-semibold text-[#F9FAFB]">Likely issue: {getLikelyIssueSummary(primaryDiagnosisIssue) || 'No likely issue available from this analysis.'}</div>
+          <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{primaryDiagnosisIssue.detail || 'No supporting detail is available from this analysis.'}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full border border-[#7c2d12] bg-[#451a03] px-3 py-1 text-[11px] font-semibold text-amber-100">
               Focus step {focusStep.number}: {focusStep.title}
@@ -1321,7 +1281,6 @@ function StepsPanel({
   analysisSourceLabel,
   stepCards,
   primaryDiagnosisIssue,
-  primaryKeyStep,
   problemText,
   answerPairText,
   variant = 'detail',
@@ -1334,13 +1293,12 @@ function StepsPanel({
   analysisPendingConfirmation?: boolean
   analysisSourceLabel: string | null
   stepCards: StepCard[]
-  primaryDiagnosisIssue: StepCard
-  primaryKeyStep: StepCard
+  primaryDiagnosisIssue: StepCard | null
   problemText: string
   answerPairText: string
   variant?: PanelVariant
 }): React.JSX.Element {
-  if (stepCards.length === 0 || !problemText.trim()) {
+  if (stepCards.length === 0 || !problemText.trim() || !primaryDiagnosisIssue) {
     return variant === 'workflow'
       ? (
           <div className="bg-transparent px-4 pb-4 pt-1">
@@ -1396,7 +1354,6 @@ function StepsPanel({
           analysisSourceLabel={analysisSourceLabel}
           stepCards={stepCards}
           primaryDiagnosisIssue={primaryDiagnosisIssue}
-          primaryKeyStep={primaryKeyStep}
           problemText={problemText}
           answerPairText={answerPairText}
           variant="workflow"
@@ -1417,7 +1374,6 @@ function StepsPanel({
           analysisSourceLabel={analysisSourceLabel}
           stepCards={stepCards}
           primaryDiagnosisIssue={primaryDiagnosisIssue}
-          primaryKeyStep={primaryKeyStep}
           problemText={problemText}
           answerPairText={answerPairText}
           variant="detail"
@@ -1429,10 +1385,16 @@ function StepsPanel({
 
 function TutorAssistReadyState({
   isLoading,
-  onAnalyze,
+  onQuickAssist,
+  onDeeperHelp,
+  error,
+  onRetry,
 }: {
   isLoading: boolean
-  onAnalyze: () => void
+  onQuickAssist: () => void
+  onDeeperHelp: () => void
+  error: string | null
+  onRetry: (() => void) | null
 }): React.JSX.Element {
   return (
     <div className="flex h-full items-center justify-center text-center">
@@ -1440,31 +1402,45 @@ function TutorAssistReadyState({
         <Sparkles className="h-9 w-9 text-[#F59E0B]" strokeWidth={1.8} aria-hidden="true" />
         <h3 className="mt-4 text-[16px] font-semibold text-[#F9FAFB]">Tutor Assist</h3>
         <p className="mt-2 max-w-[260px] text-[13px] leading-6 text-[#9CA3AF]">
-          Run a compact coaching pass when you want a fast tutor move, a board cue, or a fallback explanation.
+          AI help is optional. Start short, or open deeper teaching support when you need more.
         </p>
 
-        <div className="mt-5 w-full rounded-[8px] border border-[#374151] bg-[#1F2937] px-4 py-3 text-left">
-          {[
-            'Best coaching move first',
-            'Best board cue next',
-            'Fallback wording if the student is still stuck',
-          ].map((feature) => (
-            <div key={feature} className="flex items-start gap-2 text-[13px] leading-6 text-[#D1D5DB]">
-              <span className="text-[#F59E0B]">✦</span>
-              <span>{feature}</span>
-            </div>
-          ))}
-        </div>
-
-        <button
-          type="button"
-          onClick={onAnalyze}
-          disabled={isLoading}
-          className="mt-4 w-full rounded-[8px] bg-[#F59E0B] px-4 py-2.5 text-[14px] font-semibold text-black transition hover:bg-[#f2ab28] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          Analyze Student Work
-        </button>
-        <div className="mt-2 text-[11px] text-[#4B5563]">AI analysis · only runs when you click</div>
+        {error ? (
+          <div className="mt-5 w-full rounded-[10px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-left">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-red-100/80">Assist request failed</div>
+            <p className="mt-2 text-[13px] leading-6 text-red-100/90">{error}</p>
+            {onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="mt-3 rounded-[8px] border border-white/10 bg-white/10 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-white/15"
+              >
+                Retry
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-5 grid w-full gap-3 text-left">
+            <button
+              type="button"
+              onClick={onQuickAssist}
+              disabled={isLoading}
+              className="rounded-[12px] border border-amber-300/35 bg-amber-500/12 px-4 py-3 text-left transition hover:border-amber-300/55 hover:bg-amber-500/16 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="text-[14px] font-semibold text-[#F9FAFB]">Quick help</div>
+              <div className="mt-1 text-[12px] leading-5 text-[#D1D5DB]">See the mistake and the correct answer fast.</div>
+            </button>
+            <button
+              type="button"
+              onClick={onDeeperHelp}
+              disabled={isLoading}
+              className="rounded-[12px] border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/20 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <div className="text-[14px] font-semibold text-[#F9FAFB]">Full help</div>
+              <div className="mt-1 text-[12px] leading-5 text-[#D1D5DB]">Get a full explanation, worked steps, and teaching tips.</div>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1491,121 +1467,471 @@ function TutorAssistLoadingState(): React.JSX.Element {
   )
 }
 
-function TutorAssistPopulatedState({
-  privateNotes,
-  onPrivateNotesChange,
-  onRerun,
-  onUseReply,
-  boardActionContext,
-  onBoardAction,
-  actionCards,
-  focusStepNumber,
-  variant = 'detail',
+function renderTutorAssistSummaryRow({
+  modelSummary,
+  confidence,
+  canUseStrongerModel,
+  onUseStrongerModel,
 }: {
-  privateNotes: string
-  onPrivateNotesChange: (value: string) => void
-  onRerun: () => void
-  onUseReply: (value: string) => void
-  boardActionContext: BoardActionContext | null
-  onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
-  actionCards: TutorAssistActionCard[]
-  focusStepNumber: number
-  variant?: PanelVariant
-}): React.JSX.Element {
-  const [openRationale, setOpenRationale] = useState<Record<TutorAssistActionCardId, boolean>>({
-    coaching: false,
-    board: false,
-    fallback: false,
-    encouragement: false,
-  })
-
-  const toggleRationale = (cardId: TutorAssistActionCardId) => {
-    setOpenRationale((current) => ({ ...current, [cardId]: !current[cardId] }))
-  }
-
-  const handleAnnotateIssue = () => {
-    onBoardAction(focusStepNumber, 'annotate', 'assist')
+  modelSummary: TutorModelSummary | null
+  confidence: TutorConfidenceState | null
+  canUseStrongerModel: boolean
+  onUseStrongerModel?: () => void
+}): React.JSX.Element | null {
+  if (!modelSummary && !confidence && !canUseStrongerModel) {
+    return null
   }
 
   return (
-    <div className={`space-y-3 ${variant === 'detail' ? 'pb-4' : ''}`}>
-      {variant === 'workflow' ? (
-        <div className="rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Fast coaching backup</div>
-          <div className="mt-1 text-[13px] leading-6 text-[#9CA3AF]">Use Assist when you need one sharp move, one board cue, or one fallback explanation.</div>
-        </div>
+    <div className="flex flex-wrap items-center gap-2">
+      {modelSummary ? (
+        <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-semibold text-[#F9FAFB]">
+          Model: {modelSummary.label}
+        </span>
       ) : null}
-
-      {actionCards.map((card) => (
-        <section
-          key={card.id}
-          className={`rounded-[12px] border px-3 py-3 ${card.optional ? 'border-white/8 bg-white/[0.02]' : 'border-white/10 bg-white/[0.03]'}`}
+      {modelSummary?.tier === 'stronger' ? (
+        <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200">
+          Stronger model used
+        </span>
+      ) : null}
+      {confidence?.label ? (
+        <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getTutorConfidenceBadgeClass(confidence.level)}`}>
+          {confidence.label}
+        </span>
+      ) : null}
+      {canUseStrongerModel && onUseStrongerModel ? (
+        <button
+          type="button"
+          onClick={onUseStrongerModel}
+          className="rounded-full border border-amber-300/25 bg-amber-500/12 px-3 py-1 text-[11px] font-semibold text-amber-100 transition hover:border-amber-300/40 hover:bg-amber-500/18"
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{card.title}</div>
-              <div className="mt-1 text-[13px] font-semibold text-[#F9FAFB]">{card.recommendation}</div>
-            </div>
-            {card.optional ? (
-              <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[#6B7280]">
-                Optional
-              </span>
-            ) : null}
-          </div>
+          Use stronger model
+        </button>
+      ) : null}
+      {modelSummary?.detail ? <p className="basis-full text-[12px] leading-6 text-[#9CA3AF]">{modelSummary.detail}</p> : null}
+      {confidence?.detail ? <p className="basis-full text-[12px] leading-6 text-[#9CA3AF]">{confidence.detail}</p> : null}
+    </div>
+  )
+}
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {card.id === 'board' ? (
-              <>
+function TutorAssistSimpleState({
+  summary,
+  onRefresh,
+  onUseReply,
+  onGoDeeper,
+  onClose,
+  onUseStrongerModel,
+  boardActionContext,
+  onBoardAction,
+}: {
+  summary: TutorAssistSummaryState
+  onRefresh: () => void
+  onUseReply: (value: string) => void
+  onGoDeeper?: () => void
+  onClose: () => void
+  onUseStrongerModel?: () => void
+  boardActionContext: BoardActionContext | null
+  onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+}): React.JSX.Element {
+  return (
+    <div className="space-y-3 pb-4">
+      <section className="rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,24,39,0.98),rgba(15,23,42,0.96))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+            <h3 className="mt-2 text-[18px] font-semibold text-[#F9FAFB]">Keep it short and usable.</h3>
+          </div>
+          <button type="button" onClick={onRefresh} className="text-[11px] font-medium text-[#6B7280] transition hover:text-[#9CA3AF]">
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-3 space-y-3">
+          {renderTutorAssistSummaryRow({
+            modelSummary: summary.modelSummary,
+            confidence: summary.confidence,
+            canUseStrongerModel: summary.canUseStrongerModel,
+            onUseStrongerModel,
+          })}
+
+          {summary.diagnosis ? (
+            <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Likely issue</div>
+              <p className="mt-2 text-[15px] font-semibold leading-6 text-[#F9FAFB]">{summary.diagnosis}</p>
+            </div>
+          ) : null}
+
+          {summary.nextMove ? (
+            <div className="rounded-[14px] border border-sky-400/18 bg-sky-500/[0.06] px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">What to say next</div>
+              <p className="mt-2 text-[15px] leading-6 text-[#F9FAFB]">{summary.nextMove}</p>
+            </div>
+          ) : null}
+
+          {summary.focusStep && summary.evidenceText ? (
+            <div className="rounded-[14px] border border-amber-400/20 bg-amber-500/10 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100/80">Board focus</div>
+                  <p className="mt-2 text-[14px] font-semibold text-[#F9FAFB]">Step {summary.focusStep.number}: {summary.focusStep.title}</p>
+                  <p className="mt-1 text-[12px] leading-5 text-amber-100/85">{summary.evidenceText}</p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => onBoardAction(focusStepNumber, 'mark', 'assist')}
-                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', focusStepNumber)}
+                  onClick={() => onBoardAction(summary.focusStep!.number, 'mark', 'assist')}
+                  aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', summary.focusStep.number)}
                   className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
-                    isBoardActionActive(boardActionContext, 'assist', 'mark', focusStepNumber)
-                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
+                    isBoardActionActive(boardActionContext, 'assist', 'mark', summary.focusStep.number)
+                      ? 'border-amber-300/60 bg-amber-500/20 text-amber-50'
                       : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
                   }`}
                 >
                   <MapPin className="h-3.5 w-3.5" />
-                  Mark key step on board
+                  Focus board here
                 </button>
-                <button
-                  type="button"
-                  onClick={handleAnnotateIssue}
-                  aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'annotate', focusStepNumber)}
-                  className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
-                    isBoardActionActive(boardActionContext, 'assist', 'annotate', focusStepNumber)
-                      ? 'border-sky-300/50 bg-sky-500/14 text-sky-100 shadow-[0_0_0_1px_rgba(125,211,252,0.2),0_16px_30px_rgba(14,165,233,0.1)]'
-                      : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
-                  }`}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Annotate
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => onUseReply(card.composerText ?? '')}
-                className="inline-flex items-center rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
-                aria-label={card.id === 'fallback' ? 'Apply fallback explanation' : `Use ${card.title.toLowerCase()}`}
-              >
-                {card.id === 'fallback' ? 'Apply explanation' : 'Use as reply'}
-              </button>
-            )}
-          </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
 
+        <div className="mt-4 flex flex-wrap gap-2">
+          {summary.nextMove ? (
+            <button
+              type="button"
+              onClick={() => onUseReply(summary.nextMove!)}
+              className="inline-flex items-center rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
+            >
+              Use this reply
+            </button>
+          ) : null}
+          {onGoDeeper ? (
+            <button
+              type="button"
+              onClick={onGoDeeper}
+              className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+            >
+              Go deeper
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => toggleRationale(card.id)}
-            className="mt-3 text-[11px] font-medium text-[#6B7280] transition hover:text-[#9CA3AF]"
+            onClick={onClose}
+            className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
           >
-            {openRationale[card.id] ? 'Hide why this helps' : 'Why this helps'}
+            Close
           </button>
+        </div>
+      </section>
+    </div>
+  )
+}
 
-          {openRationale[card.id] ? <p className="mt-2 text-[12px] leading-6 text-[#9CA3AF]">{card.rationale}</p> : null}
+function TutorAssistDeepState({
+  privateNotes,
+  onPrivateNotesChange,
+  onRefresh,
+  onUseStrongerModel,
+  summary,
+  onBack,
+  onClose,
+  boardActionContext,
+  onBoardAction,
+  evidenceText,
+  detailedExplanation,
+  solutionText,
+  stepCards,
+  validatorNotes,
+  walkthroughActive,
+  activeWalkthroughStep,
+  activeWalkthroughEvidence,
+  walkthroughStepIds,
+  walkthroughStepIndex,
+  walkthroughStepCount,
+  canWalkthroughPlay,
+  isWalkthroughPlaying,
+  onEnterWalkthrough,
+  onExitWalkthrough,
+  onWalkthroughSelectStep,
+  onWalkthroughPrevious,
+  onWalkthroughNext,
+  onWalkthroughPlay,
+  onWalkthroughPause,
+  onWalkthroughReplay,
+  variant = 'detail',
+}: {
+  privateNotes: string
+  onPrivateNotesChange: (value: string) => void
+  onRefresh: () => void
+  onUseStrongerModel?: () => void
+  summary: TutorAssistSummaryState
+  onBack: () => void
+  onClose: () => void
+  boardActionContext: BoardActionContext | null
+  onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  evidenceText: string
+  detailedExplanation: string
+  solutionText: string
+  stepCards: StepCard[]
+  validatorNotes: string[]
+  walkthroughActive: boolean
+  activeWalkthroughStep: StepCard | null
+  activeWalkthroughEvidence: string
+  walkthroughStepIds: Array<string | null>
+  walkthroughStepIndex: number
+  walkthroughStepCount: number
+  canWalkthroughPlay: boolean
+  isWalkthroughPlaying: boolean
+  onEnterWalkthrough?: () => void
+  onExitWalkthrough?: () => void
+  onWalkthroughSelectStep?: (stepId: string | null) => void
+  onWalkthroughPrevious?: () => void
+  onWalkthroughNext?: () => void
+  onWalkthroughPlay?: () => void
+  onWalkthroughPause?: () => void
+  onWalkthroughReplay?: () => void
+  variant?: PanelVariant
+}): React.JSX.Element {
+  const [solutionOpen, setSolutionOpen] = useState(false)
+  const [rationaleOpen, setRationaleOpen] = useState(false)
+  const [validatorOpen, setValidatorOpen] = useState(false)
+
+  return (
+    <div className={`space-y-3 ${variant === 'detail' ? 'pb-4' : ''}`}>
+      <section className="rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,24,39,0.98),rgba(15,23,42,0.96))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+            <h3 className="mt-2 text-[18px] font-semibold text-[#F9FAFB]">Deep Assist</h3>
+          </div>
+          <button type="button" onClick={onRefresh} className="text-[11px] font-medium text-[#6B7280] transition hover:text-[#9CA3AF]">
+            Refresh
+          </button>
+        </div>
+        <div className="mt-3 space-y-3">
+          {renderTutorAssistSummaryRow({
+            modelSummary: summary.modelSummary,
+            confidence: summary.confidence,
+            canUseStrongerModel: summary.canUseStrongerModel,
+            onUseStrongerModel,
+          })}
+          {summary.diagnosis ? (
+            <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Likely issue</div>
+              <p className="mt-2 text-[15px] font-semibold leading-6 text-[#F9FAFB]">{summary.diagnosis}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+          >
+            Back to simple assist
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+          >
+            Close
+          </button>
+        </div>
+      </section>
+
+      {(walkthroughActive || stepCards.length > 0) ? (
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <div className="px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <span>
+                <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Walkthrough</span>
+                <span className="mt-1 block text-[13px] text-[#D1D5DB]">
+                  {walkthroughActive ? 'One step at a time, with the overlay following only while deep assist is active.' : 'Open the guided sequence only when you need step-by-step support.'}
+                </span>
+              </span>
+              {walkthroughActive ? (
+                <button
+                  type="button"
+                  onClick={onExitWalkthrough}
+                  className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+                >
+                  Exit walkthrough
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onEnterWalkthrough}
+                  disabled={stepCards.length === 0}
+                  className="rounded-[10px] border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[12px] font-semibold text-amber-100 transition hover:border-amber-400/35 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Walk me through it
+                </button>
+              )}
+            </div>
+
+            {walkthroughActive && activeWalkthroughStep ? (
+              <div className="mt-3 space-y-3 border-t border-white/10 pt-3">
+                <article className="rounded-[12px] border border-amber-300/30 bg-amber-500/[0.08] px-3 py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full bg-[#78350F] text-[11px] font-bold text-[#F59E0B]">
+                      {activeWalkthroughStep.number}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-[13px] font-medium text-[#F9FAFB]">{activeWalkthroughStep.title}</div>
+                        <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-semibold text-[#D1D5DB]">
+                          Step {walkthroughStepIndex + 1} of {walkthroughStepCount}
+                        </span>
+                      </div>
+                      {activeWalkthroughStep.detail ? <p className="mt-1 text-[12px] leading-5 text-[#D1D5DB]">{activeWalkthroughStep.detail}</p> : null}
+                      {activeWalkthroughEvidence ? (
+                        <div className="mt-3 rounded-[10px] border border-white/10 bg-black/15 px-3 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Active evidence</div>
+                          <p className="mt-1 text-[12px] leading-5 text-[#D1D5DB]">{activeWalkthroughEvidence}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </article>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={onWalkthroughPrevious}
+                    className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={isWalkthroughPlaying ? onWalkthroughPause : onWalkthroughPlay}
+                    disabled={!canWalkthroughPlay}
+                    className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isWalkthroughPlaying ? 'Pause' : 'Play'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onWalkthroughNext}
+                    className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onWalkthroughReplay}
+                    disabled={walkthroughStepCount === 0}
+                    className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Replay
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onBoardAction(activeWalkthroughStep.number, 'mark', 'assist')}
+                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'mark', activeWalkthroughStep.number)}
+                    className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-semibold transition ${
+                      isBoardActionActive(boardActionContext, 'assist', 'mark', activeWalkthroughStep.number)
+                        ? 'border-amber-300/60 bg-amber-500/20 text-amber-50'
+                        : 'border-amber-400/20 bg-amber-500/10 text-amber-100 hover:border-amber-400/35 hover:bg-amber-500/15'
+                    }`}
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    Focus on board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onBoardAction(activeWalkthroughStep.number, 'annotate', 'assist')}
+                    aria-pressed={isBoardActionActive(boardActionContext, 'assist', 'annotate', activeWalkthroughStep.number)}
+                    className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 text-[12px] font-medium transition ${
+                      isBoardActionActive(boardActionContext, 'assist', 'annotate', activeWalkthroughStep.number)
+                        ? 'border-sky-300/50 bg-sky-500/14 text-sky-100'
+                        : 'border-white/10 bg-white/[0.03] text-[#D1D5DB] hover:border-white/20 hover:text-[#F9FAFB]'
+                    }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Annotate
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {!walkthroughActive && stepCards.length > 0 ? (
+              <div className="mt-3 rounded-[10px] border border-white/10 bg-black/15 px-3 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Start from a step</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {stepCards.map((step, index) => (
+                    <button
+                      key={step.number}
+                      type="button"
+                      onClick={() => {
+                        onEnterWalkthrough?.()
+                        onWalkthroughSelectStep?.(walkthroughStepIds[index] ?? null)
+                      }}
+                      className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+                    >
+                      Step {step.number}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
         </section>
-      ))}
+      ) : null}
+
+      {evidenceText ? (
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02] px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Evidence from student work</div>
+          <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">{evidenceText}</p>
+        </section>
+      ) : null}
+
+      {solutionText ? (
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setSolutionOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={solutionOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Reveal solution</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the answer hidden until the tutor actually needs it.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${solutionOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {solutionOpen ? <div className="border-t border-white/10 px-4 py-3 text-[15px] font-semibold text-[#F9FAFB]">{solutionText}</div> : null}
+        </section>
+      ) : null}
+
+      {detailedExplanation ? (
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setRationaleOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={rationaleOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Detailed rationale</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Full explanation stays behind disclosure instead of crowding the first screen.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${rationaleOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {rationaleOpen ? <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">{detailedExplanation}</div> : null}
+        </section>
+      ) : null}
+
+      {validatorNotes.length > 0 ? (
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
+          <button type="button" onClick={() => setValidatorOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={validatorOpen}>
+            <span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Validator notes</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Extra cautions from the structured analysis.</span>
+            </span>
+            <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${validatorOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </button>
+          {validatorOpen ? (
+            <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">
+              {validatorNotes.map((warning) => <p key={warning}>{warning}</p>)}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {variant === 'detail' ? (
         <div className="border-t border-[#374151] pt-3">
@@ -1618,12 +1944,6 @@ function TutorAssistPopulatedState({
             aria-label="Private tutor notes"
             className="mt-2 w-full resize-none rounded-[6px] border border-[#1F2937] bg-[#111827] px-3 py-2 text-[12px] text-[#9CA3AF] outline-none placeholder:text-[#4B5563]"
           />
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="text-[11px] text-[#4B5563]">Deeper rationale stays tucked behind each card.</div>
-            <button type="button" onClick={onRerun} className="text-[11px] text-[#4B5563] transition hover:text-[#9CA3AF]">
-              ↺ Re-run analysis
-            </button>
-          </div>
         </div>
       ) : null}
     </div>
@@ -1631,59 +1951,203 @@ function TutorAssistPopulatedState({
 }
 
 function TutorAssistPanel({
-  initialState = 'populated',
+  initialState = 'ready',
+  assistContextKey = null,
+  analysis,
+  analysisMode,
+  analysisResult,
   analysisLoading,
+  analysisError,
   onStartAnalysis,
-  actionCards,
-  focusStepNumber,
+  onUseStrongerModel,
+  activeTutorStepId,
+  tutorWalkthroughActive = false,
+  tutorPlaybackCanPlay = false,
+  tutorPlaybackIsPlaying = false,
+  onTutorWalkthroughEnter,
+  onTutorWalkthroughExit,
+  onTutorPlaybackPlay,
+  onTutorPlaybackPause,
+  onTutorPlaybackPrevious,
+  onTutorPlaybackNext,
+  onTutorPlaybackReplay,
+  onTutorStepSelect,
   variant = 'detail',
   onUseReply,
   boardActionContext,
   onBoardAction,
+  onLessonMessageChange,
+  loadingTargetState = 'simple',
 }: {
   initialState?: TutorAssistViewState
+  assistContextKey?: string | null
+  analysis: WhiteboardTutorResponse | null
+  analysisMode?: 'quick' | 'full' | null
+  analysisResult: TutorAnalysisResult | null
   analysisLoading: boolean
-  onStartAnalysis: () => void
-  actionCards: TutorAssistActionCard[]
-  focusStepNumber: number
+  analysisError: string | null
+  onStartAnalysis: (mode: 'quick' | 'full') => void
+  onUseStrongerModel?: (mode: 'quick' | 'full') => void
+  activeTutorStepId?: string | null
+  tutorWalkthroughActive?: boolean
+  tutorPlaybackCanPlay?: boolean
+  tutorPlaybackIsPlaying?: boolean
+  onTutorWalkthroughEnter?: () => void
+  onTutorWalkthroughExit?: () => void
+  onTutorPlaybackPlay?: () => void
+  onTutorPlaybackPause?: () => void
+  onTutorPlaybackPrevious?: () => void
+  onTutorPlaybackNext?: () => void
+  onTutorPlaybackReplay?: () => void
+  onTutorStepSelect?: (stepId: string | null) => void
   variant?: PanelVariant
   onUseReply: (value: string) => void
   boardActionContext: BoardActionContext | null
   onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
+  onLessonMessageChange?: (message: TutorLessonMessage | null) => void
+  loadingTargetState?: TutorAssistRequestMode
 }): React.JSX.Element {
-  const [viewState, setViewState] = useState<TutorAssistViewState>(() => readStoredTutorAssistState()?.viewState ?? initialState)
-  const [privateNotes, setPrivateNotes] = useState<string>(() => readStoredTutorAssistState()?.notes ?? '')
-  const loadingTimeoutRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    writeStoredTutorAssistState(viewState, privateNotes)
-  }, [privateNotes, viewState])
-
-  useEffect(() => {
-    return () => {
-      if (loadingTimeoutRef.current !== null) {
-        window.clearTimeout(loadingTimeoutRef.current)
-      }
+  const normalizedAssistContextKey = useMemo(() => (typeof assistContextKey === 'string' ? assistContextKey.trim() : ''), [assistContextKey])
+  const [viewState, setViewState] = useState<TutorAssistViewState>(() => readStoredTutorAssistState(normalizedAssistContextKey)?.viewState ?? initialState)
+  const [privateNotes, setPrivateNotes] = useState<string>(() => readStoredTutorAssistState(normalizedAssistContextKey)?.notes ?? '')
+  const [hydratedAssistContextKey, setHydratedAssistContextKey] = useState('')
+  const [pendingLoadTargetState, setPendingLoadTargetState] = useState<TutorAssistRequestMode>(loadingTargetState)
+  const sawExternalLoadingRef = useRef(false)
+  const modelSummary = useMemo(() => getTutorModelSummary(analysis), [analysis])
+  const issueStep = useMemo(() => analysisResult?.steps.find((step) => step.status !== 'correct') ?? null, [analysisResult])
+  const confidence = useMemo(() => getTutorConfidenceState(analysisResult, issueStep), [analysisResult, issueStep])
+  const stepCards = useMemo(() => buildStepCards(analysisResult), [analysisResult])
+  const walkthroughStepIds = useMemo(() => stepCards.map((_, index) => analysisResult?.steps[index]?.id ?? null), [analysisResult, stepCards])
+  const activeWalkthroughIndex = useMemo(
+    () => analysisResult?.steps.findIndex((step) => step.id === activeTutorStepId) ?? -1,
+    [activeTutorStepId, analysisResult],
+  )
+  const activeWalkthroughStep = useMemo(
+    () => (activeWalkthroughIndex >= 0 ? stepCards[activeWalkthroughIndex] ?? null : null),
+    [activeWalkthroughIndex, stepCards],
+  )
+  const activeWalkthroughEvidence = useMemo(() => {
+    if (activeWalkthroughIndex < 0) {
+      return ''
     }
-  }, [])
 
-  const runAnalysis = () => {
-    onStartAnalysis()
+    const step = analysisResult?.steps[activeWalkthroughIndex]
+    return step?.studentText?.trim() || step?.normalizedMath?.trim() || ''
+  }, [activeWalkthroughIndex, activeWalkthroughStep?.detail, analysisResult])
+  const diagnosis = useMemo(
+    () => issueStep?.correction?.trim() || issueStep?.kidFriendlyExplanation?.trim() || issueStep?.shortLabel?.trim() || null,
+    [issueStep],
+  )
+  const nextMove = useMemo(
+    () => issueStep?.hint?.trim() || null,
+    [issueStep],
+  )
+  const evidenceText = useMemo(
+    () => issueStep?.studentText?.trim() || issueStep?.normalizedMath?.trim() || '',
+    [issueStep],
+  )
+  const detailedExplanation = useMemo(
+    () => analysisResult?.overallSummary?.trim() || '',
+    [analysisResult?.overallSummary],
+  )
+  const solutionText = useMemo(
+    () => analysisResult?.finalAnswers?.filter(Boolean).join(' or ') || analysis?.correctSolution?.trim() || '',
+    [analysis?.correctSolution, analysisResult],
+  )
+  const validatorNotes = analysisResult?.validatorWarnings ?? []
+  const focusStep = useMemo(() => getPrimaryDiagnosisIssue(stepCards), [stepCards])
+  const canUseStrongerModel = Boolean(onUseStrongerModel) && Boolean(modelSummary?.strongerModelAvailable) && modelSummary?.tier !== 'stronger'
+  const hasDeepAssistContent = Boolean(
+    stepCards.length > 0
+    || evidenceText
+    || detailedExplanation
+    || solutionText
+    || validatorNotes.length > 0
+    || tutorWalkthroughActive,
+  )
+  const summary = useMemo<TutorAssistSummaryState>(() => ({
+    diagnosis,
+    nextMove,
+    focusStep,
+    evidenceText,
+    modelSummary,
+    confidence,
+    canUseStrongerModel,
+  }), [canUseStrongerModel, confidence, diagnosis, evidenceText, focusStep, modelSummary, nextMove])
+  const lessonMessage = useMemo(() => buildTutorAssistLessonMessage(summary), [summary])
+
+  useEffect(() => {
+    const storedState = readStoredTutorAssistState(normalizedAssistContextKey)
+    setViewState(storedState?.viewState ?? initialState)
+    setPrivateNotes(storedState?.notes ?? '')
+    setPendingLoadTargetState(loadingTargetState)
+    sawExternalLoadingRef.current = false
+    setHydratedAssistContextKey(normalizedAssistContextKey)
+  }, [initialState, loadingTargetState, normalizedAssistContextKey])
+
+  useEffect(() => {
+    if (hydratedAssistContextKey !== normalizedAssistContextKey) {
+      return
+    }
+
+    writeStoredTutorAssistState(normalizedAssistContextKey, viewState, privateNotes)
+  }, [hydratedAssistContextKey, normalizedAssistContextKey, privateNotes, viewState])
+
+  useEffect(() => {
+    if (analysisLoading) {
+      sawExternalLoadingRef.current = true
+      return
+    }
+
+    if (viewState === 'loading' && (sawExternalLoadingRef.current || analysisResult || analysis || analysisError)) {
+      setViewState(analysisResult || analysis ? pendingLoadTargetState : 'ready')
+      sawExternalLoadingRef.current = false
+    }
+  }, [analysis, analysisError, analysisLoading, analysisResult, pendingLoadTargetState, viewState])
+
+  useEffect(() => {
+    if (viewState === 'deep' && !hasDeepAssistContent) {
+      setViewState('simple')
+    }
+  }, [hasDeepAssistContent, viewState])
+
+  useEffect(() => {
+    if (viewState === 'ready') {
+      onLessonMessageChange?.(null)
+      return
+    }
+
+    onLessonMessageChange?.(lessonMessage)
+  }, [lessonMessage, onLessonMessageChange, viewState])
+
+  const requestAssist = (mode: TutorAssistRequestMode) => {
+    setPendingLoadTargetState(mode)
+
+    const requestedHelpMode = mode === 'deep' ? 'full' : 'quick'
+
+    if ((analysisResult || analysis) && analysisMode === requestedHelpMode) {
+      setViewState(mode)
+      return
+    }
+
+    onStartAnalysis(requestedHelpMode)
     setViewState('loading')
+  }
 
-    if (loadingTimeoutRef.current !== null) {
-      window.clearTimeout(loadingTimeoutRef.current)
-    }
-
-    loadingTimeoutRef.current = window.setTimeout(() => {
-      setViewState('populated')
-      loadingTimeoutRef.current = null
-    }, 2000)
+  const refreshAssist = (mode: TutorAssistRequestMode = viewState === 'deep' ? 'deep' : 'simple') => {
+    setPendingLoadTargetState(mode)
+    onStartAnalysis(mode === 'deep' ? 'full' : 'quick')
+    setViewState('loading')
   }
 
   const handlePrivateNotesChange = (value: string) => {
     setPrivateNotes(value)
-    writeStoredTutorAssistState(viewState, value)
+    writeStoredTutorAssistState(normalizedAssistContextKey, viewState, value)
+  }
+
+  const handleClose = () => {
+    setViewState('ready')
+    onTutorWalkthroughExit?.()
   }
 
   const effectiveState = analysisLoading ? 'loading' : viewState
@@ -1693,21 +2157,31 @@ function TutorAssistPanel({
       <div className="bg-transparent px-4 pb-4 pt-1">
         {effectiveState === 'ready' ? (
           <div className="rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.08em] text-[#8f867d]">Deeper assist</div>
-                <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Open coaching help only when diagnosis and response need backup.</div>
-              </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+              <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Need help with this problem?</div>
+            </div>
+            <div className="mt-2 text-[12px] leading-6 text-[#9CA3AF]">Quick help for the fast answer, or full help when you want the whole explanation.</div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={runAnalysis}
+                onClick={() => requestAssist('simple')}
                 disabled={analysisLoading}
-                className="shrink-0 rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28] disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-[10px] bg-[#F59E0B] px-3 py-2.5 text-left text-[12px] font-semibold text-black transition hover:bg-[#f2ab28] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Analyze
+                <div>Quick help</div>
+                <div className="mt-1 text-[11px] font-medium text-black/75">See the mistake and the correct answer fast.</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => requestAssist('deep')}
+                disabled={analysisLoading}
+                className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left text-[12px] font-semibold text-[#F9FAFB] transition hover:border-white/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <div>Full help</div>
+                <div className="mt-1 text-[11px] font-medium text-[#9CA3AF]">Full explanation, worked steps, and teaching tips.</div>
               </button>
             </div>
-            <div className="mt-2 text-[12px] leading-6 text-[#9CA3AF]">Keep Assist in reserve until you need a sharper coaching move.</div>
           </div>
         ) : null}
 
@@ -1720,16 +2194,51 @@ function TutorAssistPanel({
           </div>
         ) : null}
 
-        {effectiveState === 'populated' ? (
-          <TutorAssistPopulatedState
-            privateNotes={privateNotes}
-            onPrivateNotesChange={handlePrivateNotesChange}
-            onRerun={runAnalysis}
+        {effectiveState === 'simple' ? (
+          <TutorAssistSimpleState
+            summary={summary}
+            onRefresh={() => refreshAssist('simple')}
             onUseReply={onUseReply}
+            onGoDeeper={hasDeepAssistContent ? () => setViewState('deep') : undefined}
+            onClose={handleClose}
+            onUseStrongerModel={onUseStrongerModel ? () => onUseStrongerModel('quick') : undefined}
             boardActionContext={boardActionContext}
             onBoardAction={onBoardAction}
-            actionCards={actionCards}
-            focusStepNumber={focusStepNumber}
+          />
+        ) : null}
+
+        {effectiveState === 'deep' ? (
+          <TutorAssistDeepState
+            privateNotes={privateNotes}
+            onPrivateNotesChange={handlePrivateNotesChange}
+            onRefresh={() => refreshAssist('deep')}
+            onUseStrongerModel={onUseStrongerModel ? () => onUseStrongerModel('full') : undefined}
+            summary={summary}
+            onBack={() => setViewState('simple')}
+            onClose={handleClose}
+            boardActionContext={boardActionContext}
+            onBoardAction={onBoardAction}
+            evidenceText={evidenceText}
+            detailedExplanation={detailedExplanation}
+            solutionText={solutionText}
+            stepCards={stepCards}
+            validatorNotes={validatorNotes}
+            walkthroughActive={tutorWalkthroughActive}
+            activeWalkthroughStep={activeWalkthroughStep}
+            activeWalkthroughEvidence={activeWalkthroughEvidence}
+            walkthroughStepIds={walkthroughStepIds}
+            walkthroughStepIndex={activeWalkthroughIndex}
+            walkthroughStepCount={stepCards.length}
+            canWalkthroughPlay={tutorPlaybackCanPlay}
+            isWalkthroughPlaying={tutorPlaybackIsPlaying}
+            onEnterWalkthrough={onTutorWalkthroughEnter}
+            onExitWalkthrough={onTutorWalkthroughExit}
+            onWalkthroughSelectStep={onTutorStepSelect}
+            onWalkthroughPrevious={onTutorPlaybackPrevious}
+            onWalkthroughNext={onTutorPlaybackNext}
+            onWalkthroughPlay={onTutorPlaybackPlay}
+            onWalkthroughPause={onTutorPlaybackPause}
+            onWalkthroughReplay={onTutorPlaybackReplay}
             variant="workflow"
           />
         ) : null}
@@ -1740,18 +2249,60 @@ function TutorAssistPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#111827] p-4">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {effectiveState === 'ready' ? <TutorAssistReadyState isLoading={analysisLoading} onAnalyze={runAnalysis} /> : null}
+        {effectiveState === 'ready' ? (
+          <TutorAssistReadyState
+            isLoading={analysisLoading}
+            onQuickAssist={() => requestAssist('simple')}
+            onDeeperHelp={() => requestAssist('deep')}
+            error={analysisError}
+            onRetry={analysisError ? () => refreshAssist('simple') : null}
+          />
+        ) : null}
         {effectiveState === 'loading' ? <TutorAssistLoadingState /> : null}
-        {effectiveState === 'populated' ? (
-          <TutorAssistPopulatedState
-            privateNotes={privateNotes}
-            onPrivateNotesChange={handlePrivateNotesChange}
-            onRerun={runAnalysis}
+        {effectiveState === 'simple' ? (
+          <TutorAssistSimpleState
+            summary={summary}
+            onRefresh={() => refreshAssist('simple')}
             onUseReply={onUseReply}
+            onGoDeeper={hasDeepAssistContent ? () => setViewState('deep') : undefined}
+            onClose={handleClose}
+            onUseStrongerModel={onUseStrongerModel ? () => onUseStrongerModel('quick') : undefined}
             boardActionContext={boardActionContext}
             onBoardAction={onBoardAction}
-            actionCards={actionCards}
-            focusStepNumber={focusStepNumber}
+          />
+        ) : null}
+        {effectiveState === 'deep' ? (
+          <TutorAssistDeepState
+            privateNotes={privateNotes}
+            onPrivateNotesChange={handlePrivateNotesChange}
+            onRefresh={() => refreshAssist('deep')}
+            onUseStrongerModel={onUseStrongerModel ? () => onUseStrongerModel('full') : undefined}
+            summary={summary}
+            onBack={() => setViewState('simple')}
+            onClose={handleClose}
+            boardActionContext={boardActionContext}
+            onBoardAction={onBoardAction}
+            evidenceText={evidenceText}
+            detailedExplanation={detailedExplanation}
+            solutionText={solutionText}
+            stepCards={stepCards}
+            validatorNotes={validatorNotes}
+            walkthroughActive={tutorWalkthroughActive}
+            activeWalkthroughStep={activeWalkthroughStep}
+            activeWalkthroughEvidence={activeWalkthroughEvidence}
+            walkthroughStepIds={walkthroughStepIds}
+            walkthroughStepIndex={activeWalkthroughIndex}
+            walkthroughStepCount={stepCards.length}
+            canWalkthroughPlay={tutorPlaybackCanPlay}
+            isWalkthroughPlaying={tutorPlaybackIsPlaying}
+            onEnterWalkthrough={onTutorWalkthroughEnter}
+            onExitWalkthrough={onTutorWalkthroughExit}
+            onWalkthroughSelectStep={onTutorStepSelect}
+            onWalkthroughPrevious={onTutorPlaybackPrevious}
+            onWalkthroughNext={onTutorPlaybackNext}
+            onWalkthroughPlay={onTutorPlaybackPlay}
+            onWalkthroughPause={onTutorPlaybackPause}
+            onWalkthroughReplay={onTutorPlaybackReplay}
           />
         ) : null}
       </div>
@@ -1782,6 +2333,8 @@ function TutorWorkflowOverview({
   onBoardAction,
   onUseReply,
   onOpenDetail,
+  onSelectMode,
+  preferredMode = 'quick',
   sessionState,
   sessionBadgeText,
   sessionSummaryText,
@@ -1797,6 +2350,8 @@ function TutorWorkflowOverview({
   onBoardAction: (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => void
   onUseReply: (value: string) => void
   onOpenDetail: (tabId: VisibleTabId) => void
+  onSelectMode: (mode: TutorResponseMode) => void
+  preferredMode?: TutorResponseMode
   sessionState?: 'queued' | 'live' | 'async'
   sessionBadgeText?: string
   sessionSummaryText?: string
@@ -1810,23 +2365,64 @@ function TutorWorkflowOverview({
   const [evidenceOpen, setEvidenceOpen] = useState(false)
   const [explanationOpen, setExplanationOpen] = useState(false)
   const [solutionOpen, setSolutionOpen] = useState(false)
+  const [selectedMode, setSelectedMode] = useState<TutorResponseMode>(preferredMode)
   const steps = useMemo(() => getWorkflowSteps(analysis, analysisResult), [analysis, analysisResult])
   const currentStep = useMemo(() => getCurrentWorkflowStep(steps), [steps])
   const misconception = useMemo(() => getLikelyMisconception(analysis, analysisResult, currentStep), [analysis, analysisResult, currentStep])
   const playbook = useMemo(() => buildNextMovePlaybook(analysis, analysisResult, currentStep), [analysis, analysisResult, currentStep])
   const solutionText = useMemo(() => getSolutionText(analysis, analysisResult), [analysis, analysisResult])
-  const detailedExplanation = analysisResult?.overallSummary?.trim() || analysis?.sections?.stepsAnalysis?.trim() || currentStep.explanation || currentStep.detail
-  const evidenceText = currentStep.studentText || analysis?.sections?.errorsFound?.trim() || currentStep.detail
+  const detailedExplanation = analysisResult?.overallSummary?.trim() || analysis?.sections?.stepsAnalysis?.trim() || ''
+  const evidenceText = currentStep?.studentText || ''
   const hasSessionSummary = Boolean(sessionBadgeText || sessionSummaryText || sessionMetaText || sessionSubjectText || sessionGradeText || onPickUpSession || onPassSession)
+  const diagnosisText = misconception || currentStep?.detail || 'Review the current step before responding.'
+  const quickHelpReply = playbook.ask || playbook.hint || currentStep?.detail || diagnosisText
+  const fullHelpReply = playbook.explain || detailedExplanation || playbook.hint || diagnosisText
+  const modeCards = useMemo(() => (['quick', 'full'] as TutorResponseMode[]).map((mode) => buildTutorResponseModeCard({
+    mode,
+    diagnosis: diagnosisText,
+    nextMove: quickHelpReply,
+    fullHelp: fullHelpReply,
+    solutionText,
+    focusStep: currentStep,
+  })), [currentStep, diagnosisText, fullHelpReply, quickHelpReply, solutionText])
+  const selectedModeCard = modeCards.find((card) => card.id === selectedMode) ?? modeCards[0]
+
+  useEffect(() => {
+    setSelectedMode(preferredMode)
+  }, [preferredMode])
+
+  if (!analysis && !analysisResult) {
+    return (
+      <div className="flex h-full items-center justify-center p-4">
+        <div className="w-full max-w-[420px] rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,24,39,0.98),rgba(15,23,42,0.96))] px-4 py-5 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+          <h2 className="mt-2 text-[20px] font-semibold text-[#F9FAFB]">Need help with this problem?</h2>
+          <div className="mt-4 grid gap-3">
+            {modeCards.map((card) => (
+              <button
+                key={card.id}
+                type="button"
+                onClick={() => onSelectMode(card.id)}
+                className={`rounded-[14px] border px-4 py-3 text-left transition ${card.buttonClassName}`}
+              >
+                <div className="text-[15px] font-semibold">{card.label}</div>
+                <div className="mt-1 text-[12px] leading-5 text-current/80">{card.summary}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="space-y-4 pb-6">
         {hasSessionSummary ? (
-          <section className="rounded-[16px] border border-white/10 bg-white/[0.02] px-4 py-4">
+          <section className="rounded-[16px] border border-white/10 bg-white/[0.02] px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Session summary</div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Session header</div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {sessionBadgeText ? (
                     <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getSessionBadgeClass(sessionState)}`}>
@@ -1866,25 +2462,26 @@ function TutorWorkflowOverview({
           </section>
         ) : null}
 
-        <section className="rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(36,28,20,0.88),rgba(17,24,39,0.98))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+        <section className="rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(30,30,34,0.98),rgba(17,24,39,0.98))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-200/85">Likely misconception</div>
-              <h2 className="mt-2 text-[18px] font-semibold leading-tight text-[#F9FAFB]">{misconception}</h2>
-              <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">Current board focus: {currentStep.title}.</p>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Diagnosis</div>
+              <h2 className="mt-2 text-[18px] font-semibold leading-tight text-[#F9FAFB]">{diagnosisText}</h2>
+              {currentStep?.title ? <p className="mt-2 text-[13px] leading-6 text-[#D1D5DB]">Current board focus: {currentStep.title}.</p> : null}
             </div>
-            {currentStep.tag ? <StepTag value={currentStep.tag} /> : null}
+            {currentStep?.tag ? <StepTag value={currentStep.tag} /> : null}
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
               type="button"
-              onClick={() => onBoardAction(currentStep.number, 'mark', 'diagnosis')}
-              aria-pressed={isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number)}
+              onClick={() => currentStep && onBoardAction(currentStep.number, 'mark', 'diagnosis')}
+              aria-pressed={currentStep ? isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number) : false}
+              disabled={!currentStep}
               className={`inline-flex items-center gap-2 rounded-[12px] border px-3 py-2 text-[13px] font-semibold transition ${
-                isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number)
+                currentStep && isBoardActionActive(boardActionContext, 'diagnosis', 'mark', currentStep.number)
                   ? 'border-amber-300/60 bg-amber-500/20 text-amber-50 shadow-[0_0_0_1px_rgba(252,211,77,0.25),0_16px_30px_rgba(245,158,11,0.12)]'
-                  : 'border-amber-400/25 bg-amber-500/12 text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/16'
+                  : 'border-amber-400/25 bg-amber-500/12 text-amber-100 hover:border-amber-400/40 hover:bg-amber-500/16 disabled:cursor-not-allowed disabled:opacity-60'
               }`}
             >
               <MapPin className="h-3.5 w-3.5" />
@@ -1894,41 +2491,79 @@ function TutorWorkflowOverview({
           </div>
         </section>
 
-        <section className="rounded-[18px] border border-sky-400/18 bg-[linear-gradient(180deg,rgba(23,36,56,0.92),rgba(17,24,39,0.98))] px-4 py-4 shadow-[0_22px_40px_rgba(0,0,0,0.24)]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Best next move</div>
-              <h2 className="mt-2 text-[20px] font-semibold text-[#F9FAFB]">What to say next</h2>
-            </div>
-            <button
-              type="button"
-              onClick={() => onUseReply(playbook.ask)}
-              className="shrink-0 rounded-[12px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
-            >
-              Use first response
-            </button>
-          </div>
-
-          <div className="mt-4 grid gap-3">
-            {[
-              ['Ask', playbook.ask],
-              ['Hint', playbook.hint],
-              ['Explain', playbook.explain],
-              ['Check understanding', playbook.checkUnderstanding],
-            ].map(([label, value]) => (
-              <div key={label} className="rounded-[14px] border border-white/10 bg-white/[0.04] px-3 py-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{label}</div>
-                <p className="mt-1 text-[14px] leading-6 text-[#F9FAFB]">{value}</p>
-              </div>
-            ))}
+        <section className="rounded-[18px] border border-white/10 bg-[#111827] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Mode selection</div>
+          <h2 className="mt-2 text-[20px] font-semibold text-[#F9FAFB]">Choose the response style.</h2>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {modeCards.map((card) => {
+              const isSelected = selectedMode === card.id
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedMode(card.id)
+                    onSelectMode(card.id)
+                  }}
+                  aria-pressed={isSelected}
+                  className={`rounded-[16px] border px-4 py-4 text-left transition ${card.buttonClassName} ${isSelected ? 'shadow-[0_18px_34px_rgba(0,0,0,0.22)] ring-1 ring-white/10' : ''}`}
+                >
+                  <div className={`text-[15px] font-semibold ${card.emphasisClassName}`}>{card.label}</div>
+                  <div className="mt-2 text-[13px] leading-6 text-[#E5E7EB]">{card.summary}</div>
+                </button>
+              )
+            })}
           </div>
         </section>
 
+        <section className={`rounded-[18px] border px-4 py-4 shadow-[0_22px_40px_rgba(0,0,0,0.24)] ${selectedModeCard.panelClassName}`}>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#c9c4bb]">Action</div>
+            <h2 className="mt-2 text-[22px] font-semibold text-[#F9FAFB]">{selectedModeCard.label}</h2>
+          </div>
+
+          <div className="mt-4 rounded-[16px] border border-white/10 bg-black/15 px-4 py-4">
+            <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9CA3AF]">What to say</div>
+            <p className="mt-3 text-[16px] leading-7 text-[#F9FAFB]">{selectedModeCard.detail}</p>
+            {selectedModeCard.caution ? (
+              <div className="mt-3 rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] leading-5 text-[#D1D5DB]">
+                {selectedModeCard.caution}
+              </div>
+            ) : null}
+            {selectedMode === 'full' && hasVisibleText(playbook.checkUnderstanding) ? (
+              <div className="mt-3 rounded-[12px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] leading-5 text-[#D1D5DB]">
+                Check next: {playbook.checkUnderstanding}
+              </div>
+            ) : null}
+            {selectedMode === 'quick' && currentStep?.title ? (
+              <div className="mt-3 text-[12px] leading-5 text-[#9CA3AF]">Keep the tutor on {currentStep.title.toLowerCase()} and move fast.</div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onUseReply(selectedModeCard.detail)}
+              className="rounded-[12px] bg-[#F59E0B] px-4 py-2.5 text-[13px] font-semibold text-black transition hover:bg-[#f2ab28]"
+            >
+              {selectedModeCard.ctaLabel}
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenDetail('chat')}
+              className="rounded-[12px] border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[13px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
+            >
+              Open conversation
+            </button>
+          </div>
+        </section>
+
+        {steps.length > 0 ? (
         <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
           <button type="button" onClick={() => setDetailsOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={detailsOpen}>
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Supporting steps</span>
-              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the active step visually distinct and the rest subordinate.</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Collapsed by default so the response stays primary.</span>
             </span>
             <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${detailsOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
@@ -1937,7 +2572,7 @@ function TutorWorkflowOverview({
             <div className="border-t border-white/10 px-4 py-3">
               <div className="space-y-2">
                 {steps.map((step) => {
-                  const isActive = step.number === currentStep.number
+                  const isActive = step.number === currentStep?.number
                   return (
                     <article key={step.id} className={`rounded-[12px] border px-3 py-3 ${isActive ? 'border-amber-300/30 bg-amber-500/[0.08]' : 'border-white/8 bg-white/[0.02]'}`}>
                       <div className="flex items-start gap-3">
@@ -1959,52 +2594,53 @@ function TutorWorkflowOverview({
             </div>
           ) : null}
         </section>
+        ) : null}
 
+        {evidenceText ? (
         <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
           <button type="button" onClick={() => setEvidenceOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={evidenceOpen}>
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Evidence from student work</span>
-              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the raw clue available, but not competing with the next move.</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the raw clue subordinate to the chosen response.</span>
             </span>
             <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${evidenceOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
 
           {evidenceOpen ? <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">{evidenceText}</div> : null}
         </section>
+        ) : null}
 
+        {solutionText ? (
         <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
           <button type="button" onClick={() => setSolutionOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={solutionOpen}>
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Reveal solution</span>
-              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Keep the answer pair demoted until the tutor actually needs it.</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Hidden unless the tutor explicitly opens it.</span>
             </span>
             <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${solutionOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
 
           {solutionOpen ? <div className="border-t border-white/10 px-4 py-3 text-[15px] font-semibold text-[#F9FAFB]">{solutionText}</div> : null}
         </section>
+        ) : null}
 
+        {detailedExplanation ? (
         <section className="rounded-[16px] border border-white/10 bg-white/[0.02]">
           <button type="button" onClick={() => setExplanationOpen((current) => !current)} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left" aria-expanded={explanationOpen}>
             <span>
               <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Detailed explanation</span>
-              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Full rationale stays tucked behind disclosure instead of filling the top of the rail.</span>
+              <span className="mt-1 block text-[13px] text-[#D1D5DB]">Use only when the tutor wants the longer rationale.</span>
             </span>
             <ChevronDown className={`h-4 w-4 text-[#6B7280] transition ${explanationOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
           </button>
 
           {explanationOpen ? <div className="border-t border-white/10 px-4 py-3 text-[13px] leading-6 text-[#D1D5DB]">{detailedExplanation}</div> : null}
         </section>
+        ) : null}
 
-        <div className="flex flex-wrap gap-2 px-1">
-          <button type="button" onClick={() => onOpenDetail('chat')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
-            Open conversation
-          </button>
-          <button type="button" onClick={() => onOpenDetail('steps')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
+        <div className="flex flex-wrap gap-2 px-1 text-[12px] text-[#9CA3AF]">
+          <button type="button" onClick={() => onOpenDetail('steps')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 font-medium transition hover:border-white/20 hover:text-[#F9FAFB]">
             Open full steps
-          </button>
-          <button type="button" onClick={() => onOpenDetail('ai-tutor')} className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]">
-            Open assist detail
           </button>
         </div>
       </div>
@@ -2023,12 +2659,28 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   studentLastSeenText = 'Last seen 2 hrs ago',
   panelMode = 'tutor',
   analysis,
+  analysisMode = null,
   analysisResult,
   analysisLoading,
   analysisPendingConfirmation = false,
   analysisError,
   onStartAnalysis,
   onRetryAnalysis,
+  onUseStrongerModel,
+  onLessonMessageChange,
+  assistContextKey,
+  activeTutorStepId,
+  tutorWalkthroughActive = false,
+  tutorPlaybackCanPlay = false,
+  tutorPlaybackIsPlaying = false,
+  onTutorWalkthroughEnter,
+  onTutorWalkthroughExit,
+  onTutorPlaybackPlay,
+  onTutorPlaybackPause,
+  onTutorPlaybackPrevious,
+  onTutorPlaybackNext,
+  onTutorPlaybackReplay,
+  onTutorStepSelect,
   onMarkStep,
   onBoardActionContextChange,
   sessionState,
@@ -2044,6 +2696,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 }) => {
   const requestedTab = useMemo(() => resolveVisibleTab(activeTab ?? initialTab), [activeTab, initialTab])
   const [detailTab, setDetailTab] = useState<VisibleTabId | null>(() => (requestedTab === 'steps' ? null : requestedTab))
+  const [pendingAssistEntryMode, setPendingAssistEntryMode] = useState<TutorAssistRequestMode | null>(null)
+  const [workflowResponseMode, setWorkflowResponseMode] = useState<TutorResponseMode>('quick')
   const [chatMessages, setChatMessages] = useState<TutorMessage[]>(() => initialChatMessages ?? [])
   const [chatComposerValue, setChatComposerValue] = useState('')
   const [boardActionContext, setBoardActionContext] = useState<BoardActionContext | null>(null)
@@ -2054,39 +2708,24 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   const analysisSourceLabel = useMemo(() => getAnalysisSourceLabel(analysis), [analysis])
   const stepCards = useMemo(() => buildStepCards(resolvedAnalysisResult), [resolvedAnalysisResult])
   const primaryDiagnosisIssue = useMemo(() => getPrimaryDiagnosisIssue(stepCards), [stepCards])
-  const primaryKeyStep = useMemo(() => getPrimaryKeyStep(stepCards, primaryDiagnosisIssue), [stepCards, primaryDiagnosisIssue])
   const primaryIssueStep = useMemo(() => getStructuredStep(resolvedAnalysisResult, primaryDiagnosisIssue), [resolvedAnalysisResult, primaryDiagnosisIssue])
   const problemText = useMemo(() => getProblemText(analysis, resolvedAnalysisResult), [analysis, resolvedAnalysisResult])
   const answerPairText = useMemo(() => getAnswerPairText(analysis, resolvedAnalysisResult), [analysis, resolvedAnalysisResult])
   const responseRecommendation = useMemo(
-    () => buildResponseRecommendation(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, studentName),
-    [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, studentName],
+    () => buildResponseRecommendation(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep),
+    [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep],
   )
-  const tutorAssistActionCards = useMemo(
-    () => buildTutorAssistActionCards(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, answerPairText),
-    [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep, answerPairText],
-  )
-  const resolvedTutorAssistState = initialTutorAssistState ?? (resolvedAnalysisResult ? 'populated' : 'ready')
-
-  useEffect(() => {
-    tutorFixDebug('rendered-workflow-summary', {
-      studentName,
-      cacheSource: analysis?.cacheSource ?? null,
-      analysisSourceLabel,
-      hasStructuredAnalysis: Boolean(resolvedAnalysisResult),
-      problemText,
-      primaryDiagnosisIssue: {
-        number: primaryDiagnosisIssue.number,
-        title: primaryDiagnosisIssue.title,
-        detail: primaryDiagnosisIssue.detail,
-      },
-      recommendedNextMove: responseRecommendation ? {
-        title: responseRecommendation.title,
-        detail: responseRecommendation.detail,
-      } : null,
-      assistCards: tutorAssistActionCards.map((card) => card.title),
-    })
-  }, [analysis?.cacheSource, analysisSourceLabel, problemText, primaryDiagnosisIssue, resolvedAnalysisResult, responseRecommendation, studentName, tutorAssistActionCards])
+  const resolvedTutorAssistState = pendingAssistEntryMode
+    ? (resolvedAnalysisResult || analysis ? pendingAssistEntryMode : 'loading')
+    : (initialTutorAssistState ?? 'ready')
+  const resolvedTutorAssistLoadingTarget = pendingAssistEntryMode ?? 'simple'
+  const showQuietTutorAssistChrome = panelMode === 'tutor'
+    && !analysis
+    && !resolvedAnalysisResult
+    && !analysisLoading
+    && !analysisPendingConfirmation
+    && !analysisError
+    && (detailTab === null || detailTab === 'ai-tutor')
 
   const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
 
@@ -2098,13 +2737,23 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   }
 
   const handleOpenDetail = (tabId: VisibleTabId) => {
+    setPendingAssistEntryMode(null)
     setDetailTab(tabId)
     onTabChange?.(tabId)
   }
 
   const handleDetailTabChange = (tabId: VisibleTabId) => {
+    setPendingAssistEntryMode(null)
     setDetailTab(tabId)
     onTabChange?.(tabId)
+  }
+
+  const handleSelectWorkflowMode = (mode: TutorResponseMode) => {
+    setWorkflowResponseMode(mode)
+
+    if (!analysisLoading && (!analysis || !resolvedAnalysisResult || analysisMode !== mode)) {
+      onStartAnalysis(mode)
+    }
   }
 
   useEffect(() => {
@@ -2193,7 +2842,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
           studentLastSeenText={studentLastSeenText}
           viewerMode="tutor"
           recommendation={responseRecommendation}
-          focusStepNumber={primaryDiagnosisIssue.number}
+          focusStepNumber={primaryDiagnosisIssue?.number ?? 1}
         />
       )
     }
@@ -2203,14 +2852,13 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
         <StepsPanel
           boardActionContext={boardActionContext}
           onBoardAction={handleBoardAction}
-          onStartAnalysis={onStartAnalysis}
-          onRetryAnalysis={onRetryAnalysis}
+          onStartAnalysis={() => onStartAnalysis('quick')}
+          onRetryAnalysis={() => onRetryAnalysis('quick')}
           analysisLoading={analysisLoading}
           analysisPendingConfirmation={analysisPendingConfirmation}
           analysisSourceLabel={analysisSourceLabel}
           stepCards={stepCards}
           primaryDiagnosisIssue={primaryDiagnosisIssue}
-          primaryKeyStep={primaryKeyStep}
           problemText={problemText}
           answerPairText={answerPairText}
         />
@@ -2221,13 +2869,31 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       return (
         <TutorAssistPanel
           initialState={resolvedTutorAssistState}
+          assistContextKey={assistContextKey}
+          analysis={analysis}
+          analysisMode={analysisMode}
+          analysisResult={resolvedAnalysisResult}
           analysisLoading={analysisLoading}
+          analysisError={analysisError}
           onStartAnalysis={onStartAnalysis}
-          actionCards={tutorAssistActionCards}
-          focusStepNumber={primaryDiagnosisIssue.number}
+          onUseStrongerModel={onUseStrongerModel}
+          activeTutorStepId={activeTutorStepId}
+          tutorWalkthroughActive={tutorWalkthroughActive}
+          tutorPlaybackCanPlay={tutorPlaybackCanPlay}
+          tutorPlaybackIsPlaying={tutorPlaybackIsPlaying}
+          onTutorWalkthroughEnter={onTutorWalkthroughEnter}
+          onTutorWalkthroughExit={onTutorWalkthroughExit}
+          onTutorPlaybackPlay={onTutorPlaybackPlay}
+          onTutorPlaybackPause={onTutorPlaybackPause}
+          onTutorPlaybackPrevious={onTutorPlaybackPrevious}
+          onTutorPlaybackNext={onTutorPlaybackNext}
+          onTutorPlaybackReplay={onTutorPlaybackReplay}
+          onTutorStepSelect={onTutorStepSelect}
           onUseReply={handleUseAssistReply}
           boardActionContext={boardActionContext}
           onBoardAction={handleBoardAction}
+          onLessonMessageChange={onLessonMessageChange}
+          loadingTargetState={resolvedTutorAssistLoadingTarget}
         />
       )
     }
@@ -2275,49 +2941,78 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       <>
       <div className="shrink-0 border-b border-[#374151] bg-[linear-gradient(180deg,rgba(31,41,55,0.96),rgba(17,24,39,0.98))] px-4 py-3">
         {detailTab ? (
-          <div className="space-y-2">
+          showQuietTutorAssistChrome && detailTab === 'ai-tutor' ? (
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
-                <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Workflow detail</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+                <div className="mt-1 text-[14px] text-[#9CA3AF]">Quick help first. Full help when you want the whole explanation.</div>
               </div>
               <button
                 type="button"
-                onClick={() => setDetailTab(null)}
+                onClick={() => {
+                  setPendingAssistEntryMode(null)
+                  setDetailTab(null)
+                }}
                 className="rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
               >
-                Back to workflow
+                Back
               </button>
             </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
+                  <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Workflow detail</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingAssistEntryMode(null)
+                    setDetailTab(null)
+                  }}
+                  className="rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
+                >
+                  Back to workflow
+                </button>
+              </div>
 
-            <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Workflow detail views">
-              {WORKFLOW_SECTION_ORDER.map((section) => {
-                const isActive = section.id === detailTab
+              <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Workflow detail views">
+                {WORKFLOW_SECTION_ORDER.map((section) => {
+                  const isActive = section.id === detailTab
 
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => handleDetailTabChange(section.id)}
-                    className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827] ${
-                      isActive
-                        ? 'border-amber-400/40 bg-amber-500/12 text-[#F9FAFB]'
-                        : 'border-white/10 bg-white/[0.03] text-[#9CA3AF] hover:text-[#F9FAFB]'
-                    }`}
-                  >
-                    {section.title}
-                  </button>
-                )
-              })}
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => handleDetailTabChange(section.id)}
+                      className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827] ${
+                        isActive
+                          ? 'border-amber-400/40 bg-amber-500/12 text-[#F9FAFB]'
+                          : 'border-white/10 bg-white/[0.03] text-[#9CA3AF] hover:text-[#F9FAFB]'
+                      }`}
+                    >
+                      {section.title}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-          </div>
+          )
         ) : (
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
-            <div className="mt-1 text-[14px] text-[#9CA3AF]">Diagnosis first. Response next. Assist when needed.</div>
-          </div>
+          showQuietTutorAssistChrome ? (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+              <div className="mt-1 text-[14px] text-[#9CA3AF]">Quiet by default. Open only the help you want.</div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
+              <div className="mt-1 text-[14px] text-[#9CA3AF]">Diagnosis first. Response next. Assist when needed.</div>
+            </div>
+          )
         )}
       </div>
 
@@ -2350,7 +3045,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             </div>
             <button
               type="button"
-              onClick={onRetryAnalysis}
+              onClick={() => onRetryAnalysis('quick')}
               className="shrink-0 rounded-[10px] border border-rose-200/25 bg-rose-500/10 px-3 py-2 text-[12px] font-semibold text-rose-50 transition hover:bg-rose-500/15"
             >
               Retry AI
@@ -2395,6 +3090,8 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             onBoardAction={handleBoardAction}
             onUseReply={handleUseAssistReply}
             onOpenDetail={handleOpenDetail}
+            onSelectMode={handleSelectWorkflowMode}
+            preferredMode={workflowResponseMode}
             sessionState={sessionState}
             sessionBadgeText={sessionBadgeText}
             sessionSummaryText={sessionSummaryText}

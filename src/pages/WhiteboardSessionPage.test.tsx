@@ -5,6 +5,7 @@ import WhiteboardSessionPage from './WhiteboardSessionPage'
 import { ApiError } from '../api/httpClient'
 import { buildTutorAnalysisDeviceCacheKey, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
 import type { WhiteboardTutorResponse } from '../types/whiteboard'
+import { formatRelativeSessionTimestampFromNow } from '../utils/whiteboardSessionTimestamps'
 
 const TEXT_MODE_PLACEHOLDER = 'The Weekend Problem\n\nSara has 3 apples...\n\nHow many apples does she have left?'
 const localStorageState = new Map<string, string>()
@@ -177,12 +178,13 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
         <div>Panel mode: {props.panelMode ?? 'student'}</div>
         <div>Participant name: {props.studentName ?? ''}</div>
         <div>Participant status text: {props.studentLastSeenText ?? ''}</div>
-        <div>Ready intent: {props.readyIntent ?? 'analyze'}</div>
+        <div data-testid="panel-session-summary">{props.sessionSummaryText ?? ''}</div>
+        <div data-testid="panel-session-meta">{props.sessionMetaText ?? ''}</div>
+        <div data-testid="panel-session-subject">{props.sessionSubjectText ?? ''}</div>
+        <div data-testid="panel-session-grade">{props.sessionGradeText ?? ''}</div>
+        <div>Analysis mode: {props.analysisMode ?? ''}</div>
         <div>Analysis problem: {props.analysis?.problem ?? ''}</div>
         <div>Initial chat message: {props.initialChatMessages?.[0]?.body ?? ''}</div>
-        <button type="button" onClick={() => props.onReadyIntentChange?.('analyze')}>Set analyze intent</button>
-        <button type="button" onClick={() => props.onReadyIntentChange?.('solve')}>Set solve intent</button>
-        <button type="button" onClick={() => props.onReadyIntentChange?.('steps')}>Set steps intent</button>
         <textarea
           aria-label="Problem or question"
           value={props.problemDraft ?? ''}
@@ -198,11 +200,17 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
           value={props.responseAge ?? ''}
           onChange={(event) => props.onResponseAgeChange?.(event.target.value)}
         />
-        <button type="button" onClick={() => props.onStartAnalysis?.()}>
-          Start analysis
+        <button type="button" onClick={() => props.onStartAnalysis?.('quick')}>
+          Start quick help
         </button>
-        <button type="button" onClick={() => props.onRetryAnalysis?.()}>
-          Rerun analysis
+        <button type="button" onClick={() => props.onStartAnalysis?.('full')}>
+          Start full help
+        </button>
+        <button type="button" onClick={() => props.onRetryAnalysis?.('quick')}>
+          Rerun quick help
+        </button>
+        <button type="button" onClick={() => props.onRetryAnalysis?.('full')}>
+          Rerun full help
         </button>
         <button type="button" onClick={() => props.onSubmitHelpRequest?.()}>
           Send help request
@@ -402,8 +410,10 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Ready for help')).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/Request help when you want a tutor to join this board\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
+    expect(screen.getByText('Request help when you want a tutor to join this board.')).toBeInTheDocument()
     expect(screen.getByText('No tutor requested')).toBeInTheDocument()
+    expect(screen.queryByText(/Grade 9/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Algebra/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pick Up Session' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pass' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tutor queue' })).not.toBeInTheDocument()
@@ -427,9 +437,20 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('No active request')).toBeInTheDocument()
     })
 
-    expect(screen.getByText(/Student submitted 23 minutes ago\s+·\s+Algebra\s+·\s+Grade 9/)).toBeInTheDocument()
+    expect(screen.queryByText(/Student submitted 23 minutes ago/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Grade 9/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pick Up Session' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pass' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('')
+    expect(screen.getByTestId('panel-session-meta')).toHaveTextContent('')
+    expect(screen.getByTestId('panel-session-grade')).toHaveTextContent('')
   })
 
   it('keeps desktop annotation controls on the canvas when a background photo is present without auto-starting tutor analysis', async () => {
@@ -494,7 +515,7 @@ describe('WhiteboardSessionPage', () => {
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Response age' }), { target: { value: '8' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
 
     expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
@@ -513,6 +534,54 @@ describe('WhiteboardSessionPage', () => {
         }),
       )
     })
+  })
+
+  it('does not hydrate tutor analysis from a non-matching board cache entry', async () => {
+    const staleCacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      inputMode: 'photo',
+      mode: 'analysis',
+      modelTier: 'stronger',
+      imageDataUrl: 'data:image/png;base64,STALE',
+      imageMimeType: 'image/png',
+      imageName: 'stale.png',
+    })
+
+    writeTutorAnalysisDeviceCache(staleCacheKey, {
+      ...sampleAnalysisResponse,
+      problem: 'Stale stronger-tier problem',
+      analysisResult: {
+        ...sampleAnalysisResponse.analysisResult!,
+        problemText: 'Stale stronger-tier problem',
+      },
+      modelMetadata: {
+        tier: 'stronger',
+        strongerModelAvailable: true,
+        transcriptionModel: 'reader-x',
+        evaluationModel: 'grader-y',
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Analysis problem:')).toBeInTheDocument()
+    expect(screen.queryByText('Analysis problem: Stale stronger-tier problem')).not.toBeInTheDocument()
   })
 
   it('requires confirmation before removing the photo', async () => {
@@ -802,7 +871,7 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start quick help' })).toBeInTheDocument()
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
@@ -866,7 +935,7 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Request help' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start quick help' })).toBeInTheDocument()
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
@@ -933,7 +1002,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.queryByText("Initial chat message: I'm not sure what I did wrong on step 3")).not.toBeInTheDocument()
   })
 
-  it('wires solve and step-by-step help intents into the tutor analysis request', async () => {
+  it('wires quick help and full help modes into distinct tutor analysis requests', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -954,15 +1023,14 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start quick help' })).toBeInTheDocument()
     })
 
     fireEvent.change(screen.getByRole('textbox', { name: 'What do you want help with' }), {
       target: { value: 'Show me only the next move' },
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set solve intent' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
 
     expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
 
@@ -974,15 +1042,14 @@ describe('WhiteboardSessionPage', () => {
         expect.objectContaining({
           messages: [
             expect.objectContaining({
-              content: expect.stringContaining('Please help me solve this without jumping straight to the final answer.'),
+              content: expect.stringContaining('Need quick help with this problem.'),
             }),
           ],
         }),
       )
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set steps intent' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start full help' }))
 
     expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
 
@@ -994,7 +1061,7 @@ describe('WhiteboardSessionPage', () => {
         expect.objectContaining({
           messages: [
             expect.objectContaining({
-              content: expect.stringContaining('Please explain this one step at a time so I can work along on the board.'),
+              content: expect.stringContaining('Need full help with this problem.'),
             }),
           ],
         }),
@@ -1003,7 +1070,6 @@ describe('WhiteboardSessionPage', () => {
   })
 
   it('uses the cached tutor analysis when the tutor asks for help again', async () => {
-    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -1017,12 +1083,13 @@ describe('WhiteboardSessionPage', () => {
 
     const cacheKey = buildTutorAnalysisDeviceCacheKey({
       boardId: 'board-1',
+      helpMode: 'quick',
       inputMode: 'photo',
       mode: 'analysis',
       messages: [
         {
           role: 'user',
-          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+          content: 'Need quick help with this problem. State what is wrong, state the correct answer, and give one short line the tutor can say right away. Keep it compact.',
         },
       ],
       imageDataUrl: whiteboardPadState.asset.dataUrl,
@@ -1051,22 +1118,22 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Analysis problem: Solve 2x = 10')).not.toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
+
+    await waitFor(() => {
       expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
     })
 
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
-    expect(consoleInfoSpy).toHaveBeenCalledWith(
-      '[WB-TUTOR] assistant-data-source',
-      expect.objectContaining({
-        boardId: 'board-1',
-        inputMode: 'photo',
-        mode: 'analysis',
-        source: 'local-cache',
-      }),
-    )
   })
 
-  it('hydrates the most recent cached analysis on load without requiring another AI request', async () => {
+  it('does not hydrate cached analysis on load or panel open before a help click', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -1080,12 +1147,13 @@ describe('WhiteboardSessionPage', () => {
 
     const cacheKey = buildTutorAnalysisDeviceCacheKey({
       boardId: 'board-1',
+      helpMode: 'quick',
       inputMode: 'photo',
       mode: 'analysis',
       messages: [
         {
           role: 'user',
-          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+          content: 'Need quick help with this problem. State what is wrong, state the correct answer, and give one short line the tutor can say right away. Keep it compact.',
         },
       ],
       imageDataUrl: whiteboardPadState.asset.dataUrl,
@@ -1111,14 +1179,14 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
     })
 
+    expect(screen.queryByText('Analysis problem: Solve 2x = 10')).not.toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 
-  it('lets tutors explicitly rerun AI after a cached analysis result is reused', async () => {
-    const consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined)
+  it('does not cross-reuse quick-help cache entries for full-help requests', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -1132,12 +1200,86 @@ describe('WhiteboardSessionPage', () => {
 
     const cacheKey = buildTutorAnalysisDeviceCacheKey({
       boardId: 'board-1',
+      helpMode: 'quick',
       inputMode: 'photo',
       mode: 'analysis',
       messages: [
         {
           role: 'user',
-          content: 'Please analyze what is here and tell me the best next thing to focus on.',
+          content: 'Need quick help with this problem. State what is wrong, state the correct answer, and give one short line the tutor can say right away. Keep it compact.',
+        },
+      ],
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: '',
+    })
+
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('Analysis problem: Solve 2x = 10')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start full help' }))
+
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+    expect(screen.queryByText('Analysis problem: Solve 2x = 10')).not.toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('Need full help with this problem.'),
+            }),
+          ],
+        }),
+      )
+    })
+  })
+
+  it('lets tutors explicitly rerun AI after a cached analysis result is reused', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      helpMode: 'quick',
+      inputMode: 'photo',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Need quick help with this problem. State what is wrong, state the correct answer, and give one short line the tutor can say right away. Keep it compact.',
         },
       ],
       imageDataUrl: whiteboardPadState.asset.dataUrl,
@@ -1167,10 +1309,16 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
+
+    await waitFor(() => {
       expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Rerun analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rerun quick help' }))
 
     expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
 
@@ -1180,30 +1328,71 @@ describe('WhiteboardSessionPage', () => {
       expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
         'board-1',
         expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('Need quick help with this problem.'),
+            }),
+          ],
           inputMode: 'photo',
           skipCache: true,
         }),
       )
     })
+  })
 
-    expect(consoleInfoSpy).toHaveBeenCalledWith(
-      '[WB-TUTOR] assistant-data-source',
-      expect.objectContaining({
-        boardId: 'board-1',
-        inputMode: 'photo',
-        mode: 'analysis',
-        source: 'local-cache',
-      }),
+  it('sends only one analysis request when confirm is clicked twice rapidly', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    let resolveAnalysis: ((value: WhiteboardTutorResponse) => void) | undefined
+    analyzeWhiteboardPhoto.mockImplementation(() => new Promise<WhiteboardTutorResponse>((resolve) => {
+      resolveAnalysis = resolve
+    }))
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
     )
-    expect(consoleInfoSpy).toHaveBeenCalledWith(
-      '[WB-TUTOR] assistant-data-source',
-      expect.objectContaining({
-        boardId: 'board-1',
-        inputMode: 'photo',
-        mode: 'analysis',
-        source: 'server-cache',
-      }),
-    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
+
+    const confirmButton = screen.getByRole('button', { name: 'Confirm AI assistance' })
+    fireEvent.click(confirmButton)
+    fireEvent.click(confirmButton)
+
+    expect(analyzeWhiteboardPhoto).toHaveBeenCalledTimes(1)
+
+    if (resolveAnalysis) {
+      resolveAnalysis({
+        ...sampleAnalysisResponse,
+        cacheSource: 'fresh',
+      })
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 2x = 10')).toBeInTheDocument()
+    })
   })
 
   it('does not call AI until the tutor confirms the paid request', async () => {
@@ -1233,10 +1422,10 @@ describe('WhiteboardSessionPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Start analysis' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Start quick help' })).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Start analysis' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
 
     expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
     expect(screen.getByText('$')).toBeInTheDocument()
@@ -1248,7 +1437,7 @@ describe('WhiteboardSessionPage', () => {
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
   })
 
-  it('shows tutor assist mode and lets tutors resolve claimed requests', async () => {
+  it('shows tutor assist mode and passes live request metadata instead of hardcoded tutor summary text', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
       profile: { is_tutor: true },
@@ -1283,7 +1472,8 @@ describe('WhiteboardSessionPage', () => {
 
     expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Request help' })).not.toBeInTheDocument()
-    expect(screen.getByText('Started 4 min ago')).toBeInTheDocument()
+    expect(screen.queryByText('Started 4 min ago')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Grade 9/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
 
@@ -1291,7 +1481,101 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
     })
 
+    expect(screen.getByText('Tutor Focus')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Tutor queue' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /share/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Board reference')).toBeInTheDocument()
+
     expect(screen.getByText('Active tab: steps')).toBeInTheDocument()
+    expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('Please check my work')
+    expect(screen.getByTestId('panel-session-meta').textContent ?? '').toMatch(/^Started .* · /)
+    expect(screen.getByTestId('panel-session-grade')).toHaveTextContent('')
+  })
+
+  it('formats live session relative time from the real request timestamp instead of persisted text', () => {
+    const claimedAt = '2026-03-08T00:10:00.000Z'
+
+    expect(formatRelativeSessionTimestampFromNow(claimedAt, Date.parse('2026-03-08T00:23:00.000Z'))).toBe('13 min ago')
+    expect(formatRelativeSessionTimestampFromNow(claimedAt, Date.parse('2026-03-08T00:24:00.000Z'))).toBe('14 min ago')
+  })
+
+  it('does not carry stale tutor summary metadata across request changes', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+
+    getActiveWhiteboardHelpRequest.mockResolvedValueOnce({
+      id: 'request-1',
+      boardId: 'board-1',
+      studentUserId: 'user-1',
+      studentUsername: 'ron',
+      requestText: 'First request',
+      problemDraft: '2x = 10',
+      status: 'pending',
+      claimedByUserId: null,
+      claimedByUsername: null,
+      claimedAt: null,
+      resolvedAt: null,
+      createdAt: '2026-03-08T00:00:00.000Z',
+      updatedAt: '2026-03-08T00:00:00.000Z',
+    })
+
+    const firstRender = render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('First request')
+    })
+
+    firstRender.unmount()
+
+    getActiveWhiteboardHelpRequest.mockResolvedValueOnce({
+      id: 'request-2',
+      boardId: 'board-1',
+      studentUserId: 'user-1',
+      studentUsername: 'ron',
+      requestText: 'Second request',
+      problemDraft: '3x = 12',
+      status: 'pending',
+      claimedByUserId: null,
+      claimedByUsername: null,
+      claimedAt: null,
+      resolvedAt: null,
+      createdAt: '2026-03-08T00:20:00.000Z',
+      updatedAt: '2026-03-08T00:20:00.000Z',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('⏳ In Queue')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('Second request')
+    })
+
+    expect(screen.queryByText('First request')).not.toBeInTheDocument()
   })
 
   it('keeps the desktop whiteboard full-width until the optional side panel is opened', async () => {

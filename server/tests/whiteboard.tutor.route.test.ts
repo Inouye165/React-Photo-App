@@ -1,6 +1,5 @@
 /* eslint-env jest */
 
-import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals'
 import express from 'express'
 import type { NextFunction, Request, Response } from 'express'
 import request from 'supertest'
@@ -198,6 +197,9 @@ describe('whiteboard tutor route', () => {
   const originalGeminiKey = process.env.GEMINI_API_KEY
   const originalAnthropicKey = process.env.ANTHROPIC_API_KEY
   const originalWhiteboardTranscriptionModel = process.env.WHITEBOARD_TRANSCRIPTION_MODEL
+  const originalWhiteboardEvaluationModel = process.env.WHITEBOARD_EVALUATION_MODEL
+  const originalWhiteboardTranscriptionStrongerModel = process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL
+  const originalWhiteboardEvaluationStrongerModel = process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL
 
   beforeEach(() => {
     supabaseState.roomMembers = []
@@ -205,6 +207,9 @@ describe('whiteboard tutor route', () => {
     process.env.GEMINI_API_KEY = 'test-gemini-key'
     process.env.ANTHROPIC_API_KEY = 'test-anthropic-key'
     process.env.WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash'
+    process.env.WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514'
+    delete process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL
+    delete process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL
     mockGenerateContent.mockResolvedValue({
       response: {
         text: () => JSON.stringify({
@@ -277,6 +282,24 @@ describe('whiteboard tutor route', () => {
       process.env.WHITEBOARD_TRANSCRIPTION_MODEL = originalWhiteboardTranscriptionModel
     }
 
+    if (originalWhiteboardEvaluationModel === undefined) {
+      delete process.env.WHITEBOARD_EVALUATION_MODEL
+    } else {
+      process.env.WHITEBOARD_EVALUATION_MODEL = originalWhiteboardEvaluationModel
+    }
+
+    if (originalWhiteboardTranscriptionStrongerModel === undefined) {
+      delete process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL
+    } else {
+      process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL = originalWhiteboardTranscriptionStrongerModel
+    }
+
+    if (originalWhiteboardEvaluationStrongerModel === undefined) {
+      delete process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL
+    } else {
+      process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL = originalWhiteboardEvaluationStrongerModel
+    }
+
     mockGenerateContent.mockReset()
     mockAnthropicCreate.mockReset()
   })
@@ -304,6 +327,12 @@ describe('whiteboard tutor route', () => {
       finalAnswers: ['x = 5'],
       canAnimate: true,
     })
+    expect(res.body.modelMetadata).toEqual({
+      tier: 'standard',
+      strongerModelAvailable: false,
+      transcriptionModel: 'gemini-2.0-flash',
+      evaluationModel: 'claude-sonnet-4-20250514',
+    })
     expect(res.body.steps[0]).toMatchObject({ correct: true })
     expect(res.body.messages).toEqual([
       {
@@ -314,6 +343,54 @@ describe('whiteboard tutor route', () => {
     expect(mockGenerateContent).toHaveBeenCalledTimes(1)
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
     expect(mockGenerateContent.mock.invocationCallOrder[0]).toBeLessThan(mockAnthropicCreate.mock.invocationCallOrder[0])
+  })
+
+  test('rejects stronger tier requests when no stronger models are configured', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+        modelTier: 'stronger',
+      })
+
+    expect(res.status).toBe(409)
+    expect(res.body.error).toBe('A stronger tutor model is not configured for this request.')
+    expect(mockGenerateContent).not.toHaveBeenCalled()
+    expect(mockAnthropicCreate).not.toHaveBeenCalled()
+  })
+
+  test('returns stronger model metadata when a stronger tier is configured', async () => {
+    process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL = 'gemini-2.5-flash'
+    process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL = 'claude-opus-4-1-20250805'
+
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math.png',
+        mode: 'analysis',
+        modelTier: 'stronger',
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.modelMetadata).toEqual({
+      tier: 'stronger',
+      strongerModelAvailable: true,
+      transcriptionModel: 'gemini-2.5-flash',
+      evaluationModel: 'claude-opus-4-1-20250805',
+    })
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
   })
 
   test('includes the requested response age in the tutor prompt', async () => {
@@ -337,8 +414,76 @@ describe('whiteboard tutor route', () => {
 
     expect(typeof promptText).toBe('string')
     expect(promptText).toContain("The student's age is: 8")
-    expect(promptText).toContain('First solve this problem yourself')
+    expect(promptText).toContain('Deterministic math facts:')
+    expect(promptText).toContain('Use the deterministic math facts as the source of truth')
     expect(promptText).toContain('Visible step transcriptions:')
+  })
+
+  test('uses deterministic math facts before evaluation and overrides incorrect LLM math for supported domains', async () => {
+    mockAnthropicCreate.mockResolvedValueOnce({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            problemText: 'Solve 2x = 10',
+            finalAnswers: ['x = 4'],
+            overallSummary: 'Nice work. x = 4 is correct.',
+            steps: [
+              {
+                id: 'step-1',
+                index: 0,
+                studentText: '2x = 10',
+                normalizedMath: '2x = 10',
+                status: 'correct',
+                shortLabel: 'Start',
+                kidFriendlyExplanation: 'Great start.',
+              },
+              {
+                id: 'step-2',
+                index: 1,
+                studentText: 'x = 4',
+                normalizedMath: 'x = 4',
+                status: 'correct',
+                shortLabel: 'Answer',
+                kidFriendlyExplanation: 'Nice work.',
+              },
+            ],
+            validatorWarnings: [],
+            canAnimate: true,
+          }),
+        },
+      ],
+    })
+
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        inputMode: 'text',
+        textContent: 'Solve 2x = 10',
+        mode: 'analysis',
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.mathFacts).toMatchObject({
+      supported: true,
+      domain: 'algebra',
+      verifiedAnswer: ['x = 5'],
+    })
+    expect(res.body.correctSolution).toBe('x = 5')
+    expect(res.body.analysisResult.finalAnswers).toEqual(['x = 5'])
+    expect(res.body.analysisResult.steps[1]).toMatchObject({
+      status: 'incorrect',
+    })
+
+    const anthropicPayload = mockAnthropicCreate.mock.calls[0]?.[0]
+    const promptText = anthropicPayload?.messages?.[0]?.content
+    expect(promptText).toContain('Deterministic math facts for this request:')
+    expect(promptText).toContain('"verifiedAnswer":["x = 5"]')
+    expect(mockGenerateContent).not.toHaveBeenCalled()
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
   })
 
   test('recovers when transcription JSON is wrapped in fences and includes trailing commas', async () => {

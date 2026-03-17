@@ -41,7 +41,7 @@ const analysisResult: TutorAnalysisResult = {
 }
 
 function Harness() {
-  const [activeStepId, setActiveStepId] = useState<string | null>('step-1')
+  const [activeStepId, setActiveStepId] = useState<string | null>(null)
   return (
     <div className="relative" style={{ width: 900, height: 600 }}>
       <TutorOverlay
@@ -59,6 +59,9 @@ function Harness() {
         onSelectStep={setActiveStepId}
       />
       <div style={{ marginTop: 520 }}>
+        <button type="button" onClick={() => setActiveStepId(null)}>
+          Exit walkthrough
+        </button>
         <StepsTab
           hasPhoto
           isLoading={false}
@@ -74,12 +77,31 @@ function Harness() {
 }
 
 describe('Tutor overlay integration', () => {
+  it('defaults Quick Assist to the likely issue region instead of highlighting correct work', () => {
+    render(<Harness />)
+
+    expect(screen.queryByTestId('tutor-region-region-1')).not.toBeInTheDocument()
+    expect(screen.getByTestId('tutor-region-region-2')).toHaveAttribute('data-active', 'true')
+  })
+
   it('focuses the corresponding overlay region when a step card is clicked', () => {
     render(<Harness />)
 
-    fireEvent.click(screen.getByRole('article', { name: 'Step 2: Partial' }))
+    fireEvent.click(screen.getByRole('article', { name: 'Step 1: Correct' }))
 
-    expect(screen.getByTestId('tutor-region-region-1')).toHaveAttribute('data-active', 'false')
+    expect(screen.getByTestId('tutor-region-region-1')).toHaveAttribute('data-active', 'true')
+    expect(screen.queryByTestId('tutor-region-region-2')).not.toBeInTheDocument()
+  })
+
+  it('returns to the likely issue region after walkthrough exits', () => {
+    render(<Harness />)
+
+    fireEvent.click(screen.getByRole('article', { name: 'Step 1: Correct' }))
+    expect(screen.getByTestId('tutor-region-region-1')).toHaveAttribute('data-active', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit walkthrough' }))
+
+    expect(screen.queryByTestId('tutor-region-region-1')).not.toBeInTheDocument()
     expect(screen.getByTestId('tutor-region-region-2')).toHaveAttribute('data-active', 'true')
   })
 
@@ -108,10 +130,83 @@ describe('Tutor overlay integration', () => {
     )
 
     expect(screen.getByTestId('tutor-region-region-1')).toHaveStyle({
-      left: '110px',
-      top: '195px',
+      left: '70px',
+      top: '63px',
       width: '175px',
       height: '37.8px',
     })
+  })
+
+  it('does not render placeholder tutor guidance when the active step has no visible content', () => {
+    const blankAnalysisResult: TutorAnalysisResult = {
+      ...analysisResult,
+      steps: [
+        {
+          id: 'step-blank',
+          index: 0,
+          studentText: '',
+          normalizedMath: '',
+          status: 'partial',
+          shortLabel: '',
+          kidFriendlyExplanation: '',
+          regionId: 'region-1',
+        },
+      ],
+      regions: [analysisResult.regions[0]!],
+    }
+
+    render(
+      <div className="relative" style={{ width: 900, height: 600 }}>
+        <TutorOverlay
+          analysisResult={blankAnalysisResult}
+          activeStepId="step-blank"
+          lessonMessage={null}
+          boardFrame={{ left: 40, top: 80, width: 700, height: 420 }}
+          visible
+          reducedMotion
+          onToggleVisible={() => undefined}
+          onSelectStep={() => undefined}
+        />
+      </div>,
+    )
+
+    expect(screen.queryByText('Tutor Focus')).not.toBeInTheDocument()
+  })
+
+  it('does not render placeholder no-region copy when guidance exists without a mapped region', () => {
+    const noRegionAnalysisResult: TutorAnalysisResult = {
+      ...analysisResult,
+      regions: [],
+      steps: [
+        {
+          id: 'step-no-region',
+          index: 0,
+          studentText: '2x = 8',
+          normalizedMath: '2x = 8',
+          status: 'partial',
+          shortLabel: 'Subtract 3 from both sides',
+          kidFriendlyExplanation: 'This move helps isolate the x term.',
+          correction: 'Make sure you subtract 3 on both sides.',
+        },
+      ],
+    }
+
+    render(
+      <div className="relative" style={{ width: 900, height: 600 }}>
+        <TutorOverlay
+          analysisResult={noRegionAnalysisResult}
+          activeStepId="step-no-region"
+          lessonMessage={null}
+          boardFrame={{ left: 40, top: 80, width: 700, height: 420 }}
+          visible
+          reducedMotion
+          onToggleVisible={() => undefined}
+          onSelectStep={() => undefined}
+        />
+      </div>,
+    )
+
+    expect(screen.getByText('Tutor Focus')).toBeInTheDocument()
+    expect(screen.queryByText(/No precise region was detected/i)).not.toBeInTheDocument()
   })
 })

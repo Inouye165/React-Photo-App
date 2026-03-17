@@ -11,6 +11,7 @@ import * as Y from 'yjs';
 import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
 import { buildLegacyTutorPayload, parseStructuredTutorAnalysis } from '../tutor/analysisParser';
+import { buildMathFacts, type DeterministicMathFacts } from '../math';
 const supabase = require('../lib/supabaseClient');
 
 const gzipAsync = promisify(gzip);
@@ -53,6 +54,7 @@ const WhiteboardTutorBodySchema = z.object({
   messages: z.array(WhiteboardTutorMessageSchema).max(40).optional(),
   mode: z.enum(['analysis', 'tutor', 'chat']).optional(),
   skipCache: z.boolean().optional(),
+  modelTier: z.enum(['standard', 'stronger']).optional(),
 }).superRefine((value, ctx) => {
   if (value.inputMode === 'text') {
     if (!value.textContent?.trim()) {
@@ -77,11 +79,86 @@ const WhiteboardTutorBodySchema = z.object({
 const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
 const WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 const WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514';
-const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.NODE_ENV !== 'production';
+const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.TUTOR_DEBUG === 'true';
+
+type TutorModelTier = 'standard' | 'stronger';
+
+type TutorModelMetadata = {
+  tier: TutorModelTier;
+  strongerModelAvailable: boolean;
+  transcriptionModel: string | null;
+  evaluationModel: string | null;
+};
+
+type WhiteboardTutorRouteResponse = ReturnType<typeof buildLegacyTutorPayload> & {
+  modelMetadata: TutorModelMetadata;
+};
+
+type WhiteboardTutorTranscriptionResponse = {
+  transcription: WhiteboardTutorTranscription;
+  modelUsed: string | null;
+};
+
+type WhiteboardTutorEvaluationResponse = {
+  response: ReturnType<typeof buildLegacyTutorPayload>;
+  modelUsed: string;
+};
+
+type TutorModelConfig = {
+  requestedTier: TutorModelTier;
+  strongerModelAvailable: boolean;
+  transcriptionModel: string;
+  evaluationModel: string;
+};
 
 function tutorFixDebug(label: string, details: Record<string, unknown>): void {
   if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return;
   console.info('[TUTOR-FIX-DEBUG]', label, details);
+}
+
+function resolveTutorModelTier(value: unknown): TutorModelTier {
+  return value === 'stronger' ? 'stronger' : 'standard';
+}
+
+function getConfiguredTutorModelConfig(body: WhiteboardTutorBody): TutorModelConfig {
+  const requestedTier = resolveTutorModelTier(body.modelTier);
+  const standardTranscriptionModel = normalizeModelNameForSdk(process.env.WHITEBOARD_TRANSCRIPTION_MODEL?.trim() || WHITEBOARD_TRANSCRIPTION_MODEL);
+  const strongerTranscriptionModel = normalizeModelNameForSdk(process.env.WHITEBOARD_TRANSCRIPTION_STRONGER_MODEL?.trim() || '');
+  const standardEvaluationModel = normalizeModelNameForSdk(process.env.WHITEBOARD_EVALUATION_MODEL?.trim() || WHITEBOARD_EVALUATION_MODEL);
+  const strongerEvaluationModel = normalizeModelNameForSdk(process.env.WHITEBOARD_EVALUATION_STRONGER_MODEL?.trim() || '');
+  const strongerModelAvailable = Boolean(
+    (body.inputMode !== 'text' && strongerTranscriptionModel && strongerTranscriptionModel !== standardTranscriptionModel)
+    || (strongerEvaluationModel && strongerEvaluationModel !== standardEvaluationModel)
+  );
+
+  return {
+    requestedTier,
+    strongerModelAvailable,
+    transcriptionModel: requestedTier === 'stronger'
+      && body.inputMode !== 'text'
+      && strongerTranscriptionModel
+      && strongerTranscriptionModel !== standardTranscriptionModel
+      ? strongerTranscriptionModel
+      : standardTranscriptionModel,
+    evaluationModel: requestedTier === 'stronger'
+      && strongerEvaluationModel
+      && strongerEvaluationModel !== standardEvaluationModel
+      ? strongerEvaluationModel
+      : standardEvaluationModel,
+  };
+}
+
+function buildTutorModelMetadata(
+  body: WhiteboardTutorBody,
+  config: TutorModelConfig,
+  modelsUsed: { transcriptionModel: string | null; evaluationModel: string },
+): TutorModelMetadata {
+  return {
+    tier: config.requestedTier,
+    strongerModelAvailable: config.strongerModelAvailable,
+    transcriptionModel: body.inputMode === 'text' ? null : modelsUsed.transcriptionModel,
+    evaluationModel: modelsUsed.evaluationModel,
+  };
 }
 
 const WHITEBOARD_TRANSCRIPTION_PROMPT = `Look at this homework photo and return only JSON.
@@ -106,7 +183,10 @@ Return JSON exactly like this:
 }`;
 const WHITEBOARD_EVALUATION_SYSTEM_PROMPT = `You are a calm, supportive math tutor for children.
 
-You must solve the math yourself first, then explain what the learner did.
+When deterministic math facts are provided, treat them as the source of truth for correctness.
+Do not replace verified answers or verified mistakes with a different math conclusion.
+If the deterministic math facts say support is low or unsupported, stay cautious and do not invent exact certainty.
+
 Use simple language a 10-year-old can understand.
 Keep every explanation short.
 Avoid long paragraphs and advanced vocabulary.
@@ -144,7 +224,7 @@ Rules for the JSON:
 - steps: split the visible work into small readable steps
 - kidFriendlyExplanation: short, warm, and simple
 - status: choose the best fit for each step
-- for simple arithmetic or one-variable linear equations, verify the math before choosing status
+- use deterministic math facts as the ground truth whenever they are present and supported
 - if a step is incorrect, do not praise it
 - focus the earliest blocking mistake before later downstream consequences
 - regions: optional; include only if reasonably visible
@@ -269,7 +349,7 @@ function normalizeTutorCacheMessages(messages: WhiteboardTutorMessage[] | undefi
   }));
 }
 
-function withTutorCacheSource<T extends ReturnType<typeof buildLegacyTutorPayload>>(
+function withTutorCacheSource<T extends WhiteboardTutorRouteResponse>(
   response: T,
   cacheSource: 'fresh' | 'server-cache',
 ): T & { cacheSource: 'fresh' | 'server-cache' } {
@@ -284,6 +364,7 @@ function buildWhiteboardTutorCacheKey(boardId: string, body: WhiteboardTutorBody
     version: WHITEBOARD_TUTOR_CACHE_VERSION,
     boardId,
     mode: body.mode ?? 'analysis',
+    modelTier: resolveTutorModelTier(body.modelTier),
     inputMode: body.inputMode === 'text' ? 'text' : 'photo',
     audienceAge: typeof body.audienceAge === 'number' ? body.audienceAge : null,
     textContent: body.textContent?.trim() || null,
@@ -314,7 +395,7 @@ async function readWhiteboardTutorCache(
   db: Knex,
   boardId: string,
   body: WhiteboardTutorBody,
-): Promise<ReturnType<typeof buildLegacyTutorPayload> | null> {
+): Promise<WhiteboardTutorRouteResponse | null> {
   if (!shouldReadWhiteboardTutorCache(body)) return null;
 
   try {
@@ -327,7 +408,12 @@ async function readWhiteboardTutorCache(
     const response = row?.response_json;
     if (!response || typeof response !== 'object') return null;
 
-    return response as ReturnType<typeof buildLegacyTutorPayload>;
+    const cachedResponse = response as Partial<WhiteboardTutorRouteResponse>;
+    if (!cachedResponse.modelMetadata || typeof cachedResponse.modelMetadata !== 'object') {
+      return null;
+    }
+
+    return cachedResponse as WhiteboardTutorRouteResponse;
   } catch (error) {
     if (isMissingRelationError(error)) {
       return null;
@@ -340,7 +426,7 @@ async function writeWhiteboardTutorCache(
   db: Knex,
   boardId: string,
   body: WhiteboardTutorBody,
-  response: ReturnType<typeof buildLegacyTutorPayload>,
+  response: WhiteboardTutorRouteResponse,
 ): Promise<void> {
   if (!shouldWriteWhiteboardTutorCache(body)) return;
 
@@ -538,14 +624,35 @@ function parseJsonResponse<T>(rawText: string, schema: z.ZodType<T>, label: stri
   throw wrappedError;
 }
 
-function buildPassTwoUserPrompt(body: WhiteboardTutorBody, transcription: WhiteboardTutorTranscription): string {
+function buildDeterministicMathFactsPrompt(mathFacts: DeterministicMathFacts): string {
+  return JSON.stringify({
+    supported: mathFacts.supported,
+    domain: mathFacts.domain,
+    canonicalProblem: mathFacts.canonicalProblem,
+    verifiedAnswer: mathFacts.verifiedAnswer,
+    verifiedSteps: mathFacts.verifiedSteps,
+    detectedError: mathFacts.detectedError,
+    confidence: mathFacts.confidence,
+    unsupportedReason: mathFacts.unsupportedReason,
+  })
+}
+
+function buildPassTwoUserPrompt(
+  body: WhiteboardTutorBody,
+  transcription: WhiteboardTutorTranscription,
+  mathFacts: DeterministicMathFacts,
+): string {
   if (body.inputMode === 'text' && body.textContent?.trim()) {
     const basePrompt = `The student has typed their problem as text. 
 There is no photo. The problem is:
 
 ${body.textContent.trim()}
 
-First solve this problem yourself completely.
+Deterministic math facts for this request:
+${buildDeterministicMathFactsPrompt(mathFacts)}
+
+Use those deterministic math facts as the source of truth when supported.
+If support is low or unsupported, stay cautious and do not invent exact answers.
 Then describe the likely steps in a short, kid-friendly way.
 If no student work is shown, keep the steps gentle and guidance-focused.
 
@@ -562,9 +669,11 @@ The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge 
   const basePrompt = `The problem is: ${transcription.problem}
 Visible step transcriptions: ${JSON.stringify(transcription.steps)}
 Visible step regions: ${JSON.stringify(transcription.regions)}
+Deterministic math facts: ${buildDeterministicMathFactsPrompt(mathFacts)}
 The student's age is: ${typeof body.audienceAge === 'number' ? body.audienceAge : 'not provided'}
-First solve this problem yourself, then evaluate 
-each visible step against your solution.
+Use the deterministic math facts as the source of truth when they are supported.
+If they are unsupported, keep the feedback cautious.
+Then evaluate each visible step against the verified facts.
 Keep the response compact and kid-friendly.`;
 
   const transcript = formatConversationTranscript(body.messages ?? []);
@@ -575,11 +684,18 @@ Keep the response compact and kid-friendly.`;
   return `${basePrompt}\n\nConversation so far:\n${transcript}`;
 }
 
-async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<WhiteboardTutorTranscription> {
+async function callWhiteboardTranscription(
+  body: WhiteboardTutorBody,
+  configuredModel: string,
+): Promise<WhiteboardTutorTranscriptionResponse> {
   if (body.inputMode === 'text' && body.textContent?.trim()) {
     return {
-      problem: body.textContent.trim(),
-      steps: [],
+      transcription: {
+        problem: body.textContent.trim(),
+        steps: [],
+        regions: [],
+      },
+      modelUsed: null,
     };
   }
 
@@ -589,13 +705,13 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
       statusCode: 503,
       stage: 'transcription',
       provider: 'gemini',
-      model: process.env.WHITEBOARD_TRANSCRIPTION_MODEL?.trim() || WHITEBOARD_TRANSCRIPTION_MODEL,
+      model: configuredModel,
     });
   }
 
   const { mimeType, base64Data } = parseImageDataUrl(body.imageDataUrl, body.imageMimeType);
   const genAI = new GoogleGenerativeAI(apiKey);
-  const modelCandidates = buildGeminiModelCandidates(process.env.WHITEBOARD_TRANSCRIPTION_MODEL?.trim() || WHITEBOARD_TRANSCRIPTION_MODEL);
+  const modelCandidates = buildGeminiModelCandidates(configuredModel);
 
   let lastError: GeminiErrorInfo | null = null;
 
@@ -634,7 +750,10 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
         throw new Error('Gemini returned an empty response');
       }
 
-      return parseJsonResponse(reply, WhiteboardTutorTranscriptionSchema, 'Pass 1 transcription');
+      return {
+        transcription: parseJsonResponse(reply, WhiteboardTutorTranscriptionSchema, 'Pass 1 transcription'),
+        modelUsed: candidateModel,
+      };
     } catch (error) {
       const errorInfo = extractGeminiErrorInfo(error);
       lastError = errorInfo;
@@ -667,21 +786,23 @@ async function callWhiteboardTranscription(body: WhiteboardTutorBody): Promise<W
 async function callWhiteboardEvaluation(
   body: WhiteboardTutorBody,
   transcription: WhiteboardTutorTranscription,
-): Promise<ReturnType<typeof buildLegacyTutorPayload>> {
+  mathFacts: DeterministicMathFacts,
+  evaluationModel: string,
+): Promise<WhiteboardTutorEvaluationResponse> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
     throw toTutorPipelineError('ANTHROPIC_API_KEY is not configured', {
       statusCode: 503,
       stage: 'evaluation',
       provider: 'anthropic',
-      model: WHITEBOARD_EVALUATION_MODEL,
+      model: evaluationModel,
     });
   }
 
   const anthropic = new Anthropic({ apiKey });
   try {
     const result = await anthropic.messages.create({
-      model: WHITEBOARD_EVALUATION_MODEL,
+      model: evaluationModel,
       system: WHITEBOARD_EVALUATION_SYSTEM_PROMPT,
       metadata: {
         user_id: `whiteboard-${body.inputMode === 'text' ? 'text' : 'photo'}-mode`,
@@ -691,7 +812,7 @@ async function callWhiteboardEvaluation(
       messages: [
         {
           role: 'user',
-          content: buildPassTwoUserPrompt(body, transcription),
+          content: buildPassTwoUserPrompt(body, transcription, mathFacts),
         },
       ],
     });
@@ -707,7 +828,7 @@ async function callWhiteboardEvaluation(
         statusCode: 502,
         stage: 'evaluation',
         provider: 'anthropic',
-        model: WHITEBOARD_EVALUATION_MODEL,
+        model: evaluationModel,
       });
     }
 
@@ -717,7 +838,7 @@ async function callWhiteboardEvaluation(
       length: text.length,
     });
 
-    const parsedAnalysis = parseStructuredTutorAnalysis(text);
+    const parsedAnalysis = parseStructuredTutorAnalysis(text, { mathFacts });
 
     tutorFixDebug('normalized-ai-tutor-payload', {
       problemText: parsedAnalysis.problemText,
@@ -731,21 +852,39 @@ async function callWhiteboardEvaluation(
       validatorWarnings: parsedAnalysis.validatorWarnings,
     });
 
-    return buildLegacyTutorPayload(parsedAnalysis);
+    return {
+      response: buildLegacyTutorPayload(parsedAnalysis, { mathFacts }),
+      modelUsed: evaluationModel,
+    };
   } catch (error) {
     const summary = summarizeAnthropicError(error);
     throw toTutorPipelineError(summary.message, {
       statusCode: summary.statusCode,
       stage: 'evaluation',
       provider: 'anthropic',
-      model: WHITEBOARD_EVALUATION_MODEL,
+      model: evaluationModel,
     });
   }
 }
 
-async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<ReturnType<typeof buildLegacyTutorPayload>> {
-  const transcription = await callWhiteboardTranscription(body);
-  return callWhiteboardEvaluation(body, transcription);
+async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<WhiteboardTutorRouteResponse> {
+  const modelConfig = getConfiguredTutorModelConfig(body);
+  const { transcription, modelUsed: transcriptionModel } = await callWhiteboardTranscription(body, modelConfig.transcriptionModel);
+  const mathFacts = buildMathFacts(transcription.problem, transcription.steps);
+  const { response, modelUsed: evaluationModel } = await callWhiteboardEvaluation(
+    body,
+    transcription,
+    mathFacts,
+    modelConfig.evaluationModel,
+  );
+
+  return {
+    ...response,
+    modelMetadata: buildTutorModelMetadata(body, modelConfig, {
+      transcriptionModel,
+      evaluationModel,
+    }),
+  };
 }
 
 async function deleteWhiteboardFromSupabase(boardId: string): Promise<boolean> {
@@ -924,7 +1063,7 @@ async function hydrateMissingRoomForTutorCache(db: Knex, boardId: string): Promi
 
     await db('rooms').insert(roomInsert).onConflict('id').ignore();
 
-    console.info('[WB-TUTOR] cache-room-hydrate:success', { boardId });
+    tutorFixDebug('cache-room-hydrate-success', { boardId });
     return true;
   } catch (error) {
     console.warn('[WB-TUTOR] cache-room-hydrate:error', {
@@ -2139,10 +2278,15 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         }
 
         const body = req.body as WhiteboardTutorBody;
+        const modelConfig = getConfiguredTutorModelConfig(body);
+        if (modelConfig.requestedTier === 'stronger' && !modelConfig.strongerModelAvailable) {
+          return res.status(409).json({ success: false, error: 'A stronger tutor model is not configured for this request.' });
+        }
+
         const cachedTutorResponse = await readWhiteboardTutorCache(db, boardId, body);
         if (cachedTutorResponse) {
           const messages = [...(body.messages ?? []), { role: 'assistant', content: cachedTutorResponse.reply }];
-          console.info('[WB-TUTOR] assistant-data-source', {
+          tutorFixDebug('assistant-data-source', {
             boardId,
             source: 'server-cache',
           });
@@ -2158,7 +2302,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         const tutorResponse = await callWhiteboardTutor(body);
         await writeWhiteboardTutorCache(db, boardId, body, tutorResponse);
         const messages = [...(body.messages ?? []), { role: 'assistant', content: tutorResponse.reply }];
-        console.info('[WB-TUTOR] assistant-data-source', {
+        tutorFixDebug('assistant-data-source', {
           boardId,
           source: 'fresh',
         });

@@ -26,6 +26,7 @@ import useTutorPlayback from '../components/whiteboard/useTutorPlayback'
 import type { TutorLessonMessage } from '../components/whiteboard/tabs/AITutorTab'
 import type { WhiteboardBoardFrame } from '../components/whiteboard/types'
 import { computeContainedRect } from '../components/whiteboard/whiteboardAspect'
+import { getPreferredTutorOverlayStepId } from '../components/whiteboard/tutorOverlayGeometry'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import type {
   AnnotationTool,
@@ -49,14 +50,17 @@ import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } fr
 import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import RoomMembersModal, { type RoomMemberSummary } from '../components/rooms/RoomMembersModal'
-import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
-import { buildTutorAnalysisDeviceCacheKey, clearTutorAnalysisDeviceCache, readLatestTutorAnalysisDeviceCache, readTutorAnalysisDeviceCache, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
+import type { WhiteboardHelpRequest, WhiteboardTutorMessage, WhiteboardTutorModelTier, WhiteboardTutorResponse } from '../types/whiteboard'
+import { buildTutorAnalysisDeviceCacheKey, clearTutorAnalysisDeviceCache, readTutorAnalysisDeviceCache, writeTutorAnalysisDeviceCache } from '../utils/tutorAnalysisCache'
+import { tutorAssistDebug } from '../utils/tutorAssistDebug'
+import { formatRelativeSessionTimestampFromNow, parseSessionTimestamp } from '../utils/whiteboardSessionTimestamps'
 
 type RealtimeStatus = 'connected' | 'connecting' | 'offline'
 type SessionState = 'idle' | 'queued' | 'live' | 'async'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 type MobileWhiteboardTab = 'homework' | 'support' | 'chat'
 type HomeworkInputMode = 'photo' | 'text'
+type TutorHelpMode = 'quick' | 'full'
 type BackgroundFitMode = 'width' | 'contain'
 type FormattedProblemLineType = 'question' | 'data' | 'section' | 'context' | 'empty'
 type PhotoTransformState = {
@@ -107,37 +111,28 @@ function getSafeErrorDetails(error: unknown): { code: string | null; status: num
   }
 }
 
-function formatRelativeSessionTimestamp(value?: string | null): string {
-  if (!value) return 'Waiting for updates'
-
-  const timestamp = Date.parse(value)
-  if (!Number.isFinite(timestamp)) return 'Waiting for updates'
-
-  const deltaMinutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000))
-  if (deltaMinutes < 1) return 'Just now'
-  if (deltaMinutes < 60) return `${deltaMinutes} min ago`
-
-  const deltaHours = Math.round(deltaMinutes / 60)
-  if (deltaHours < 24) return `${deltaHours} hr${deltaHours === 1 ? '' : 's'} ago`
-
-  const deltaDays = Math.round(deltaHours / 24)
-  return `${deltaDays} day${deltaDays === 1 ? '' : 's'} ago`
-}
-
 function buildNextMessages(messages: WhiteboardTutorMessage[], draft: string): WhiteboardTutorMessage[] {
   return [...messages, { role: 'user', content: draft.trim() }]
 }
 
 function buildInitialTutorMessages(
-  intent: 'analyze' | 'solve' | 'steps',
+  helpMode: TutorHelpMode,
   helpRequest: string,
   includeHelpRequest: boolean,
 ): WhiteboardTutorMessage[] {
-  const intentPrompt = intent === 'solve'
-    ? 'Please help me solve this without jumping straight to the final answer.'
-    : intent === 'steps'
-      ? 'Please explain this one step at a time so I can work along on the board.'
-      : 'Please analyze what is here and tell me the best next thing to focus on.'
+  const intentPrompt = helpMode === 'full'
+    ? [
+        'Need full help with this problem.',
+        'Give the full worked solution with clear step formatting.',
+        'Include an alternate method when it is genuinely useful.',
+        'Include a memory trick or mnemonic only when it is genuinely useful.',
+        'Include a positive coaching tip, the likely misconception, and a checkpoint question.',
+      ].join(' ')
+    : [
+        'Need quick help with this problem.',
+        'State what is wrong, state the correct answer, and give one short line the tutor can say right away.',
+        'Keep it compact.',
+      ].join(' ')
 
   const parts = [intentPrompt]
   const trimmedHelpRequest = helpRequest.trim()
@@ -228,19 +223,12 @@ function logTutorAnalysisSource(
     inputMode: HomeworkInputMode
   },
 ): void {
-  console.info('[WB-TUTOR] assistant-data-source', {
+  tutorAssistDebug('assistant-data-source', {
     boardId: details.boardId ?? null,
     source: source ?? 'fresh',
     mode: details.mode,
     inputMode: details.inputMode,
   })
-}
-
-const SHOULD_LOG_TUTOR_FIX_DEBUG = import.meta.env.DEV
-
-function tutorFixDebug(label: string, details: Record<string, unknown>): void {
-  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
-  console.info('[TUTOR-FIX-DEBUG]', label, details)
 }
 
 function resolveTutorOverlayFrame(
@@ -379,6 +367,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   ])
   const [zoomLevel, setZoomLevel] = useState(100)
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
+  const [activeTutorModelTier, setActiveTutorModelTier] = useState<WhiteboardTutorModelTier>('standard')
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [activeHelpRequest, setActiveHelpRequest] = useState<WhiteboardHelpRequest | null>(null)
@@ -389,7 +378,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [responseAge, setResponseAge] = useState('')
   const [helpRequestDraft, setHelpRequestDraft] = useState('')
   const [tutorDraft, setTutorDraft] = useState('')
-  const [tutorReadyIntent, setTutorReadyIntent] = useState<'analyze' | 'solve' | 'steps'>('analyze')
+  const [tutorHelpMode, setTutorHelpMode] = useState<TutorHelpMode>('quick')
+  const [resolvedTutorHelpMode, setResolvedTutorHelpMode] = useState<TutorHelpMode | null>(null)
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
@@ -403,9 +393,14 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
   const [liveSessionElapsedSeconds, setLiveSessionElapsedSeconds] = useState(0)
   const [studentPresence, setStudentPresence] = useState<'online' | 'offline'>('offline')
+  const [relativeTimeNowMs, setRelativeTimeNowMs] = useState(() => Date.now())
   const [mobileActiveTab, setMobileActiveTab] = useState<MobileWhiteboardTab>('homework')
   const [confirmRemovePhoto, setConfirmRemovePhoto] = useState(false)
-  const [confirmAiAssistRequest, setConfirmAiAssistRequest] = useState<{ forceFresh: boolean } | null>(null)
+  const [confirmAiAssistRequest, setConfirmAiAssistRequest] = useState<{
+    forceFresh: boolean
+    modelTier: WhiteboardTutorModelTier
+    helpMode: TutorHelpMode
+  } | null>(null)
   const [photoGuidanceVisible, setPhotoGuidanceVisible] = useState(false)
   const [photoGuidanceFading, setPhotoGuidanceFading] = useState(false)
   const inviteDeniedLoggedRef = useRef(false)
@@ -424,6 +419,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const mobileToolbarHideTimeoutRef = useRef<number | null>(null)
   const formatProblemTextTimeoutRef = useRef<number | null>(null)
   const touchPanStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
+  const previousAnalysisDeviceCacheKeyRef = useRef<string | null>(null)
+  const activeAnalysisRequestKeyRef = useRef<string | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
@@ -443,16 +440,30 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     () => (panelMode === 'tutor' ? studentDisplayName : activeHelpRequest?.claimedByUsername?.trim() || 'Tutor'),
     [activeHelpRequest?.claimedByUsername, panelMode, studentDisplayName],
   )
+  const isTutorActiveSessionFocus = isTutorView && sessionState === 'live' && desktopSidePanelOpen
+  const requestSummarySource = useMemo(
+    () => activeHelpRequest?.requestText?.trim() || activeHelpRequest?.problemDraft?.trim() || null,
+    [activeHelpRequest?.problemDraft, activeHelpRequest?.requestText],
+  )
+  const requestSubmittedAgoText = useMemo(
+    () => formatRelativeSessionTimestampFromNow(activeHelpRequest?.createdAt, relativeTimeNowMs),
+    [activeHelpRequest?.createdAt, relativeTimeNowMs],
+  )
+  const sessionStartedAgoText = useMemo(
+    () => formatRelativeSessionTimestampFromNow(activeHelpRequest?.claimedAt || activeHelpRequest?.updatedAt, relativeTimeNowMs),
+    [activeHelpRequest?.claimedAt, activeHelpRequest?.updatedAt, relativeTimeNowMs],
+  )
   const participantLastSeenText = useMemo(() => {
     if (studentPresence === 'online') {
       return 'Online now'
     }
 
     const referenceTime = activeHelpRequest?.claimedAt || activeHelpRequest?.updatedAt || activeHelpRequest?.createdAt || null
-    return activeHelpRequest
-      ? `Updated ${formatRelativeSessionTimestamp(referenceTime)}`
+    const updatedAgoText = formatRelativeSessionTimestampFromNow(referenceTime, relativeTimeNowMs)
+    return activeHelpRequest && updatedAgoText
+      ? `Updated ${updatedAgoText}`
       : 'Waiting for updates'
-  }, [activeHelpRequest, studentPresence])
+  }, [activeHelpRequest, relativeTimeNowMs, studentPresence])
   const sessionChatMessages = useMemo<ChatPreviewMessage[]>(() => {
     if (!activeHelpRequest) {
       return []
@@ -465,7 +476,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         id: `help-request-${activeHelpRequest.id}`,
         sender: 'student',
         body: requestText,
-        timestamp: formatRelativeSessionTimestamp(activeHelpRequest.createdAt),
+        timestamp: formatRelativeSessionTimestampFromNow(activeHelpRequest.createdAt, relativeTimeNowMs) ?? '',
         unread: panelMode === 'tutor' && activeHelpRequest.status === 'pending',
       })
     }
@@ -475,12 +486,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         id: `help-claimed-${activeHelpRequest.id}`,
         sender: 'tutor',
         body: `${activeHelpRequest.claimedByUsername?.trim() || 'Tutor'} joined this board and can respond here.`,
-        timestamp: formatRelativeSessionTimestamp(activeHelpRequest.claimedAt || activeHelpRequest.updatedAt),
+        timestamp: formatRelativeSessionTimestampFromNow(activeHelpRequest.claimedAt || activeHelpRequest.updatedAt, relativeTimeNowMs) ?? '',
       })
     }
 
     return messages
-  }, [activeHelpRequest, panelMode])
+  }, [activeHelpRequest, panelMode, relativeTimeNowMs])
   const hasHelpRequest = helpRequestDraft.trim().length > 0
   const hasTextInput = textContent.trim().length > 0
   const effectiveTutorInputMode: HomeworkInputMode = inputMode === 'text' || (!hasBackground && (hasTextInput || hasHelpRequest)) ? 'text' : 'photo'
@@ -490,30 +501,46 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const tutorPlayback = useTutorPlayback({
     steps: structuredAnalysisResult?.steps ?? [],
     reducedMotion: Boolean(prefersReducedMotion),
+    initialStepId: getPreferredTutorOverlayStepId(structuredAnalysisResult),
   })
   const tutorOverlayFrame = useMemo(
     () => resolveTutorOverlayFrame(hasBackground && backgroundInfo ? boardFrame : null, backgroundInfo, backgroundFitMode),
     [backgroundFitMode, backgroundInfo, boardFrame, hasBackground],
   )
-  const analysisDeviceCacheKey = useMemo(
-    () => buildTutorAnalysisDeviceCacheKey({
+  const buildTutorRequestMessages = useCallback((helpMode: TutorHelpMode) => {
+    const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
+      ? [{
+          role: 'user' as const,
+          content: `Use this corrected problem statement if the photo text is unclear or inaccurate:\n\n${textContent.trim()}`,
+        }]
+      : []
+
+    return [
+      ...correctedQuestionMessages,
+      ...buildInitialTutorMessages(helpMode, helpRequestDraft, Boolean(hasBackground || textContent.trim())),
+    ]
+  }, [effectiveTutorInputMode, hasBackground, helpRequestDraft, textContent])
+  const buildTutorAnalysisCacheKey = useCallback((helpMode: TutorHelpMode, modelTier: WhiteboardTutorModelTier) => (
+    buildTutorAnalysisDeviceCacheKey({
       boardId,
       inputMode: effectiveTutorInputMode,
       mode: 'analysis',
+      helpMode,
+      modelTier,
       audienceAge,
-      messages: effectiveTutorInputMode === 'photo' && textContent.trim()
-        ? [{
-            role: 'user',
-            content: `Use this corrected problem statement if the photo text is unclear or inaccurate:\n\n${textContent.trim()}`,
-          }, ...buildInitialTutorMessages(tutorReadyIntent, helpRequestDraft, Boolean(hasBackground || textContent.trim()))]
-        : buildInitialTutorMessages(tutorReadyIntent, helpRequestDraft, Boolean(hasBackground || textContent.trim())),
+      messages: buildTutorRequestMessages(helpMode),
       textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
       imageDataUrl: backgroundImageAsset?.dataUrl,
       imageMimeType: backgroundImageAsset?.mimeType,
       imageName: backgroundImageAsset?.name,
-    }),
-    [audienceAge, backgroundImageAsset?.dataUrl, backgroundImageAsset?.mimeType, backgroundImageAsset?.name, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, textContent, tutorReadyIntent],
+    })
+  ), [audienceAge, backgroundImageAsset?.dataUrl, backgroundImageAsset?.mimeType, backgroundImageAsset?.name, boardId, buildTutorRequestMessages, effectiveTutorInputMode, helpRequestDraft, textContent])
+  const analysisDeviceCacheKey = useMemo(
+    () => buildTutorAnalysisCacheKey(tutorHelpMode, activeTutorModelTier),
+    [activeTutorModelTier, buildTutorAnalysisCacheKey, tutorHelpMode],
   )
+  const tutorAssistContextKey = analysisDeviceCacheKey
+  const tutorOverlayActive = Boolean(tutorLessonMessage || tutorPlayback.isWalkthroughActive || activeBoardActionContext?.source === 'assist')
 
   const sessionStatusMeta = useMemo(() => {
     if (isTutorView) {
@@ -573,23 +600,27 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const sessionSummaryText = useMemo(() => {
     if (isTutorView) {
-      return 'Student submitted 23 minutes ago  ·  Algebra  ·  Grade 9'
+      if (!activeHelpRequest) {
+        return null
+      }
+
+      return requestSummarySource || 'Student requested help on this board.'
     }
 
     if (sessionState === 'live') {
-      return `${studentDisplayName} is working here with a tutor  ·  Algebra  ·  Grade 9`
+      return `${participantDisplayName} is working with you on this board.`
     }
 
     if (sessionState === 'async') {
-      return 'Your work is saved for tutor follow-up  ·  Algebra  ·  Grade 9'
+      return 'Your request is saved for tutor follow-up.'
     }
 
     if (sessionState === 'idle') {
-      return 'Request help when you want a tutor to join this board  ·  Algebra  ·  Grade 9'
+      return 'Request help when you want a tutor to join this board.'
     }
 
-    return 'A tutor will join here when one is available  ·  Algebra  ·  Grade 9'
-  }, [isTutorView, sessionState, studentDisplayName])
+    return 'Your help request is waiting for a tutor.'
+  }, [activeHelpRequest, isTutorView, participantDisplayName, requestSummarySource, sessionState])
 
   const studentSessionAside = useMemo(() => {
     if (sessionState === 'live') return 'Working together now'
@@ -603,6 +634,27 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     const seconds = liveSessionElapsedSeconds % 60
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   }, [liveSessionElapsedSeconds])
+
+  const sessionMetaText = useMemo(() => {
+    if (sessionState === 'live') {
+      const parts = [
+        sessionStartedAgoText ? `Started ${sessionStartedAgoText}` : null,
+        liveSessionStartedAt !== null ? liveSessionTimerLabel : null,
+      ].filter((value): value is string => Boolean(value))
+
+      return parts.length > 0 ? parts.join(' · ') : null
+    }
+
+    if (sessionState === 'async') {
+      return requestSubmittedAgoText ? `Submitted ${requestSubmittedAgoText}` : null
+    }
+
+    if (sessionState === 'queued') {
+      return requestSubmittedAgoText ? `Submitted ${requestSubmittedAgoText}` : null
+    }
+
+    return null
+  }, [liveSessionStartedAt, liveSessionTimerLabel, requestSubmittedAgoText, sessionStartedAgoText, sessionState])
 
   const statusNotice = useMemo(() => {
     if (realtimeStatus === 'offline') {
@@ -642,7 +694,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     async (
       messages: WhiteboardTutorMessage[] = [],
       mode: 'analysis' | 'tutor' | 'chat' = 'analysis',
-      options?: { forceFresh?: boolean },
+      options?: { forceFresh?: boolean; modelTier?: WhiteboardTutorModelTier },
     ) => {
       if (!boardId) throw new Error('Missing board id')
 
@@ -651,6 +703,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             boardId,
             inputMode: effectiveTutorInputMode,
             mode,
+          modelTier: options?.modelTier ?? 'standard',
             audienceAge,
             messages,
             textContent: effectiveTutorInputMode === 'text' ? (textContent.trim() || helpRequestDraft.trim()) : textContent.trim(),
@@ -660,11 +713,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           })
         : null
 
-      tutorFixDebug('request tutor analysis start', {
+      tutorAssistDebug('request-analysis-start', {
         boardId,
         mode,
         inputMode: effectiveTutorInputMode,
         forceFresh: Boolean(options?.forceFresh),
+        modelTier: options?.modelTier ?? 'standard',
         deviceCacheKey,
         messageCount: messages.length,
       })
@@ -672,7 +726,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       if (mode === 'analysis' && !options?.forceFresh) {
         const cachedResponse = readTutorAnalysisDeviceCache(deviceCacheKey)
         if (cachedResponse) {
-          tutorFixDebug('request tutor analysis resolved from local cache', {
+          tutorAssistDebug('request-analysis-local-cache-hit', {
             boardId,
             deviceCacheKey,
             cacheSource: cachedResponse.cacheSource ?? 'local-cache',
@@ -700,6 +754,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           messages,
           mode,
           skipCache: Boolean(options?.forceFresh),
+          modelTier: options?.modelTier ?? 'standard',
         })
       } else {
         if (!backgroundImageAsset) throw new Error('Import a photo first.')
@@ -714,6 +769,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           messages,
           mode,
           skipCache: Boolean(options?.forceFresh),
+          modelTier: options?.modelTier ?? 'standard',
         })
       }
 
@@ -721,7 +777,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         writeTutorAnalysisDeviceCache(deviceCacheKey, response)
       }
 
-      tutorFixDebug('request tutor analysis response received', {
+      tutorAssistDebug('request-analysis-response-received', {
         boardId,
         mode,
         inputMode: effectiveTutorInputMode,
@@ -816,10 +872,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [navigate])
 
   const handlePickUpSession = useCallback(() => {
-    const startedAt = Date.now() - ((4 * 60) + 23) * 1000
+    const startedAt = Date.now()
     setSessionState('live')
     setLiveSessionStartedAt(startedAt)
-    setLiveSessionElapsedSeconds(4 * 60 + 23)
+    setLiveSessionElapsedSeconds(0)
     setStudentPresence('online')
     setDesktopSidePanelOpen(true)
   }, [])
@@ -873,7 +929,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const handleRequestHelp = useCallback(() => {
     if (canUseTutorAssist) {
-      setTutorReadyIntent('analyze')
+      setTutorHelpMode('quick')
       openDesktopSidePanel('ai-tutor')
       return
     }
@@ -905,47 +961,40 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
   }, [isMobileLayout, scheduleMobileToolbarHide])
 
-  const applyAnalysisResponse = useCallback((response: WhiteboardTutorResponse) => {
+  const applyAnalysisResponse = useCallback((response: WhiteboardTutorResponse, requestedModelTier: WhiteboardTutorModelTier | undefined, helpMode: TutorHelpMode) => {
     setAnalysis(response)
+    setResolvedTutorHelpMode(helpMode)
+    setTutorHelpMode(helpMode)
+    setActiveTutorModelTier(response.modelMetadata?.tier ?? requestedModelTier ?? 'standard')
     setTutorOverlayVisible(true)
     handleAnnotationToolSelect('pen')
   }, [handleAnnotationToolSelect])
 
   useEffect(() => {
-    if (!boardId || analysis || analysisLoading) return
+    const previousCacheKey = previousAnalysisDeviceCacheKeyRef.current
+    if (previousCacheKey !== null && previousCacheKey !== analysisDeviceCacheKey) {
+      setAnalysis(null)
+      setResolvedTutorHelpMode(null)
+      setAnalysisError(null)
+      setTutorLessonMessage(null)
+      setActiveBoardActionContext(null)
+      tutorPlayback.exitWalkthrough()
+    }
 
-    const hydratedResponse = readTutorAnalysisDeviceCache(analysisDeviceCacheKey)
-      ?? readLatestTutorAnalysisDeviceCache({ boardId })
+    previousAnalysisDeviceCacheKeyRef.current = analysisDeviceCacheKey
+  }, [analysisDeviceCacheKey, tutorPlayback])
 
-    if (!hydratedResponse) return
-
-    tutorFixDebug('hydrate analysis on load', {
-      boardId,
-      requestedCacheKey: analysisDeviceCacheKey,
-      cacheSource: hydratedResponse.cacheSource ?? 'local-cache',
-      problemText: hydratedResponse.analysisResult?.problemText ?? hydratedResponse.problem ?? '',
-      stepCount: hydratedResponse.analysisResult?.steps?.length ?? 0,
-    })
-
-    logTutorAnalysisSource(hydratedResponse.cacheSource, {
-      boardId,
-      mode: 'analysis',
-      inputMode: effectiveTutorInputMode,
-    })
-
-    applyAnalysisResponse(hydratedResponse)
-  }, [analysis, analysisDeviceCacheKey, analysisLoading, applyAnalysisResponse, boardId, effectiveTutorInputMode])
-
-  const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = [], options?: { forceFresh?: boolean }) => {
+  const analyzeText = useCallback(async (rawText: string, messages: WhiteboardTutorMessage[] = [], options?: { forceFresh?: boolean; modelTier?: WhiteboardTutorModelTier; helpMode?: TutorHelpMode }) => {
     if (!boardId) throw new Error('Missing board id')
 
     const trimmedText = rawText.trim()
     if (!trimmedText) throw new Error('Type or paste a problem first.')
 
-    const response = await runTutorRequest(messages, 'analysis', options)
+    const requestedModelTier = options?.modelTier ?? activeTutorModelTier
+    const response = await runTutorRequest(messages, 'analysis', { ...options, modelTier: requestedModelTier })
 
-    applyAnalysisResponse(response)
-  }, [applyAnalysisResponse, boardId, runTutorRequest])
+    applyAnalysisResponse(response, requestedModelTier, options?.helpMode ?? tutorHelpMode)
+  }, [activeTutorModelTier, applyAnalysisResponse, boardId, runTutorRequest, tutorHelpMode])
 
   const handleCopyBoardLink = useCallback(async () => {
     try {
@@ -1100,12 +1149,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const resetTutorState = useCallback(() => {
     setAnalysis(null)
+    setResolvedTutorHelpMode(null)
     setAnalysisError(null)
     setAnalysisLoading(false)
     setConfirmAiAssistRequest(null)
     setTutorOverlayVisible(true)
     setTutorLessonMessage(null)
-    setTutorReadyIntent('analyze')
+    setTutorHelpMode('quick')
     setTutorDraft('')
     setTutorSubmitting(false)
     setAnnotationTool('pen')
@@ -1284,83 +1334,84 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     resetTutorState()
   }, [hasTextInput, inputMode, resetPhotoTransform, resetTutorState])
 
-  const performStartAnalysis = useCallback(async (options?: { forceFresh?: boolean }) => {
+  const performStartAnalysis = useCallback(async (options?: { forceFresh?: boolean; modelTier?: WhiteboardTutorModelTier; helpMode?: TutorHelpMode }) => {
     const textSource = textContent.trim() || helpRequestDraft.trim()
+    const helpMode = options?.helpMode ?? tutorHelpMode
     const forceFresh = options?.forceFresh ?? Boolean(analysis)
-    const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
-      ? [{
-          role: 'user' as const,
-          content: `Use this corrected problem statement if the photo text is unclear or inaccurate:\n\n${textContent.trim()}`,
-        }]
-      : []
-    const initialMessages = [
-      ...correctedQuestionMessages,
-      ...buildInitialTutorMessages(
-      tutorReadyIntent,
-      helpRequestDraft,
-      Boolean(hasBackground || textContent.trim()),
-      ),
-    ]
+    const requestedModelTier = options?.modelTier ?? 'standard'
+    const requestKey = `${buildTutorAnalysisCacheKey(helpMode, requestedModelTier) ?? `analysis:${boardId ?? 'missing'}:${helpMode}:${requestedModelTier}:${effectiveTutorInputMode}`}:${forceFresh ? 'fresh' : 'cached'}`
+    const initialMessages = buildTutorRequestMessages(helpMode)
 
     if (!boardId || (!backgroundImageAsset && !textSource)) return
-    console.info('[WB-TUTOR] analysis:start', {
+    if (activeAnalysisRequestKeyRef.current === requestKey) {
+      tutorAssistDebug('request-analysis-suppressed-duplicate', {
+        boardId,
+        requestKey,
+      })
+      return
+    }
+
+    activeAnalysisRequestKeyRef.current = requestKey
+    setTutorHelpMode(helpMode)
+    tutorAssistDebug('analysis-start', {
       boardId,
       inputMode: effectiveTutorInputMode,
       forceFresh,
+      helpMode,
+      modelTier: requestedModelTier,
       hasBackgroundImage: Boolean(backgroundImageAsset),
       hasTextSource: Boolean(textSource),
-      readyIntent: tutorReadyIntent,
     })
-    tutorFixDebug('request tutor analysis start', {
-      boardId,
-      inputMode: effectiveTutorInputMode,
-      forceFresh,
-      readyIntent: tutorReadyIntent,
-    })
+    setAnalysis(null)
+    setResolvedTutorHelpMode(null)
     setAnalysisLoading(true)
     setAnalysisError(null)
+    setTutorLessonMessage(null)
+    setActiveBoardActionContext(null)
+    tutorPlayback.exitWalkthrough()
     setPhotoGuidanceVisible(false)
     setPhotoGuidanceFading(false)
+    setActiveTutorModelTier(requestedModelTier)
     try {
       if (effectiveTutorInputMode === 'text') {
-        await analyzeText(textSource, initialMessages, { forceFresh })
+        await analyzeText(textSource, initialMessages, { forceFresh, modelTier: requestedModelTier, helpMode })
         return
       }
 
       const response = await runTutorRequest(initialMessages, 'analysis', {
         forceFresh,
+        modelTier: requestedModelTier,
       })
-      applyAnalysisResponse(response)
-      console.info('[WB-TUTOR] analysis:success', {
+      applyAnalysisResponse(response, requestedModelTier, helpMode)
+      tutorAssistDebug('analysis-success', {
         boardId,
         inputMode: effectiveTutorInputMode,
+        forceFresh,
+        helpMode,
         cacheSource: response.cacheSource ?? 'fresh',
         stepCount: response.analysisResult?.steps?.length ?? 0,
         hasProblemText: Boolean(response.analysisResult?.problemText?.trim()),
       })
-      tutorFixDebug('request tutor analysis response received', {
-        boardId,
-        inputMode: effectiveTutorInputMode,
-        forceFresh,
-        cacheSource: response.cacheSource ?? 'fresh',
-        stepCount: response.analysisResult?.steps?.length ?? 0,
-      })
     } catch (error) {
-      console.warn('[WB-TUTOR] analysis:error', {
+      tutorAssistDebug('analysis-error', {
         boardId,
         inputMode: effectiveTutorInputMode,
         forceFresh,
+        helpMode,
         error: error instanceof Error ? error.message : String(error),
       })
       setAnalysisError(getFriendlyTutorErrorMessage(error, 'The tutor could not read that photo yet. Please try again.'))
     } finally {
+      if (activeAnalysisRequestKeyRef.current === requestKey) {
+        activeAnalysisRequestKeyRef.current = null
+      }
       setAnalysisLoading(false)
     }
-  }, [analysis, analyzeText, applyAnalysisResponse, boardId, effectiveTutorInputMode, hasBackground, helpRequestDraft, runTutorRequest, textContent, tutorReadyIntent])
+  }, [analysis, analyzeText, applyAnalysisResponse, backgroundImageAsset, boardId, buildTutorAnalysisCacheKey, buildTutorRequestMessages, effectiveTutorInputMode, helpRequestDraft, runTutorRequest, textContent, tutorHelpMode, tutorPlayback])
 
-  const requestAiAssistConfirmation = useCallback((options?: { forceFresh?: boolean }) => {
+  const requestAiAssistConfirmation = useCallback((helpMode: TutorHelpMode, options?: { forceFresh?: boolean; modelTier?: WhiteboardTutorModelTier }) => {
     if (!hasTutorInput || analysisLoading || responseAgeInvalid) {
-      console.warn('[WB-TUTOR] analysis:confirmation-blocked', {
+      tutorAssistDebug('analysis-confirmation-blocked', {
         hasTutorInput,
         analysisLoading,
         responseAgeInvalid,
@@ -1368,28 +1419,51 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       return
     }
 
-    console.info('[WB-TUTOR] analysis:confirmation-open', {
+    setTutorHelpMode(helpMode)
+
+    const requestedModelTier = options?.modelTier ?? 'standard'
+    if (!options?.forceFresh) {
+      const cachedResponse = readTutorAnalysisDeviceCache(buildTutorAnalysisCacheKey(helpMode, requestedModelTier))
+      if (cachedResponse) {
+        applyAnalysisResponse(cachedResponse, requestedModelTier, helpMode)
+        return
+      }
+    }
+
+    tutorAssistDebug('analysis-confirmation-open', {
       boardId,
       forceFresh: Boolean(options?.forceFresh ?? analysis),
+      helpMode,
+      modelTier: requestedModelTier,
       inputMode: effectiveTutorInputMode,
     })
-    setConfirmAiAssistRequest({ forceFresh: Boolean(options?.forceFresh ?? analysis) })
-  }, [analysis, analysisLoading, boardId, effectiveTutorInputMode, hasTutorInput, responseAgeInvalid])
+    setConfirmAiAssistRequest({
+      forceFresh: Boolean(options?.forceFresh ?? analysis),
+      modelTier: requestedModelTier,
+      helpMode,
+    })
+  }, [analysis, analysisLoading, applyAnalysisResponse, boardId, buildTutorAnalysisCacheKey, effectiveTutorInputMode, hasTutorInput, responseAgeInvalid])
 
   const handleConfirmAiAssistRequest = useCallback(() => {
     if (!confirmAiAssistRequest) return
 
-    const nextOptions = { forceFresh: confirmAiAssistRequest.forceFresh }
-    console.info('[WB-TUTOR] analysis:confirmation-accepted', {
+    const nextOptions = {
+      forceFresh: confirmAiAssistRequest.forceFresh,
+      modelTier: confirmAiAssistRequest.modelTier,
+      helpMode: confirmAiAssistRequest.helpMode,
+    }
+    tutorAssistDebug('analysis-confirmation-accepted', {
       boardId,
       forceFresh: nextOptions.forceFresh,
+      helpMode: nextOptions.helpMode,
+      modelTier: nextOptions.modelTier,
     })
     setConfirmAiAssistRequest(null)
     void performStartAnalysis(nextOptions)
   }, [boardId, confirmAiAssistRequest, performStartAnalysis])
 
   const handleCancelAiAssistRequest = useCallback(() => {
-    console.info('[WB-TUTOR] analysis:confirmation-cancelled', { boardId })
+    tutorAssistDebug('analysis-confirmation-cancelled', { boardId })
     setConfirmAiAssistRequest(null)
   }, [boardId])
 
@@ -1603,6 +1677,20 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [activeHelpRequest, canUseTutorAssist, helpRequestDraft])
 
   useEffect(() => {
+    setRelativeTimeNowMs(Date.now())
+
+    if (!activeHelpRequest) {
+      return undefined
+    }
+
+    const intervalId = window.setInterval(() => {
+      setRelativeTimeNowMs(Date.now())
+    }, 30000)
+
+    return () => window.clearInterval(intervalId)
+  }, [activeHelpRequest?.claimedAt, activeHelpRequest?.createdAt, activeHelpRequest?.id, activeHelpRequest?.updatedAt])
+
+  useEffect(() => {
     if (!activeHelpRequest) {
       setSessionState('idle')
       setLiveSessionStartedAt(null)
@@ -1612,10 +1700,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }
 
     if (activeHelpRequest.status === 'claimed') {
-      const startedAt = Date.now() - ((4 * 60) + 23) * 1000
+      const startedAt = parseSessionTimestamp(activeHelpRequest.claimedAt || activeHelpRequest.updatedAt)
       setSessionState('live')
       setLiveSessionStartedAt(startedAt)
-      setLiveSessionElapsedSeconds(4 * 60 + 23)
+      setLiveSessionElapsedSeconds(startedAt === null ? 0 : Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
       setStudentPresence('online')
       return
     }
@@ -1948,163 +2036,213 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     </>
   )
 
-  const renderDesktopHeader = () => (
-    <div className="border-b border-white/12 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
-        <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[30%]">
-          <button
-            onClick={() => navigate('/whiteboards')}
-            className="flex items-center gap-2 rounded-lg bg-chess-surface px-3 py-2 transition-colors hover:bg-chess-surfaceSoft"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium">Back</span>
-          </button>
-          {isRenaming ? (
-            <input
-              ref={renameInputRef}
-              type="text"
-              value={renameDraft}
-              disabled={isSavingRename}
-              onChange={(event) => setRenameDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  void handleRenameSave()
-                } else if (event.key === 'Escape') {
-                  event.preventDefault()
-                  handleRenameCancel()
-                }
-              }}
-              onBlur={() => {
-                void handleRenameSave()
-              }}
-              className="min-w-[220px] max-w-[40vw] rounded-lg border border-white/12 bg-chess-surface px-3 py-2 text-xl font-semibold font-display text-white outline-none transition-colors focus:border-chess-accent"
-              aria-label="Whiteboard name"
-            />
-          ) : (
-            <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate text-xl font-semibold font-display">{displayBoardName}</h1>
+  const renderDesktopHeader = () => {
+    if (isTutorActiveSessionFocus) {
+      return (
+        <div className="border-b border-white/12 bg-[#0f172a] px-4 py-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                onClick={() => navigate('/whiteboards')}
+                className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/[0.08]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex rounded-full px-[10px] py-[3px] text-[11px] font-medium ${sessionStatusMeta.pillClassName}`}>
+                    {sessionStatusMeta.pillText}
+                  </span>
+                  <span className="rounded-full border border-amber-300/25 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-amber-100">
+                    Tutor Focus
+                  </span>
+                </div>
+                <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-[#CBD5E1]">
+                  <span className="truncate font-semibold text-white">{participantDisplayName}</span>
+                  {sessionSummaryText ? <span className="truncate text-[#9CA3AF]">{sessionSummaryText}</span> : null}
+                  {sessionStartedAgoText ? <span className="text-[#6B7280]">Started {sessionStartedAgoText}</span> : null}
+                  {liveSessionStartedAt !== null ? <span className="text-[#9CA3AF]">{liveSessionTimerLabel}</span> : null}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={handleRenameStart}
-                className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
-                aria-label="Rename whiteboard"
-                title="Rename whiteboard"
+                onClick={() => setDesktopSidePanelOpen(false)}
+                className="flex items-center gap-2 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+                aria-label="Hide panel"
+                aria-expanded={desktopSidePanelOpen}
+                aria-controls="whiteboard-side-panel"
               >
-                <Edit3 className="h-4 w-4" />
+                <ArrowRight className="h-4 w-4" />
+                Hide panel
               </button>
             </div>
-          )}
+          </div>
         </div>
+      )
+    }
 
-        <div className="order-3 flex w-full justify-center md:order-2 md:flex-1">
-          {!hasBackground ? (
+    return (
+      <div className="border-b border-white/12 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
+          <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[30%]">
             <button
-              onClick={handlePhotoUploadClick}
-              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
-              type="button"
+              onClick={() => navigate('/whiteboards')}
+              className="flex items-center gap-2 rounded-lg bg-chess-surface px-3 py-2 transition-colors hover:bg-chess-surfaceSoft"
             >
-              <Camera className="h-4 w-4" />
-              Add photo to annotate
+              <ArrowLeft className="h-4 w-4" />
+              <span className="text-sm font-medium">Back</span>
             </button>
-          ) : null}
-        </div>
-
-        <div className="flex flex-1 items-center justify-end gap-2 md:max-w-[30%]">
-          <button
-            type="button"
-            onClick={() => setDesktopSidePanelOpen((current) => !current)}
-            className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a] ${desktopSidePanelOpen ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'}`}
-            aria-label={desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
-            aria-expanded={desktopSidePanelOpen}
-            aria-controls="whiteboard-side-panel"
-          >
-            {desktopSidePanelOpen ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
-            {desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
-          </button>
-          {canUseTutorAssist ? (
-              <div className="relative">
+            {isRenaming ? (
+              <input
+                ref={renameInputRef}
+                type="text"
+                value={renameDraft}
+                disabled={isSavingRename}
+                onChange={(event) => setRenameDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void handleRenameSave()
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault()
+                    handleRenameCancel()
+                  }
+                }}
+                onBlur={() => {
+                  void handleRenameSave()
+                }}
+                className="min-w-[220px] max-w-[40vw] rounded-lg border border-white/12 bg-chess-surface px-3 py-2 text-xl font-semibold font-display text-white outline-none transition-colors focus:border-chess-accent"
+                aria-label="Whiteboard name"
+              />
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="truncate text-xl font-semibold font-display">{displayBoardName}</h1>
                 <button
                   type="button"
-                  onClick={handleOpenTutorQueue}
-                  className="relative flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
-                  aria-label="Tutor queue"
+                  onClick={handleRenameStart}
+                  className="rounded-md p-1.5 text-chess-muted transition-colors hover:bg-chess-surface hover:text-white"
+                  aria-label="Rename whiteboard"
+                  title="Rename whiteboard"
                 >
-                  <span aria-hidden="true">🧑‍🏫</span>
-                  Tutor queue
-                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                    3
-                  </span>
+                  <Edit3 className="h-4 w-4" />
                 </button>
               </div>
-          ) : (
-            <button
-              type="button"
-              onClick={handleRequestHelp}
-              className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
-              aria-label="Request help"
-            >
-              <span aria-hidden="true">🧠</span>
-              Request help
-            </button>
-          )}
-          <div className="relative" ref={shareMenuRef}>
-            <button
-              type="button"
-              onClick={() => setShareMenuOpen((prev) => !prev)}
-              className="flex items-center gap-2 rounded-xl bg-chess-surface px-3 py-2 text-sm font-medium text-white outline-none transition hover:bg-chess-surfaceSoft focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
-              aria-expanded={shareMenuOpen}
-              aria-haspopup="menu"
-            >
-              <Share2 className="h-4 w-4" />
-              Share ···
-              <ChevronDown className="h-4 w-4" />
-            </button>
-            {shareMenuOpen ? (
-              <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl" role="menu" aria-label="Share actions">
-                <button
-                  type="button"
-                  onClick={handleOpenInvite}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
-                  role="menuitem"
-                >
-                  <Users className="h-4 w-4" />
-                  Invite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyBoardLink()}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
-                  role="menuitem"
-                >
-                  <Copy className="h-4 w-4" />
-                  Copy board link
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleCreateJoinLink()
-                  }}
-                  disabled={isCreatingJoinLink}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
-                  role="menuitem"
-                >
-                  <Share2 className="h-4 w-4" />
-                  {isCreatingJoinLink ? 'Creating join link…' : 'Create join link'}
-                </button>
-              </div>
+            )}
+          </div>
+
+          <div className="order-3 flex w-full justify-center md:order-2 md:flex-1">
+            {!hasBackground ? (
+              <button
+                onClick={handlePhotoUploadClick}
+                className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400"
+                type="button"
+              >
+                <Camera className="h-4 w-4" />
+                Add photo to annotate
+              </button>
             ) : null}
           </div>
-          <ChessUserMenu
-            onOpenPhotos={() => navigate('/photos')}
-            onOpenEdit={() => navigate('/edit')}
-            onOpenAdmin={() => navigate('/admin')}
-            showAdminQuickAction={false}
-          />
+
+          <div className="flex flex-1 items-center justify-end gap-2 md:max-w-[30%]">
+            <button
+              type="button"
+              onClick={() => setDesktopSidePanelOpen((current) => !current)}
+              className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a] ${desktopSidePanelOpen ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-chess-surface text-white hover:bg-chess-surfaceSoft'}`}
+              aria-label={desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
+              aria-expanded={desktopSidePanelOpen}
+              aria-controls="whiteboard-side-panel"
+            >
+              {desktopSidePanelOpen ? <ArrowRight className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />}
+              {desktopSidePanelOpen ? 'Hide panel' : 'Open panel'}
+            </button>
+            {canUseTutorAssist ? (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={handleOpenTutorQueue}
+                    className="relative flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+                    aria-label="Tutor queue"
+                  >
+                    <span aria-hidden="true">🧑‍🏫</span>
+                    Tutor queue
+                    <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      3
+                    </span>
+                  </button>
+                </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRequestHelp}
+                className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-950 outline-none transition hover:bg-amber-400 focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+                aria-label="Request help"
+              >
+                <span aria-hidden="true">🧠</span>
+                Request help
+              </button>
+            )}
+            <div className="relative" ref={shareMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShareMenuOpen((prev) => !prev)}
+                className="flex items-center gap-2 rounded-xl bg-chess-surface px-3 py-2 text-sm font-medium text-white outline-none transition hover:bg-chess-surfaceSoft focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+                aria-expanded={shareMenuOpen}
+                aria-haspopup="menu"
+              >
+                <Share2 className="h-4 w-4" />
+                Share ···
+                <ChevronDown className="h-4 w-4" />
+              </button>
+              {shareMenuOpen ? (
+                <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-900 p-2 shadow-2xl" role="menu" aria-label="Share actions">
+                  <button
+                    type="button"
+                    onClick={handleOpenInvite}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                    role="menuitem"
+                  >
+                    <Users className="h-4 w-4" />
+                    Invite
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyBoardLink()}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10"
+                    role="menuitem"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy board link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleCreateJoinLink()
+                    }}
+                    disabled={isCreatingJoinLink}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                    role="menuitem"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    {isCreatingJoinLink ? 'Creating join link…' : 'Create join link'}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
+            />
+          </div>
         </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const renderHeader = () => (isMobileLayout ? renderMobileHeader() : renderDesktopHeader())
 
@@ -2211,9 +2349,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             <span className={`inline-flex rounded-full px-[10px] py-[3px] text-[12px] font-medium ${sessionStatusMeta.pillClassName}`}>
               {sessionStatusMeta.pillText}
             </span>
-            <span className="min-w-0 text-[13px] text-[#9CA3AF]">
-              {sessionSummaryText}
-            </span>
+            {sessionSummaryText ? (
+              <span className="min-w-0 text-[13px] text-[#9CA3AF]">
+                {sessionSummaryText}
+              </span>
+            ) : null}
           </div>
 
           {isTutorView && sessionState === 'queued' ? (
@@ -2237,13 +2377,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
           {isTutorView && sessionState === 'live' ? (
             <div className="flex shrink-0 items-center gap-3">
-              <span className="text-[12px] text-[#6B7280]">Started 4 min ago</span>
-              <span className="text-[13px] text-[#9CA3AF]">🕐 {liveSessionTimerLabel}</span>
+              {sessionStartedAgoText ? <span className="text-[12px] text-[#6B7280]">Started {sessionStartedAgoText}</span> : null}
+              {liveSessionStartedAt !== null ? <span className="text-[13px] text-[#9CA3AF]">🕐 {liveSessionTimerLabel}</span> : null}
             </div>
           ) : null}
 
           {isTutorView && sessionState === 'async' ? (
-            <div className="shrink-0 text-[12px] text-[#6B7280]">Submitted yesterday at 3:22 PM</div>
+            sessionMetaText ? <div className="shrink-0 text-[12px] text-[#6B7280]">{sessionMetaText}</div> : null
           ) : null}
 
           {!isTutorView ? (
@@ -2522,25 +2662,41 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                         helpRequestDraft={helpRequestDraft}
                         onHelpRequestDraftChange={setHelpRequestDraft}
                         analysis={analysis}
+                        analysisMode={resolvedTutorHelpMode}
                         isLoading={analysisLoading}
                         error={analysisError}
-                        onStartAnalysis={() => {
-                          requestAiAssistConfirmation()
+                        assistContextKey={tutorAssistContextKey}
+                        onStartAnalysis={(helpMode) => {
+                          requestAiAssistConfirmation(helpMode)
                         }}
-                        onRetryAnalysis={() => {
-                          requestAiAssistConfirmation({ forceFresh: true })
+                        onRetryAnalysis={(helpMode) => {
+                          requestAiAssistConfirmation(helpMode, { forceFresh: true })
                         }}
+                        onUseStrongerModel={(helpMode) => {
+                          requestAiAssistConfirmation(helpMode, { forceFresh: true, modelTier: 'stronger' })
+                        }}
+                        walkthroughActive={tutorPlayback.isWalkthroughActive}
+                        activeWalkthroughStepId={tutorPlayback.activeStepId}
+                        canWalkthroughPlay={tutorPlayback.canPlay}
+                        isWalkthroughPlaying={tutorPlayback.isPlaying}
+                        onEnterWalkthrough={tutorPlayback.enterWalkthrough}
+                        onExitWalkthrough={tutorPlayback.exitWalkthrough}
+                        onWalkthroughSelectStep={tutorPlayback.setActiveStepId}
+                        onWalkthroughPrevious={tutorPlayback.previous}
+                        onWalkthroughNext={tutorPlayback.next}
+                        onWalkthroughPlay={tutorPlayback.play}
+                        onWalkthroughPause={tutorPlayback.pause}
+                        onWalkthroughReplay={tutorPlayback.replay}
                         responseAge={responseAge}
                         responseAgeInvalid={responseAgeInvalid}
                         onResponseAgeChange={handleResponseAgeChange}
-                        readyIntent={tutorReadyIntent}
-                        onReadyIntentChange={setTutorReadyIntent}
                         followUpDraft={tutorDraft}
                         isSubmitting={tutorSubmitting}
                         onFollowUpDraftChange={setTutorDraft}
                         onSubmitFollowUp={() => {
                           void handleTutorFollowUp()
                         }}
+                        onLessonMessageChange={setTutorLessonMessage}
                       />
                     ) : (
                       <HelpRequestTab
@@ -2597,8 +2753,28 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className={`flex min-h-0 flex-1 overflow-hidden ${isTutorActiveSessionFocus ? 'bg-[#0b1220]' : ''}`}>
+            <div
+              className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isTutorActiveSessionFocus ? 'border-r border-white/10 bg-[#0f172a]' : ''}`}
+              style={isTutorActiveSessionFocus ? { flex: '1 1 58%' } : undefined}
+            >
+              {isTutorActiveSessionFocus ? (
+                <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,26,0.96))] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-white/10 bg-white/[0.03] px-3 py-2.5">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-100">Board reference</div>
+                      <div className="mt-1 text-[13px] text-[#9CA3AF]">Use the board for context only. Diagnosis and reply framing stay in the rail.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDesktopSidePanelTab('chat')}
+                      className="rounded-[10px] border border-amber-300/25 bg-amber-500/10 px-3 py-2 text-[12px] font-semibold text-amber-50 transition hover:bg-amber-500/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0f172a]"
+                    >
+                      Jump to response
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {hasBackground ? (
                 <div className="border-b border-white/10 bg-[#111111] px-4 py-3">
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 py-2">
@@ -2755,7 +2931,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     ))}
                   </div>
                 ) : null}
-                {structuredAnalysisResult && effectiveTutorInputMode === 'photo' ? (
+                {structuredAnalysisResult && effectiveTutorInputMode === 'photo' && tutorOverlayActive ? (
                   <TutorOverlay
                     analysisResult={structuredAnalysisResult}
                     activeStepId={tutorPlayback.activeStepId}
@@ -2827,6 +3003,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             {desktopSidePanelOpen ? (
               <RightSidePanel
                 className="whiteboard-side-panel"
+                width={isTutorActiveSessionFocus ? 'clamp(480px, 42vw, 720px)' : 'clamp(380px, 35vw, 560px)'}
                 activeTab={desktopSidePanelTab}
                 studentName={participantDisplayName}
                 studentPresence={studentPresence}
@@ -2849,27 +3026,29 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   void handleSubmitHelpRequest()
                 }}
                 analysis={analysis}
+                analysisMode={resolvedTutorHelpMode}
                 analysisResult={structuredAnalysisResult}
                 analysisLoading={analysisLoading}
                 analysisError={analysisError}
                 sessionState={sessionState === 'idle' ? undefined : sessionState}
                 sessionBadgeText={sessionStatusMeta.pillText}
-                sessionSummaryText={sessionSummaryText}
-                sessionMetaText={sessionState === 'live' ? `Started 4 min ago · ${liveSessionTimerLabel}` : sessionState === 'async' ? 'Submitted yesterday at 3:22 PM' : 'Waiting now'}
+                sessionSummaryText={sessionSummaryText ?? undefined}
+                sessionMetaText={sessionMetaText}
                 onPickUpSession={handlePickUpSession}
                 onPassSession={handlePassSession}
                 analysisPendingConfirmation={Boolean(confirmAiAssistRequest)}
-                onStartAnalysis={() => {
-                  requestAiAssistConfirmation()
+                onStartAnalysis={(helpMode) => {
+                  requestAiAssistConfirmation(helpMode)
                 }}
-                onRetryAnalysis={() => {
-                  requestAiAssistConfirmation({ forceFresh: true })
+                onRetryAnalysis={(helpMode) => {
+                  requestAiAssistConfirmation(helpMode, { forceFresh: true })
+                }}
+                onUseStrongerModel={(helpMode) => {
+                  requestAiAssistConfirmation(helpMode, { forceFresh: true, modelTier: 'stronger' })
                 }}
                 responseAge={responseAge}
                 responseAgeInvalid={responseAgeInvalid}
                 onResponseAgeChange={handleResponseAgeChange}
-                readyIntent={tutorReadyIntent}
-                onReadyIntentChange={setTutorReadyIntent}
                 tutorDraft={tutorDraft}
                 tutorSubmitting={tutorSubmitting}
                 onTutorDraftChange={setTutorDraft}
@@ -2877,10 +3056,14 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   void handleTutorFollowUp()
                 }}
                 onLessonMessageChange={setTutorLessonMessage}
+                assistContextKey={tutorAssistContextKey}
                 activeTutorStepId={tutorPlayback.activeStepId}
+                tutorWalkthroughActive={tutorPlayback.isWalkthroughActive}
                 overlayVisible={tutorOverlayVisible}
                 tutorPlaybackCanPlay={tutorPlayback.canPlay}
                 tutorPlaybackIsPlaying={tutorPlayback.isPlaying}
+                onTutorWalkthroughEnter={tutorPlayback.enterWalkthrough}
+                onTutorWalkthroughExit={tutorPlayback.exitWalkthrough}
                 onToggleTutorOverlay={() => setTutorOverlayVisible((current) => !current)}
                 onTutorPlaybackPlay={tutorPlayback.play}
                 onTutorPlaybackPause={tutorPlayback.pause}
@@ -2922,9 +3105,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               Confirm request AI assistance
             </h2>
             <p className="mt-3 text-[14px] leading-6 text-[#D1D5DB]">
-              {confirmAiAssistRequest.forceFresh
-                ? 'This will send another paid AI request for this homework image or problem.'
-                : 'This will send a paid AI request for this homework image or problem.'}
+              {confirmAiAssistRequest.modelTier === 'stronger'
+                ? 'This will send a paid AI request using the stronger tutor model for this homework image or problem.'
+                : confirmAiAssistRequest.forceFresh
+                  ? 'This will send another paid AI request for this homework image or problem.'
+                  : 'This will send a paid AI request for this homework image or problem.'}
             </p>
             <p className="mt-2 text-[13px] leading-6 text-[#9CA3AF]">
               If the tutor can handle it without AI, cancel now and no AI call will be made.
