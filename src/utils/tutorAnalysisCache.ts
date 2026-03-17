@@ -1,12 +1,14 @@
-import type { WhiteboardTutorMessage, WhiteboardTutorResponse } from '../types/whiteboard'
+import type { WhiteboardTutorMessage, WhiteboardTutorModelTier, WhiteboardTutorResponse } from '../types/whiteboard'
+import { tutorAssistDebug } from './tutorAssistDebug'
 
-const TUTOR_ANALYSIS_CACHE_PREFIX = 'whiteboard:tutor-analysis:v2:'
-const SHOULD_LOG_TUTOR_FIX_DEBUG = typeof window !== 'undefined' && import.meta.env.DEV
+const TUTOR_ANALYSIS_CACHE_PREFIX = 'whiteboard:tutor-analysis:v3:'
 
 type TutorAnalysisCacheKeyOptions = {
   boardId?: string | null
   inputMode: 'photo' | 'text'
   mode?: 'analysis' | 'tutor' | 'chat'
+  helpMode?: 'quick' | 'full'
+  modelTier?: WhiteboardTutorModelTier
   audienceAge?: number
   messages?: WhiteboardTutorMessage[] | null
   textContent?: string | null
@@ -18,11 +20,6 @@ type TutorAnalysisCacheKeyOptions = {
 type StoredTutorAnalysisCacheEntry = {
   savedAt: string
   response: WhiteboardTutorResponse
-}
-
-function tutorFixDebug(label: string, details: Record<string, unknown>): void {
-  if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return
-  console.info('[TUTOR-FIX-DEBUG]', label, details)
 }
 
 function hasRenderableStructuredAnalysis(response: WhiteboardTutorResponse): boolean {
@@ -66,9 +63,11 @@ export function buildTutorAnalysisDeviceCacheKey(options: TutorAnalysisCacheKeyO
   if (!boardId) return null
 
   const normalizedPayload = JSON.stringify({
-    version: 'v2',
+    version: 'v3',
     mode: options.mode ?? 'analysis',
+    helpMode: options.helpMode ?? 'quick',
     inputMode: options.inputMode,
+    modelTier: options.modelTier ?? 'standard',
     audienceAge: typeof options.audienceAge === 'number' ? options.audienceAge : null,
     messages: normalizeMessages(options.messages),
     textContent: normalizeText(options.textContent),
@@ -86,25 +85,24 @@ export function readTutorAnalysisDeviceCache(cacheKey: string | null | undefined
   try {
     const raw = window.localStorage.getItem(cacheKey)
     if (!raw) {
-      tutorFixDebug('cache miss for analysis key', { cacheKey })
+      tutorAssistDebug('cache-miss', { cacheKey })
       return null
     }
 
     const parsed = JSON.parse(raw) as Partial<StoredTutorAnalysisCacheEntry> | null
     if (!parsed || typeof parsed !== 'object' || !parsed.response || typeof parsed.response !== 'object') {
-      tutorFixDebug('cache invalid payload for analysis key', { cacheKey })
+      tutorAssistDebug('cache-invalid-payload', { cacheKey })
       return null
     }
 
     const response = parsed.response as WhiteboardTutorResponse
     if (!hasRenderableStructuredAnalysis(response)) {
       window.localStorage.removeItem(cacheKey)
-      console.warn('[WB-TUTOR] cache:discarded-invalid-entry', { cacheKey })
-      tutorFixDebug('cache discarded invalid structured analysis', { cacheKey })
+      tutorAssistDebug('cache-discarded-invalid-structured-analysis', { cacheKey })
       return null
     }
 
-    tutorFixDebug('cache hit for analysis key', {
+    tutorAssistDebug('cache-hit', {
       cacheKey,
       savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : null,
       problemText: response.analysisResult?.problemText ?? response.problem ?? '',
@@ -129,7 +127,7 @@ export function writeTutorAnalysisDeviceCache(cacheKey: string | null | undefine
       response,
     }
     window.localStorage.setItem(cacheKey, JSON.stringify(payload))
-    tutorFixDebug('cache write for analysis key', {
+    tutorAssistDebug('cache-write', {
       cacheKey,
       savedAt: payload.savedAt,
       problemText: response.analysisResult?.problemText ?? response.problem ?? '',
@@ -137,62 +135,6 @@ export function writeTutorAnalysisDeviceCache(cacheKey: string | null | undefine
     })
   } catch {
     // Ignore storage quota and serialization failures.
-  }
-}
-
-export function readLatestTutorAnalysisDeviceCache(options?: { boardId?: string | null }): WhiteboardTutorResponse | null {
-  if (typeof window === 'undefined') return null
-
-  const boardId = options?.boardId?.trim()
-  if (!boardId) return null
-
-  const keyPrefix = `${TUTOR_ANALYSIS_CACHE_PREFIX}${boardId}:`
-  let latestEntry: { cacheKey: string; savedAt: string; response: WhiteboardTutorResponse } | null = null
-
-  try {
-    for (let index = 0; index < window.localStorage.length; index += 1) {
-      const cacheKey = window.localStorage.key(index)
-      if (!cacheKey || !cacheKey.startsWith(keyPrefix)) continue
-
-      const raw = window.localStorage.getItem(cacheKey)
-      if (!raw) continue
-
-      const parsed = JSON.parse(raw) as Partial<StoredTutorAnalysisCacheEntry> | null
-      if (!parsed || typeof parsed !== 'object' || !parsed.response || typeof parsed.response !== 'object') {
-        continue
-      }
-
-      const response = parsed.response as WhiteboardTutorResponse
-      if (!hasRenderableStructuredAnalysis(response)) {
-        window.localStorage.removeItem(cacheKey)
-        continue
-      }
-
-      const savedAt = typeof parsed.savedAt === 'string' ? parsed.savedAt : new Date(0).toISOString()
-      if (!latestEntry || Date.parse(savedAt) > Date.parse(latestEntry.savedAt)) {
-        latestEntry = { cacheKey, savedAt, response }
-      }
-    }
-  } catch {
-    return null
-  }
-
-  if (!latestEntry) {
-    tutorFixDebug('cache latest miss for board', { boardId })
-    return null
-  }
-
-  tutorFixDebug('cache latest hit for board', {
-    boardId,
-    cacheKey: latestEntry.cacheKey,
-    savedAt: latestEntry.savedAt,
-    problemText: latestEntry.response.analysisResult?.problemText ?? latestEntry.response.problem ?? '',
-    stepCount: latestEntry.response.analysisResult?.steps?.length ?? latestEntry.response.steps?.length ?? 0,
-  })
-
-  return {
-    ...latestEntry.response,
-    cacheSource: 'local-cache',
   }
 }
 
@@ -216,7 +158,7 @@ export function clearTutorAnalysisDeviceCache(options?: { boardId?: string | nul
       window.localStorage.removeItem(key)
     })
 
-    tutorFixDebug('cache clear for board scope', {
+    tutorAssistDebug('cache-clear-for-board-scope', {
       boardId: boardId || null,
       removedKeys: keysToRemove.length,
     })

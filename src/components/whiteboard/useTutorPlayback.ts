@@ -8,26 +8,52 @@ type UseTutorPlaybackOptions = {
   steps: PlaybackStep[]
   reducedMotion: boolean
   intervalMs?: number
+  initialStepId?: string | null
 }
 
-export function useTutorPlayback({ steps, reducedMotion, intervalMs = 2600 }: UseTutorPlaybackOptions) {
-  const [activeStepId, setActiveStepId] = useState<string | null>(steps[0]?.id ?? null)
+function resolveInitialStepId(steps: PlaybackStep[], initialStepId?: string | null): string | null {
+  if (initialStepId && steps.some((step) => step.id === initialStepId)) {
+    return initialStepId
+  }
+
+  return steps[0]?.id ?? null
+}
+
+export function useTutorPlayback({ steps, reducedMotion, intervalMs = 2600, initialStepId = null }: UseTutorPlaybackOptions) {
+  const [activeStepId, setActiveStepId] = useState<string | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
 
   const stepIdsKey = useMemo(() => steps.map((step) => step.id).join('|'), [steps])
 
   useEffect(() => {
-    setActiveStepId(steps[0]?.id ?? null)
+    setActiveStepId((current) => {
+      if (!current) return null
+      if (steps.some((step) => step.id === current)) return current
+      return resolveInitialStepId(steps, initialStepId)
+    })
     setIsPlaying(false)
-  }, [stepIdsKey, steps])
+  }, [initialStepId, stepIdsKey, steps])
 
   const activeIndex = useMemo(() => steps.findIndex((step) => step.id === activeStepId), [activeStepId, steps])
   const resolvedActiveIndex = activeIndex >= 0 ? activeIndex : 0
+  const isWalkthroughActive = activeStepId !== null
+
+  const enterWalkthrough = useCallback((stepId?: string | null) => {
+    if (steps.length === 0) return
+    setActiveStepId(resolveInitialStepId(steps, stepId ?? initialStepId))
+    setIsPlaying(false)
+  }, [initialStepId, steps])
+
+  const exitWalkthrough = useCallback(() => {
+    setActiveStepId(null)
+    setIsPlaying(false)
+  }, [])
 
   const play = useCallback(() => {
     if (steps.length === 0) return
+    setActiveStepId((current) => current ?? resolveInitialStepId(steps, initialStepId))
     setIsPlaying(true)
-  }, [steps.length])
+  }, [initialStepId, steps])
 
   const pause = useCallback(() => {
     setIsPlaying(false)
@@ -37,28 +63,33 @@ export function useTutorPlayback({ steps, reducedMotion, intervalMs = 2600 }: Us
     if (steps.length === 0) return
     const clamped = Math.min(Math.max(index, 0), steps.length - 1)
     setActiveStepId(steps[clamped]?.id ?? null)
+    setIsPlaying(false)
   }, [steps])
 
   const next = useCallback(() => {
     if (steps.length === 0) return
-    const nextIndex = Math.min(resolvedActiveIndex + 1, steps.length - 1)
+    const baseIndex = activeIndex >= 0 ? activeIndex : resolvedActiveIndex
+    const nextIndex = Math.min(baseIndex + 1, steps.length - 1)
     setActiveStepId(steps[nextIndex]?.id ?? null)
+    setIsPlaying(false)
     if (nextIndex === steps.length - 1) {
       setIsPlaying(false)
     }
-  }, [resolvedActiveIndex, steps])
+  }, [activeIndex, resolvedActiveIndex, steps])
 
   const previous = useCallback(() => {
     if (steps.length === 0) return
-    const previousIndex = Math.max(resolvedActiveIndex - 1, 0)
+    const baseIndex = activeIndex >= 0 ? activeIndex : resolvedActiveIndex
+    const previousIndex = Math.max(baseIndex - 1, 0)
     setActiveStepId(steps[previousIndex]?.id ?? null)
-  }, [resolvedActiveIndex, steps])
+    setIsPlaying(false)
+  }, [activeIndex, resolvedActiveIndex, steps])
 
   const replay = useCallback(() => {
     if (steps.length === 0) return
-    setActiveStepId(steps[0]?.id ?? null)
+    setActiveStepId(resolveInitialStepId(steps, initialStepId))
     setIsPlaying(true)
-  }, [steps])
+  }, [initialStepId, steps])
 
   useEffect(() => {
     if (!isPlaying || steps.length <= 1) return undefined
@@ -81,12 +112,15 @@ export function useTutorPlayback({ steps, reducedMotion, intervalMs = 2600 }: Us
   return {
     activeStepId,
     activeStepIndex: resolvedActiveIndex,
+    isWalkthroughActive,
     isPlaying,
     canPlay: steps.length > 1,
-    setActiveStepId: (stepId: string) => {
+    setActiveStepId: (stepId: string | null) => {
       setActiveStepId(stepId)
       setIsPlaying(false)
     },
+    enterWalkthrough,
+    exitWalkthrough,
     moveToIndex,
     play,
     pause,

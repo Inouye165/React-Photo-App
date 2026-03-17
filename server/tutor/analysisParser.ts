@@ -5,8 +5,10 @@ import {
   type TutorStepAnalysis,
   type TutorStepStatus,
 } from './mathValidator'
+import type { DeterministicMathFacts } from '../math'
 
 export type LegacyTutorPayload = {
+  mathFacts?: DeterministicMathFacts | null
   analysisResult: TutorAnalysisResult
   problem: string
   correctSolution: string
@@ -221,11 +223,77 @@ function buildReply(analysisResult: TutorAnalysisResult): string {
   ].join('\n')
 }
 
-export function parseStructuredTutorAnalysis(rawText: string): TutorAnalysisResult {
-  return applyMathValidator(normalizeStructuredAnalysis(parseLooseJson(rawText)))
+function mergeDeterministicMathFacts(
+  analysisResult: TutorAnalysisResult,
+  mathFacts?: DeterministicMathFacts | null,
+): TutorAnalysisResult {
+  if (!mathFacts) {
+    return analysisResult
+  }
+
+  const validatorWarnings = [...analysisResult.validatorWarnings]
+  if (!mathFacts.supported) {
+    if (mathFacts.unsupportedReason && !validatorWarnings.includes(mathFacts.unsupportedReason)) {
+      validatorWarnings.push(mathFacts.unsupportedReason)
+    }
+
+    return {
+      ...analysisResult,
+      validatorWarnings,
+    }
+  }
+
+  const verifiedStepsByIndex = new Map(mathFacts.verifiedSteps.map((step) => [step.stepIndex, step]))
+  const nextSteps = analysisResult.steps.map((step): TutorStepAnalysis => {
+    const verifiedStep = verifiedStepsByIndex.get(step.index)
+    if (!verifiedStep) return step
+
+    if (verifiedStep.isValid) {
+      return {
+        ...step,
+        status: 'correct',
+        hint: step.hint || verifiedStep.explanation,
+      }
+    }
+
+    return {
+      ...step,
+      status: 'incorrect',
+      kidFriendlyExplanation: verifiedStep.explanation || step.kidFriendlyExplanation,
+      correction: step.correction || verifiedStep.explanation,
+    }
+  })
+
+  if (mathFacts.detectedError?.explanation && !validatorWarnings.includes(mathFacts.detectedError.explanation)) {
+    validatorWarnings.push(mathFacts.detectedError.explanation)
+  }
+
+  return {
+    ...analysisResult,
+    problemText: analysisResult.problemText || mathFacts.canonicalProblem || '',
+    finalAnswers: mathFacts.verifiedAnswer ?? analysisResult.finalAnswers,
+    overallSummary: mathFacts.detectedError?.stepIndex != null
+      ? `Start by fixing step ${mathFacts.detectedError.stepIndex + 1}. After that, re-check the later work in order.`
+      : analysisResult.overallSummary,
+    steps: nextSteps,
+    validatorWarnings,
+  }
 }
 
-export function buildLegacyTutorPayload(analysisResult: TutorAnalysisResult): LegacyTutorPayload {
+export function parseStructuredTutorAnalysis(
+  rawText: string,
+  options?: { mathFacts?: DeterministicMathFacts | null },
+): TutorAnalysisResult {
+  return mergeDeterministicMathFacts(
+    applyMathValidator(normalizeStructuredAnalysis(parseLooseJson(rawText))),
+    options?.mathFacts,
+  )
+}
+
+export function buildLegacyTutorPayload(
+  analysisResult: TutorAnalysisResult,
+  options?: { mathFacts?: DeterministicMathFacts | null },
+): LegacyTutorPayload {
   const steps = analysisResult.steps.map((step) => ({
     stepNumber: step.index + 1,
     label: step.shortLabel,
@@ -244,6 +312,7 @@ export function buildLegacyTutorPayload(analysisResult: TutorAnalysisResult): Le
     }))
 
   return {
+    mathFacts: options?.mathFacts ?? null,
     analysisResult,
     problem: analysisResult.problemText,
     correctSolution: analysisResult.finalAnswers.join(', '),

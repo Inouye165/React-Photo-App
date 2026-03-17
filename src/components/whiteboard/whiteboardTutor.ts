@@ -3,6 +3,9 @@ import type {
   TutorDetectedRegion,
   TutorStepAnalysis,
   TutorStepStatus,
+  WhiteboardTutorDetectedMathError,
+  WhiteboardTutorMathFacts,
+  WhiteboardTutorModelMetadata,
   WhiteboardTutorErrorItem,
   WhiteboardTutorMessage,
   WhiteboardTutorResponse,
@@ -18,6 +21,8 @@ const EMPTY_SECTIONS: WhiteboardTutorSections = {
 }
 
 const EMPTY_RESPONSE: Omit<WhiteboardTutorResponse, 'messages' | 'reply'> = {
+  modelMetadata: undefined,
+  mathFacts: null,
   analysisResult: null,
   sections: EMPTY_SECTIONS,
   problem: '',
@@ -108,9 +113,9 @@ function normalizeAnalysisStep(value: unknown, index: number): TutorStepAnalysis
       ? candidate.shortLabel.trim()
       : typeof candidate.label === 'string' && candidate.label.trim()
         ? candidate.label.trim()
-        : `Step ${index + 1}`
+        : studentText || (typeof candidate.normalizedMath === 'string' ? candidate.normalizedMath.trim() : '')
 
-  if (!studentText && !kidFriendlyExplanation) {
+  if (!studentText && !kidFriendlyExplanation && !shortLabel) {
     return null
   }
 
@@ -174,6 +179,103 @@ function normalizeAnalysisResult(value: unknown): TutorAnalysisResult | null {
   }
 }
 
+function normalizeModelTier(value: unknown): WhiteboardTutorModelMetadata['tier'] {
+  return value === 'stronger' ? 'stronger' : 'standard'
+}
+
+function normalizeModelMetadata(value: unknown): WhiteboardTutorModelMetadata | undefined {
+  if (!value || typeof value !== 'object') return undefined
+
+  const candidate = value as Partial<WhiteboardTutorModelMetadata> & Record<string, unknown>
+
+  const transcriptionModel = typeof candidate.transcriptionModel === 'string' && candidate.transcriptionModel.trim()
+    ? candidate.transcriptionModel.trim()
+    : null
+  const evaluationModel = typeof candidate.evaluationModel === 'string' && candidate.evaluationModel.trim()
+    ? candidate.evaluationModel.trim()
+    : null
+
+  return {
+    tier: normalizeModelTier(candidate.tier),
+    strongerModelAvailable: candidate.strongerModelAvailable === true,
+    transcriptionModel,
+    evaluationModel,
+  }
+}
+
+function normalizeDetectedMathError(value: unknown): WhiteboardTutorDetectedMathError | null {
+  if (!value || typeof value !== 'object') return null
+
+  const candidate = value as Partial<WhiteboardTutorDetectedMathError> & Record<string, unknown>
+  const stepIndex = typeof candidate.stepIndex === 'number' && Number.isFinite(candidate.stepIndex)
+    ? Math.max(0, Math.round(candidate.stepIndex))
+    : undefined
+  const errorType = typeof candidate.errorType === 'string' && candidate.errorType.trim()
+    ? candidate.errorType.trim() as WhiteboardTutorDetectedMathError['errorType']
+    : undefined
+  const explanation = typeof candidate.explanation === 'string' && candidate.explanation.trim()
+    ? candidate.explanation.trim()
+    : undefined
+
+  if (stepIndex === undefined && !errorType && !explanation) return null
+
+  return {
+    stepIndex,
+    errorType,
+    explanation,
+  }
+}
+
+function normalizeMathFacts(value: unknown): WhiteboardTutorMathFacts | null {
+  if (!value || typeof value !== 'object') return null
+
+  const candidate = value as Partial<WhiteboardTutorMathFacts> & Record<string, unknown>
+  const domain = candidate.domain === 'arithmetic' || candidate.domain === 'algebra' ? candidate.domain : 'unknown'
+  const confidence = candidate.confidence === 'high' || candidate.confidence === 'medium' ? candidate.confidence : 'low'
+  const canonicalProblem = typeof candidate.canonicalProblem === 'string' && candidate.canonicalProblem.trim()
+    ? candidate.canonicalProblem.trim()
+    : null
+  const verifiedAnswer = Array.isArray(candidate.verifiedAnswer)
+    ? candidate.verifiedAnswer.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)
+    : null
+  const verifiedSteps = Array.isArray(candidate.verifiedSteps)
+    ? candidate.verifiedSteps.reduce<WhiteboardTutorMathFacts['verifiedSteps']>((result, entry) => {
+        if (!entry || typeof entry !== 'object') return result
+
+        const step = entry as Partial<WhiteboardTutorMathFacts['verifiedSteps'][number]> & Record<string, unknown>
+        const stepIndex = typeof step.stepIndex === 'number' && Number.isFinite(step.stepIndex)
+          ? Math.max(0, Math.round(step.stepIndex))
+          : null
+        if (stepIndex === null) return result
+
+        result.push({
+          stepIndex,
+          expression: typeof step.expression === 'string' && step.expression.trim() ? step.expression.trim() : undefined,
+          isValid: step.isValid === true,
+          explanation: typeof step.explanation === 'string' && step.explanation.trim() ? step.explanation.trim() : undefined,
+          errorType: typeof step.errorType === 'string' && step.errorType.trim()
+            ? step.errorType.trim() as WhiteboardTutorMathFacts['verifiedSteps'][number]['errorType']
+            : undefined,
+        })
+
+        return result
+      }, [])
+    : []
+
+  return {
+    supported: candidate.supported === true,
+    domain,
+    canonicalProblem,
+    verifiedAnswer: verifiedAnswer && verifiedAnswer.length > 0 ? verifiedAnswer : null,
+    verifiedSteps,
+    detectedError: normalizeDetectedMathError(candidate.detectedError),
+    confidence,
+    unsupportedReason: typeof candidate.unsupportedReason === 'string' && candidate.unsupportedReason.trim()
+      ? candidate.unsupportedReason.trim()
+      : undefined,
+  }
+}
+
 function buildLegacySteps(analysisResult: TutorAnalysisResult | null, fallbackSteps: WhiteboardTutorStep[]): WhiteboardTutorStep[] {
   if (!analysisResult || analysisResult.steps.length === 0) {
     return fallbackSteps
@@ -225,7 +327,9 @@ function normalizeStep(step: unknown, index: number): WhiteboardTutorStep | null
 
   return {
     number: toStepNumber(candidate.number ?? candidate.stepNumber, index + 1),
-    label: typeof candidate.label === 'string' && candidate.label.trim() ? candidate.label.trim() : `Step ${index + 1}`,
+    label: typeof candidate.label === 'string' && candidate.label.trim()
+      ? candidate.label.trim()
+      : studentWork || explanation,
     studentWork,
     correct: Boolean(candidate.correct),
     neutral: Boolean(candidate.neutral),
@@ -244,29 +348,14 @@ function normalizeErrorItem(item: unknown, index: number): WhiteboardTutorErrorI
   }
 }
 
-type StructuredTutorPayload = Partial<Omit<WhiteboardTutorResponse, 'messages' | 'reply' | 'sections'>> & {
+type StructuredTutorPayload = Partial<Omit<WhiteboardTutorResponse, 'messages' | 'sections'>> & {
   sections?: Partial<WhiteboardTutorSections>
-}
-
-function buildReplySummary(response: Omit<WhiteboardTutorResponse, 'messages' | 'reply'>): string {
-  const stepLines = response.steps.map((step) => `${step.number}. ${step.label}: ${step.explanation}`)
-  const errorLines = response.errorsFound.map((item) => `Step ${item.stepNumber}: ${item.issue} ${item.correction}`.trim())
-
-  return [
-    `Problem: ${response.problem}`,
-    '',
-    'Steps Analysis:',
-    ...(stepLines.length > 0 ? stepLines : ['No step details available.']),
-    '',
-    'Errors Found:',
-    ...(errorLines.length > 0 ? errorLines : ['None.']),
-    '',
-    `Encouragement: ${response.closingEncouragement}`,
-  ].join('\n')
 }
 
 export function buildTutorResponse(payload: StructuredTutorPayload, messages: WhiteboardTutorMessage[]): WhiteboardTutorResponse {
   const parsedAnalysisResult = normalizeAnalysisResult((payload as Record<string, unknown>).analysisResult)
+  const modelMetadata = normalizeModelMetadata((payload as Record<string, unknown>).modelMetadata)
+  const mathFacts = normalizeMathFacts((payload as Record<string, unknown>).mathFacts)
   const fallbackSteps = Array.isArray(payload.steps)
     ? payload.steps.map(normalizeStep).filter((step): step is WhiteboardTutorStep => Boolean(step))
     : []
@@ -300,6 +389,8 @@ export function buildTutorResponse(payload: StructuredTutorPayload, messages: Wh
 
   const response: Omit<WhiteboardTutorResponse, 'messages' | 'reply'> = {
     ...EMPTY_RESPONSE,
+    modelMetadata,
+    mathFacts,
     analysisResult: parsedAnalysisResult,
     problem,
     correctSolution,
@@ -312,14 +403,14 @@ export function buildTutorResponse(payload: StructuredTutorPayload, messages: Wh
   }
 
   return {
-    reply: buildReplySummary(response),
+    reply: typeof payload.reply === 'string' ? payload.reply.trim() : '',
     messages,
     ...response,
   }
 }
 
 export function buildChatSeed(analysis: WhiteboardTutorResponse | null): WhiteboardTutorMessage[] {
-  if (!analysis) return []
+  if (!analysis?.reply.trim()) return []
   return [
     {
       role: 'assistant',
