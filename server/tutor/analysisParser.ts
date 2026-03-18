@@ -5,10 +5,12 @@ import {
   type TutorStepAnalysis,
   type TutorStepStatus,
 } from './mathValidator'
-import type { DeterministicMathFacts } from '../math'
+import type { DeterministicMathFacts, TutorAnalysisPipeline, TutorAnalysisSource } from '../math'
 
 export type LegacyTutorPayload = {
   mathFacts?: DeterministicMathFacts | null
+  analysisSource?: TutorAnalysisSource
+  analysisPipeline?: TutorAnalysisPipeline | null
   analysisResult: TutorAnalysisResult
   problem: string
   correctSolution: string
@@ -292,7 +294,11 @@ export function parseStructuredTutorAnalysis(
 
 export function buildLegacyTutorPayload(
   analysisResult: TutorAnalysisResult,
-  options?: { mathFacts?: DeterministicMathFacts | null },
+  options?: {
+    mathFacts?: DeterministicMathFacts | null
+    analysisSource?: TutorAnalysisSource
+    analysisPipeline?: TutorAnalysisPipeline | null
+  },
 ): LegacyTutorPayload {
   const steps = analysisResult.steps.map((step) => ({
     stepNumber: step.index + 1,
@@ -313,6 +319,8 @@ export function buildLegacyTutorPayload(
 
   return {
     mathFacts: options?.mathFacts ?? null,
+    analysisSource: options?.analysisSource,
+    analysisPipeline: options?.analysisPipeline ?? null,
     analysisResult,
     problem: analysisResult.problemText,
     correctSolution: analysisResult.finalAnswers.join(', '),

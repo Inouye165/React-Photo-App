@@ -7,8 +7,18 @@ import {
 } from '../tutor/mathValidator'
 import type { SolvedMathProblem } from './types'
 
-function stripLeadingPromptText(value: string): string {
+function stripWorksheetLeadIn(value: string): string {
   const trimmed = value.trim()
+  const stripped = trimmed.replace(/^(?:solve|find)(?:\s+for)?\s+[a-z]\s*[:\-]\s*/i, '')
+  if (stripped !== trimmed) {
+    return stripped.trim()
+  }
+
+  return trimmed.replace(/^(?:solve|find)\s*[:\-]\s*/i, '').trim()
+}
+
+function stripLeadingPromptText(value: string): string {
+  const trimmed = stripWorksheetLeadIn(value)
   const startIndex = trimmed.search(/[\d(xX]/)
   return startIndex >= 0 ? trimmed.slice(startIndex) : trimmed
 }

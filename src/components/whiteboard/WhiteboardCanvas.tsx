@@ -728,6 +728,12 @@ type BackgroundFitMode = 'width' | 'contain'
 
 export type AnnotationTool = 'pen' | 'highlighter' | 'text' | 'eraser' | 'arrow' | 'rectangle' | 'ellipse'
 
+export type AnnotationStyle = {
+  strokeColor?: string
+  strokeWidth?: number
+  opacity?: number
+}
+
 export type BackgroundImageAsset = {
   dataUrl: string
   mimeType: string
@@ -754,7 +760,10 @@ export type WhiteboardCanvasHandle = {
   clearBackground: () => void
   toggleBackgroundFitMode: () => void
   toggleViewMode: () => void
+  undo: () => void
+  redo: () => void
   setAnnotationTool: (tool: AnnotationTool) => void
+  setAnnotationStyle: (style: AnnotationStyle) => void
 }
 
 function resolveAppState(value: unknown): PersistedAppState {
@@ -1049,12 +1058,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     if (!stage) return
     const rect = stage.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return
+    const computedStyle = window.getComputedStyle(stage)
+    const paddingLeft = Number.parseFloat(computedStyle.paddingLeft) || 0
+    const paddingRight = Number.parseFloat(computedStyle.paddingRight) || 0
+    const paddingTop = Number.parseFloat(computedStyle.paddingTop) || 0
+    const paddingBottom = Number.parseFloat(computedStyle.paddingBottom) || 0
+    const contentWidth = Math.max(0, rect.width - paddingLeft - paddingRight)
+    const contentHeight = Math.max(0, rect.height - paddingTop - paddingBottom)
 
     setStageRect({
-      left: 0,
-      top: 0,
-      width: rect.width,
-      height: rect.height,
+      left: paddingLeft,
+      top: paddingTop,
+      width: contentWidth,
+      height: contentHeight,
     })
   }, [])
 
@@ -1887,36 +1903,40 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       viewModeEnabled: false,
       zenModeEnabled: false,
     }
+    const currentStrokeColor = currentState.currentItemStrokeColor || '#111827'
+    const currentStrokeWidth = currentState.currentItemStrokeWidth || 2
+    const currentOpacity = currentState.currentItemOpacity || 100
 
     let excalidrawTool: 'freedraw' | 'text' | 'eraser' | 'arrow' | 'rectangle' | 'ellipse' = 'freedraw'
 
     switch (tool) {
       case 'pen':
-        nextAppState.currentItemStrokeColor = '#111827'
-        nextAppState.currentItemStrokeWidth = 2
+        nextAppState.currentItemStrokeColor = currentStrokeColor
+        nextAppState.currentItemStrokeWidth = currentStrokeWidth
         nextAppState.currentItemOpacity = 100
         excalidrawTool = 'freedraw'
         break
       case 'highlighter':
-        nextAppState.currentItemStrokeColor = '#F59E0B'
-        nextAppState.currentItemStrokeWidth = 12
+        nextAppState.currentItemStrokeColor = currentStrokeColor
+        nextAppState.currentItemStrokeWidth = currentStrokeWidth
         nextAppState.currentItemOpacity = 40
         excalidrawTool = 'freedraw'
         break
       case 'text':
-        nextAppState.currentItemStrokeColor = '#111827'
+        nextAppState.currentItemStrokeColor = currentStrokeColor
+        nextAppState.currentItemStrokeWidth = currentStrokeWidth
         nextAppState.currentItemOpacity = 100
         excalidrawTool = 'text'
         break
       case 'eraser':
-        nextAppState.currentItemOpacity = 100
+        nextAppState.currentItemOpacity = currentOpacity
         excalidrawTool = 'eraser'
         break
       case 'arrow':
       case 'rectangle':
       case 'ellipse':
-        nextAppState.currentItemStrokeColor = '#111827'
-        nextAppState.currentItemStrokeWidth = 2
+        nextAppState.currentItemStrokeColor = currentStrokeColor
+        nextAppState.currentItemStrokeWidth = currentStrokeWidth
         nextAppState.currentItemOpacity = 100
         excalidrawTool = tool
         break
@@ -1929,6 +1949,66 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       },
     })
     api.setActiveTool({ type: excalidrawTool })
+  }, [])
+
+  const setAnnotationStyle = useCallback((style: AnnotationStyle) => {
+    const api = excalidrawApiRef.current
+    if (!api) return
+
+    const currentState = api.getAppState()
+    api.updateScene({
+      appState: {
+        ...currentState,
+        ...(style.strokeColor ? { currentItemStrokeColor: style.strokeColor } : null),
+        ...(typeof style.strokeWidth === 'number' ? { currentItemStrokeWidth: style.strokeWidth } : null),
+        ...(typeof style.opacity === 'number' ? { currentItemOpacity: style.opacity } : null),
+      },
+    })
+  }, [])
+
+  const triggerHistoryAction = useCallback((action: 'undo' | 'redo') => {
+    const root = stageViewportRef.current
+    if (!root) return
+
+    const actionButton = root.querySelector<HTMLButtonElement>(`[data-testid="button-${action}"]`)
+    if (actionButton && !actionButton.disabled) {
+      actionButton.click()
+      return
+    }
+
+    const excalidrawRoot = root.querySelector<HTMLElement>('.excalidraw')
+    excalidrawRoot?.focus?.()
+
+    const keyboardEventInitList = action === 'undo'
+      ? [
+          {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: 'z',
+          },
+        ]
+      : [
+          {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            key: 'y',
+          },
+          {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: true,
+            shiftKey: true,
+            key: 'z',
+          },
+        ]
+
+    for (const eventInit of keyboardEventInitList) {
+      excalidrawRoot?.dispatchEvent(new KeyboardEvent('keydown', eventInit))
+      document.dispatchEvent(new KeyboardEvent('keydown', eventInit))
+      window.dispatchEvent(new KeyboardEvent('keydown', eventInit))
+    }
   }, [])
 
   const flushSceneToYjs = useCallback(
@@ -2486,9 +2566,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       toggleViewMode: () => {
         setViewModeEnabled((prev) => !prev)
       },
+      undo: () => {
+        triggerHistoryAction('undo')
+      },
+      redo: () => {
+        triggerHistoryAction('redo')
+      },
       setAnnotationTool,
+      setAnnotationStyle,
     }),
-    [handleBackgroundClear, insertImageFile, setAnnotationTool],
+    [handleBackgroundClear, insertImageFile, setAnnotationStyle, setAnnotationTool, triggerHistoryAction],
   )
 
   return (

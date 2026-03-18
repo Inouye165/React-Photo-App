@@ -15,10 +15,12 @@ import {
   MapPin,
   MoreVertical,
   PenTool,
+  Redo2,
   Share2,
   Square,
   Trash2,
   Type,
+  Undo2,
   Users,
 } from 'lucide-react'
 import TutorOverlay from '../components/whiteboard/TutorOverlay'
@@ -29,6 +31,7 @@ import { computeContainedRect } from '../components/whiteboard/whiteboardAspect'
 import { getPreferredTutorOverlayStepId } from '../components/whiteboard/tutorOverlayGeometry'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
 import type {
+  AnnotationStyle,
   AnnotationTool,
   BackgroundImageAsset,
   BackgroundInfo,
@@ -43,6 +46,7 @@ import {
   ensureWhiteboardMembership,
   getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  listTutorQueueRequests,
   updateWhiteboardTitle,
 } from '../api/whiteboards'
 import { ApiError } from '../api/httpClient'
@@ -82,6 +86,39 @@ const DEFAULT_PHOTO_TRANSFORM: PhotoTransformState = {
   panY: 0,
 }
 const TEXT_MODE_PLACEHOLDER = 'The Weekend Problem\n\nSara has 3 apples...\n\nHow many apples does she have left?'
+const DESKTOP_ANNOTATION_COLORS = ['#111827', '#F59E0B', '#2563EB', '#DC2626'] as const
+const DESKTOP_ANNOTATION_WIDTHS = [2, 4, 8, 12] as const
+
+function getAnnotationStyleForTool(tool: AnnotationTool): Required<AnnotationStyle> {
+  switch (tool) {
+    case 'highlighter':
+      return { strokeColor: '#F59E0B', strokeWidth: 12, opacity: 40 }
+    case 'text':
+      return { strokeColor: '#111827', strokeWidth: 2, opacity: 100 }
+    case 'eraser':
+      return { strokeColor: '#111827', strokeWidth: 2, opacity: 100 }
+    case 'arrow':
+    case 'rectangle':
+    case 'ellipse':
+      return { strokeColor: '#111827', strokeWidth: 2, opacity: 100 }
+    case 'pen':
+    default:
+      return { strokeColor: '#111827', strokeWidth: 2, opacity: 100 }
+  }
+}
+
+function buildAnnotationStyle(tool: AnnotationTool, strokeColor: string, strokeWidth: number): Required<AnnotationStyle> {
+  const baseStyle = getAnnotationStyleForTool(tool)
+  if (tool === 'eraser') {
+    return baseStyle
+  }
+
+  return {
+    strokeColor,
+    strokeWidth,
+    opacity: baseStyle.opacity,
+  }
+}
 
 type FormattedProblemLine = {
   id: string
@@ -295,6 +332,35 @@ function ToolButton({
   )
 }
 
+function ToolbarActionButton({
+  label,
+  onClick,
+  icon,
+  compact = false,
+  className = '',
+}: {
+  label: string
+  onClick: () => void
+  icon: React.JSX.Element
+  compact?: boolean
+  className?: string
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`rounded-[8px] border border-white/10 bg-white/[0.04] font-medium text-white transition hover:bg-white/[0.08] hover:text-amber-100 ${compact ? 'px-2.5 py-2 text-[13px]' : 'px-3 py-2 text-sm'} ${className}`}
+    >
+      <span className="flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
+    </button>
+  )
+}
+
 function useIsMobileWhiteboardLayout(): boolean {
   const [isMobileLayout, setIsMobileLayout] = useState(() => {
     if (typeof window === 'undefined') return false
@@ -382,12 +448,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [resolvedTutorHelpMode, setResolvedTutorHelpMode] = useState<TutorHelpMode | null>(null)
   const [tutorSubmitting, setTutorSubmitting] = useState(false)
   const [annotationTool, setAnnotationTool] = useState<AnnotationTool>('pen')
+  const [annotationStrokeColor, setAnnotationStrokeColor] = useState('#111827')
+  const [annotationStrokeWidth, setAnnotationStrokeWidth] = useState(2)
+  const [tutorQueuePendingCount, setTutorQueuePendingCount] = useState<number | null>(null)
   const [shapeMenuOpen, setShapeMenuOpen] = useState(false)
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false)
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
-  const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('steps')
+  const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('chat')
   const [activeBoardActionContext, setActiveBoardActionContext] = useState<RightSidePanelBoardActionContext | null>(null)
   const [sessionState, setSessionState] = useState<SessionState>('idle')
   const [liveSessionStartedAt, setLiveSessionStartedAt] = useState<number | null>(null)
@@ -425,6 +494,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const currentUserId = user?.id ?? null
   const canUseTutorAssist = user?.app_metadata?.role === 'admin' || user?.app_metadata?.is_tutor === true || profile?.is_tutor === true
+  const canUseTutorQueue = canUseTutorAssist
   const panelMode: 'student' | 'tutor' = canUseTutorAssist ? 'tutor' : 'student'
   const isTutorView = panelMode === 'tutor'
   const audienceAge = useMemo(() => parseAudienceAge(responseAge), [responseAge])
@@ -498,8 +568,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const hasTutorInput = hasBackground || hasTextInput || hasHelpRequest
   const mobileSupportLabel = canUseTutorAssist ? 'Tutor Assist' : 'Help'
   const showFormattedProblemOverlay = !isTextInputFocused && formattedProblemLines.length > 0
+  const showDesktopStrokeWidthControls = annotationTool !== 'eraser' && annotationTool !== 'text'
   const tutorPlayback = useTutorPlayback({
-    steps: structuredAnalysisResult?.steps ?? [],
+    steps: structuredAnalysisResult?.guidedSolutionSteps ?? [],
     reducedMotion: Boolean(prefersReducedMotion),
     initialStepId: getPreferredTutorOverlayStepId(structuredAnalysisResult),
   })
@@ -871,6 +942,49 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     navigate('/tutor/queue')
   }, [navigate])
 
+  useEffect(() => {
+    if (!canUseTutorQueue) {
+      setTutorQueuePendingCount(null)
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadTutorQueueCount = async () => {
+      try {
+        const pendingRequests = await listTutorQueueRequests({ status: 'pending' })
+        if (!cancelled) {
+          setTutorQueuePendingCount(Array.isArray(pendingRequests) ? pendingRequests.length : 0)
+        }
+      } catch {
+        if (!cancelled) {
+          setTutorQueuePendingCount(null)
+        }
+      }
+    }
+
+    const handleRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void loadTutorQueueCount()
+      }
+    }
+
+    void loadTutorQueueCount()
+    const intervalId = window.setInterval(() => {
+      void loadTutorQueueCount()
+    }, 10000)
+
+    document.addEventListener('visibilitychange', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+    }
+  }, [canUseTutorQueue])
+
   const handlePickUpSession = useCallback(() => {
     const startedAt = Date.now()
     setSessionState('live')
@@ -952,10 +1066,45 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     }, 4000)
   }, [])
 
+  const applyAnnotationStyle = useCallback((style: AnnotationStyle) => {
+    whiteboardPadRef.current?.setAnnotationStyle(style)
+  }, [])
+
   const handleAnnotationToolSelect = useCallback((tool: AnnotationTool) => {
+    const nextStyle = buildAnnotationStyle(tool, annotationStrokeColor, annotationStrokeWidth)
+    setAnnotationMode(true)
     setAnnotationTool(tool)
+    setAnnotationStrokeColor(nextStyle.strokeColor)
+    setAnnotationStrokeWidth(nextStyle.strokeWidth)
     setShapeMenuOpen(false)
+    whiteboardPadRef.current?.setAnnotationStyle(nextStyle)
     whiteboardPadRef.current?.setAnnotationTool(tool)
+    if (isMobileLayout) {
+      scheduleMobileToolbarHide()
+    }
+  }, [annotationStrokeColor, annotationStrokeWidth, isMobileLayout, scheduleMobileToolbarHide])
+
+  const handleAnnotationColorSelect = useCallback((color: string) => {
+    const nextStyle = buildAnnotationStyle(annotationTool, color, annotationStrokeWidth)
+    setAnnotationStrokeColor(color)
+    applyAnnotationStyle(nextStyle)
+  }, [annotationStrokeWidth, annotationTool, applyAnnotationStyle])
+
+  const handleAnnotationWidthSelect = useCallback((width: number) => {
+    const nextStyle = buildAnnotationStyle(annotationTool, annotationStrokeColor, width)
+    setAnnotationStrokeWidth(width)
+    applyAnnotationStyle(nextStyle)
+  }, [annotationStrokeColor, annotationTool, applyAnnotationStyle])
+
+  const handleUndo = useCallback(() => {
+    whiteboardPadRef.current?.undo()
+    if (isMobileLayout) {
+      scheduleMobileToolbarHide()
+    }
+  }, [isMobileLayout, scheduleMobileToolbarHide])
+
+  const handleRedo = useCallback(() => {
+    whiteboardPadRef.current?.redo()
     if (isMobileLayout) {
       scheduleMobileToolbarHide()
     }
@@ -1160,6 +1309,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     setTutorSubmitting(false)
     setAnnotationTool('pen')
   }, [])
+
+  const handleClearAnalysisReview = useCallback(() => {
+    if (boardId) {
+      clearTutorAnalysisDeviceCache({ boardId })
+    }
+    resetTutorState()
+    setActiveBoardActionContext(null)
+    tutorPlayback.exitWalkthrough()
+  }, [boardId, resetTutorState, tutorPlayback])
 
   useEffect(() => {
     hasBackgroundRef.current = hasBackground
@@ -1905,6 +2063,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     >
       <div className="overflow-x-auto px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <div className="flex h-11 min-w-max items-center gap-2 whitespace-nowrap">
+          <ToolbarActionButton label="Undo" onClick={handleUndo} icon={<Undo2 className="h-4 w-4" />} compact className="shrink-0" />
+          <ToolbarActionButton label="Redo" onClick={handleRedo} icon={<Redo2 className="h-4 w-4" />} compact className="shrink-0" />
           <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} compact className="shrink-0" />
           <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} compact className="shrink-0" />
           <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} compact className="shrink-0" />
@@ -2169,9 +2329,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   >
                     <span aria-hidden="true">🧑‍🏫</span>
                     Tutor queue
-                    <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                      3
-                    </span>
+                    {typeof tutorQueuePendingCount === 'number' && tutorQueuePendingCount > 0 ? (
+                      <span className="absolute -top-1.5 -right-1.5 flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">
+                        {tutorQueuePendingCount}
+                      </span>
+                    ) : null}
                   </button>
                 </div>
             ) : (
@@ -2528,7 +2690,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                             ref={whiteboardPadRef}
                             boardId={boardId}
                             className="m-0 h-full w-full p-0"
-                            annotationMode={hasBackground}
+                            annotationMode={annotationMode}
                             onRealtimeStatusChange={handleRealtimeStatusChange}
                             onHasBoardContentChange={setHasBoardContent}
                             onHasBackgroundChange={handleBackgroundChange}
@@ -2776,20 +2938,64 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 </div>
               ) : null}
               {hasBackground ? (
-                <div className="border-b border-white/10 bg-[#111111] px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-white/10 bg-white/[0.04] px-3 py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-[#111111] p-1">
+                <div className={`pointer-events-none absolute left-3 z-20 ${isTutorActiveSessionFocus ? 'top-20' : 'top-3'}`}>
+                  <div className="pointer-events-auto flex max-w-[168px] flex-col gap-2 rounded-[12px] border border-white/8 bg-[rgba(9,14,24,0.84)] px-2 py-2 shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur-sm">
+                    <div className="flex flex-col gap-1.5">
+                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
+                        <ToolbarActionButton label="Undo" onClick={handleUndo} icon={<Undo2 className="h-4 w-4" />} />
+                        <ToolbarActionButton label="Redo" onClick={handleRedo} icon={<Redo2 className="h-4 w-4" />} />
+                      </div>
+                    <div className="flex flex-col gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
                         <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
                         <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
                         <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
                         <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
                       </div>
-                      <div className="relative ml-2" ref={shapeMenuRef}>
+                      {annotationTool !== 'eraser' ? (
+                        <div className="rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] px-2 py-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Stroke</div>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {DESKTOP_ANNOTATION_COLORS.map((color) => {
+                              const isActive = annotationStrokeColor === color
+                              return (
+                                <button
+                                  key={color}
+                                  type="button"
+                                  aria-label={`Use ${color} stroke`}
+                                  aria-pressed={isActive}
+                                  onClick={() => handleAnnotationColorSelect(color)}
+                                  className={`h-6 w-6 rounded-full border-2 transition ${isActive ? 'border-white scale-105' : 'border-white/20 hover:border-white/50'}`}
+                                  style={{ backgroundColor: color }}
+                                />
+                              )
+                            })}
+                          </div>
+                          {showDesktopStrokeWidthControls ? (
+                            <div className="mt-2 grid grid-cols-4 gap-1.5">
+                              {DESKTOP_ANNOTATION_WIDTHS.map((width) => {
+                                const isActive = annotationStrokeWidth === width
+                                return (
+                                  <button
+                                    key={width}
+                                    type="button"
+                                    aria-label={`Use ${width}px stroke`}
+                                    aria-pressed={isActive}
+                                    onClick={() => handleAnnotationWidthSelect(width)}
+                                    className={`rounded-[8px] px-0 py-1.5 text-[11px] font-semibold transition ${isActive ? 'bg-amber-500 text-slate-950' : 'bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white'}`}
+                                  >
+                                    {width}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <div className="relative" ref={shapeMenuRef}>
                         <button
                           type="button"
                           onClick={() => setShapeMenuOpen((prev) => !prev)}
-                          className={`rounded-[8px] px-3 py-2 text-sm font-medium transition ${
+                          className={`w-full rounded-[8px] px-3 py-2 text-sm font-medium transition ${
                             ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
                               ? 'bg-amber-500 text-slate-950'
                               : 'bg-chess-surface text-white hover:bg-amber-500/12 hover:text-chess-accentSoft'
@@ -2802,7 +3008,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                           </span>
                         </button>
                         {shapeMenuOpen ? (
-                          <div className="absolute left-1/2 top-full z-20 mt-2 w-44 -translate-x-1/2 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
+                          <div className="absolute left-full top-0 z-20 ml-2 w-44 rounded-[8px] border border-white/10 bg-slate-900 p-2 shadow-2xl">
                             {([
                               ['arrow', <ArrowRight className="h-4 w-4" />, 'Arrow'],
                               ['rectangle', <Square className="h-4 w-4" />, 'Rectangle'],
@@ -2823,7 +3029,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-col gap-2">
                       <button
                         type="button"
                         onClick={() => setAnnotationMode((prev) => !prev)}
@@ -2838,7 +3044,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                         {annotationMode ? 'Markers on' : 'Markers off'}
                       </button>
                       {/* Zoom control */}
-                      <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-[#111111] px-2 py-1">
+                      <div className="flex items-center justify-between gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] px-2 py-1">
                         <button
                           type="button"
                           onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
@@ -2865,7 +3071,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       <button
                         type="button"
                         onClick={handleRemovePhotoRequest}
-                        className="rounded-[8px] px-2 py-1 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
+                        className="rounded-[8px] px-2 py-2 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
                       >
                         <span className="flex items-center gap-2">
                           <ImageMinus className="h-3.5 w-3.5" />
@@ -2876,7 +3082,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   </div>
 
                   {confirmRemovePhoto ? (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                    <div className="flex flex-col gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
                       <span>Remove this photo? This can't be undone.</span>
                       <button
                         type="button"
@@ -2903,7 +3109,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   ref={whiteboardPadRef}
                   boardId={boardId}
                   className="h-full"
-                  annotationMode={hasBackground}
+                  annotationMode={annotationMode}
                   onRealtimeStatusChange={handleRealtimeStatusChange}
                   onHasBoardContentChange={setHasBoardContent}
                   onHasBackgroundChange={handleBackgroundChange}
@@ -2935,6 +3141,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   <TutorOverlay
                     analysisResult={structuredAnalysisResult}
                     activeStepId={tutorPlayback.activeStepId}
+                    analysisSource={analysis?.analysisSource ?? null}
                     lessonMessage={tutorLessonMessage}
                     boardFrame={tutorOverlayFrame}
                     visible={tutorOverlayVisible}
@@ -3013,7 +3220,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 hasPhoto={hasBackground}
                 hasInput={hasTutorInput}
                 hasBoardContent={hasBoardContent}
-                initialTab="steps"
+                initialTab="chat"
                 inputMode={effectiveTutorInputMode}
                 problemDraft={textContent}
                 onProblemDraftChange={handleTextContentChange}
@@ -3073,6 +3280,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 onTabChange={setDesktopSidePanelTab}
                 onTutorStepSelect={tutorPlayback.setActiveStepId}
                 onBoardActionContextChange={setActiveBoardActionContext}
+                onClearAnalysisReview={handleClearAnalysisReview}
                 onRequestHumanTutor={() => {
                   return undefined
                 }}

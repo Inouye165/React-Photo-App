@@ -65,4 +65,12 @@ describe('whiteboard deterministic math core', () => {
     })
     expect(facts.unsupportedReason).toMatch(/limited to arithmetic and single-variable linear equations/i)
   })
+
+  test('strips worksheet lead-ins before canonicalization', () => {
+    const facts = buildMathFacts('Solve for x: (x+3)² - 5 = 20', [])
+
+    expect(facts.supported).toBe(false)
+    expect(facts.canonicalProblem).toBe('(x+3)^2-5=20')
+    expect(facts.canonicalProblem).not.toContain('x:')
+  })
 })

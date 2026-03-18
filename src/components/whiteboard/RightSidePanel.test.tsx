@@ -8,6 +8,57 @@ import type { WhiteboardTutorResponse } from '../../types/whiteboard'
 const liveAnalysis: WhiteboardTutorResponse = {
   reply: 'Problem: Solve for x: 5x - 17 = 18',
   messages: [{ role: 'assistant', content: 'Solve for x: 5x - 17 = 18' }],
+  analysisSource: 'deterministic',
+  analysisPipeline: {
+    analysisSource: 'deterministic',
+    deterministic: {
+      supported: true,
+      domain: 'algebra',
+      canonicalProblem: '5x - 17 = 18',
+      verifiedAnswer: ['x = 7'],
+      verifiedSteps: [
+        {
+          stepIndex: 0,
+          expression: '5x - 17 = 18',
+          isValid: false,
+          explanation: 'Add 17 to both sides before simplifying.',
+          errorType: 'equation-transform',
+        },
+      ],
+      detectedError: {
+        stepIndex: 0,
+        errorType: 'equation-transform',
+        explanation: 'The balancing step is missing.',
+      },
+      confidence: 'high',
+    },
+    fallback: {
+      ran: false,
+      source: null,
+      type: null,
+    },
+  },
+  mathFacts: {
+    supported: true,
+    domain: 'algebra',
+    canonicalProblem: '5x - 17 = 18',
+    verifiedAnswer: ['x = 7'],
+    verifiedSteps: [
+      {
+        stepIndex: 0,
+        expression: '5x - 17 = 18',
+        isValid: false,
+        explanation: 'Add 17 to both sides before simplifying.',
+        errorType: 'equation-transform',
+      },
+    ],
+    detectedError: {
+      stepIndex: 0,
+      errorType: 'equation-transform',
+      explanation: 'The balancing step is missing.',
+    },
+    confidence: 'high',
+  },
   analysisResult: {
     problemText: 'Solve for x: 5x - 17 = 18',
     finalAnswers: ['x = 7'],
@@ -33,8 +84,69 @@ const liveAnalysis: WhiteboardTutorResponse = {
         kidFriendlyExplanation: 'Now divide both sides by 5 to get x by itself.',
       },
     ],
+    observedSteps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '5x - 17 = 18',
+        status: 'partial',
+        shortLabel: 'Add 17 to both sides',
+        kidFriendlyExplanation: 'Undo the minus 17 first so the x term is easier to isolate.',
+        correction: 'Write +17 on both sides before simplifying.',
+        hint: 'What should you add to both sides to cancel the -17?',
+      },
+      {
+        id: 'step-2',
+        index: 1,
+        studentText: '5x = 35',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 5',
+        kidFriendlyExplanation: 'Now divide both sides by 5 to get x by itself.',
+      },
+    ],
+    guidedSolutionSteps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '5x - 17 = 18',
+        status: 'partial',
+        shortLabel: 'Add 17 to both sides',
+        kidFriendlyExplanation: 'Undo the minus 17 first so the x term is easier to isolate.',
+        correction: 'Write +17 on both sides before simplifying.',
+        hint: 'What should you add to both sides to cancel the -17?',
+        origin: 'observed',
+        observedStepId: 'step-1',
+      },
+      {
+        id: 'step-2',
+        index: 1,
+        studentText: '5x = 35',
+        status: 'correct',
+        shortLabel: 'Divide both sides by 5',
+        kidFriendlyExplanation: 'Now divide both sides by 5 to get x by itself.',
+        origin: 'observed',
+        observedStepId: 'step-2',
+      },
+      {
+        id: 'step-3',
+        index: 2,
+        studentText: 'x = 7',
+        normalizedMath: 'x = 7',
+        status: 'correct',
+        shortLabel: 'Final answer',
+        kidFriendlyExplanation: 'This completes the solve.',
+        origin: 'final-answer',
+      },
+    ],
+    guidedSolutionMetadata: {
+      source: 'mixed-reconstruction',
+      isComplete: true,
+      reachesFinalAnswers: true,
+      synthesizedStepCount: 1,
+      hasSynthesizedContinuation: true,
+    },
     validatorWarnings: [],
-    canAnimate: false,
+    canAnimate: true,
   },
   sections: {
     problem: 'Solve for x: 5x - 17 = 18',
@@ -49,6 +161,193 @@ const liveAnalysis: WhiteboardTutorResponse = {
   steps: [],
   errorsFound: [],
   closingEncouragement: 'Nice start. You are close.',
+}
+
+const unsupportedFallbackAnalysis: WhiteboardTutorResponse = {
+  ...liveAnalysis,
+  analysisSource: 'fallback-llm',
+  analysisPipeline: {
+    analysisSource: 'fallback-llm',
+    deterministic: {
+      supported: false,
+      domain: 'unknown',
+      canonicalProblem: '(x+3)^2-5=20',
+      verifiedAnswer: null,
+      verifiedSteps: [],
+      detectedError: null,
+      confidence: 'low',
+      unsupportedReason: 'Deterministic math support in this pass is limited to arithmetic and single-variable linear equations.',
+    },
+    fallback: {
+      ran: true,
+      source: 'anthropic',
+      type: 'llm-evaluation',
+      reason: 'Deterministic math support in this pass is limited to arithmetic and single-variable linear equations.',
+    },
+  },
+  mathFacts: {
+    supported: false,
+    domain: 'unknown',
+    canonicalProblem: '(x+3)^2-5=20',
+    verifiedAnswer: null,
+    verifiedSteps: [],
+    detectedError: null,
+    confidence: 'low',
+    unsupportedReason: 'Deterministic math support in this pass is limited to arithmetic and single-variable linear equations.',
+  },
+  problem: '(x+3)^2 - 5 = 20',
+  correctSolution: 'x = 2 or x = -8',
+  analysisResult: {
+    problemText: '(x+3)^2 - 5 = 20',
+    finalAnswers: ['x = 2', 'x = -8'],
+    overallSummary: 'This is a quadratic equation, so the review is AI-generated rather than deterministically verified.',
+    regions: [],
+    steps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '(x+3)^2 - 5 = 20',
+        status: 'partial',
+        shortLabel: 'Isolate the squared expression',
+        kidFriendlyExplanation: 'Add 5 to both sides first, then take square roots carefully.',
+        correction: 'Move the -5 before taking the square root.',
+        hint: 'What happens after you add 5 to both sides?',
+      },
+    ],
+    observedSteps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '(x+3)^2 - 5 = 20',
+        status: 'partial',
+        shortLabel: 'Isolate the squared expression',
+        kidFriendlyExplanation: 'Add 5 to both sides first, then take square roots carefully.',
+        correction: 'Move the -5 before taking the square root.',
+        hint: 'What happens after you add 5 to both sides?',
+      },
+    ],
+    guidedSolutionSteps: [
+      {
+        id: 'step-1',
+        index: 0,
+        studentText: '(x+3)^2 - 5 = 20',
+        status: 'partial',
+        shortLabel: 'Isolate the squared expression',
+        kidFriendlyExplanation: 'Add 5 to both sides first, then take square roots carefully.',
+        correction: 'Move the -5 before taking the square root.',
+        hint: 'What happens after you add 5 to both sides?',
+        origin: 'observed',
+        observedStepId: 'step-1',
+      },
+      {
+        id: 'step-2',
+        index: 1,
+        studentText: 'x + 3 = 5',
+        normalizedMath: 'x + 3 = 5',
+        status: 'correct',
+        shortLabel: 'Branch 1',
+        kidFriendlyExplanation: 'Solve the positive square-root branch.',
+        origin: 'branch',
+        branchKey: 'branch-1',
+        branchLabel: 'Branch 1',
+      },
+      {
+        id: 'step-3',
+        index: 2,
+        studentText: 'x = 5 - 3',
+        normalizedMath: 'x = 5 - 3',
+        status: 'correct',
+        shortLabel: 'Isolate x',
+        kidFriendlyExplanation: 'Subtract 3 from both sides.',
+        origin: 'synthesized',
+        branchKey: 'branch-1',
+        branchLabel: 'Branch 1',
+      },
+      {
+        id: 'step-4',
+        index: 3,
+        studentText: 'x = 2',
+        normalizedMath: 'x = 2',
+        status: 'correct',
+        shortLabel: 'Final answer',
+        kidFriendlyExplanation: 'This completes the first branch.',
+        origin: 'final-answer',
+        branchKey: 'branch-1',
+        branchLabel: 'Branch 1',
+      },
+      {
+        id: 'step-5',
+        index: 4,
+        studentText: 'x + 3 = -5',
+        normalizedMath: 'x + 3 = -5',
+        status: 'correct',
+        shortLabel: 'Branch 2',
+        kidFriendlyExplanation: 'Solve the negative square-root branch.',
+        origin: 'branch',
+        branchKey: 'branch-2',
+        branchLabel: 'Branch 2',
+      },
+      {
+        id: 'step-6',
+        index: 5,
+        studentText: 'x = -5 - 3',
+        normalizedMath: 'x = -5 - 3',
+        status: 'correct',
+        shortLabel: 'Isolate x',
+        kidFriendlyExplanation: 'Subtract 3 from both sides.',
+        origin: 'synthesized',
+        branchKey: 'branch-2',
+        branchLabel: 'Branch 2',
+      },
+      {
+        id: 'step-7',
+        index: 6,
+        studentText: 'x = -8',
+        normalizedMath: 'x = -8',
+        status: 'correct',
+        shortLabel: 'Final answer',
+        kidFriendlyExplanation: 'This completes the second branch.',
+        origin: 'final-answer',
+        branchKey: 'branch-2',
+        branchLabel: 'Branch 2',
+      },
+    ],
+    guidedSolutionMetadata: {
+      source: 'mixed-reconstruction',
+      isComplete: true,
+      reachesFinalAnswers: true,
+      synthesizedStepCount: 6,
+      hasSynthesizedContinuation: true,
+    },
+    validatorWarnings: ['Deterministic math support in this pass is limited to arithmetic and single-variable linear equations.'],
+    canAnimate: true,
+  },
+  sections: {
+    problem: '(x+3)^2 - 5 = 20',
+    stepsAnalysis: 'Add 5 to both sides, then solve the resulting square-root equation.',
+    errorsFound: 'The deterministic checker could not verify this problem type.',
+    encouragement: 'Try isolating the square before taking square roots.',
+  },
+}
+
+const unsupportedOnlyAnalysis: WhiteboardTutorResponse = {
+  ...unsupportedFallbackAnalysis,
+  analysisResult: {
+    problemText: '(x+3)^2 - 5 = 20',
+    finalAnswers: [],
+    overallSummary: '',
+    regions: [],
+    steps: [],
+    validatorWarnings: ['Deterministic math support in this pass is limited to arithmetic and single-variable linear equations.'],
+    canAnimate: false,
+  },
+  sections: {
+    problem: '(x+3)^2 - 5 = 20',
+    stepsAnalysis: '',
+    errorsFound: '',
+    encouragement: '',
+  },
+  correctSolution: '',
 }
 
 const sparseAnalysis: WhiteboardTutorResponse = {
@@ -138,30 +437,14 @@ describe('RightSidePanel', () => {
     )
   }
 
-  it('renders a compact tutor assist entry before analysis instead of the empty workflow shell', () => {
+  it('shows only Chat and AI Review tabs and defaults to Chat', () => {
     renderPanel()
 
-    expect(screen.getByRole('heading', { name: 'Need help with this problem?' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Quick help/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Full help/i })).toBeInTheDocument()
-    expect(screen.queryByText('Session summary')).not.toBeInTheDocument()
-    expect(screen.queryByText('Likely misconception')).not.toBeInTheDocument()
-    expect(screen.queryByText('What to say')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /pick up session/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^pass$/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'CHAT' })).not.toBeInTheDocument()
-  })
-
-  it('hides empty workflow sections and untrusted metadata before analysis runs', () => {
-    renderPanel()
-
-    expect(screen.queryByText('Queue open')).not.toBeInTheDocument()
-    expect(screen.queryByText('Waiting now')).not.toBeInTheDocument()
-    expect(screen.queryByText('Maya is waiting for live help on this algebra problem.')).not.toBeInTheDocument()
-    expect(screen.queryByText('No likely misconception is available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByText('No tutor-ready next move is available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByText('No supporting steps are available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Use quick-help response' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'AI Review' })).toHaveAttribute('aria-selected', 'false')
+    expect(screen.queryByRole('tab', { name: 'Diagnosis' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'Assist' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Message student' })).toBeInTheDocument()
   })
 
   it('shows visible analysis status for confirmation, loading, and errors', () => {
@@ -238,16 +521,157 @@ describe('RightSidePanel', () => {
     expect(onRetryAnalysis).toHaveBeenCalledWith('quick')
   })
 
-  it('keeps spoiler content collapsed by default and makes supporting details accessible', () => {
-    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
+  it('shows a concise AI review in the requested order', () => {
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
-    expect(screen.queryByText('x = 7')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /reveal solution/i }))
+    const labels = screen.getAllByText(/Summary|Likely mistake|Student line|Guided next step/).map((element) => element.textContent)
+    expect(labels).toEqual(['Summary', 'Likely mistake', 'Student line', 'Guided next step'])
     expect(screen.getByText('x = 7')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /evidence from student work/i }))
+    expect(screen.getByText('Write +17 on both sides before simplifying.')).toBeInTheDocument()
+    expect(screen.getAllByText('Undo the minus 17 first so the x term is easier to isolate.').length).toBeGreaterThan(0)
     expect(screen.getAllByText('5x - 17 = 18').length).toBeGreaterThan(0)
+  })
+
+  it('renders an honest unsupported state when deterministic review is unavailable', () => {
+    renderPanel({ activeTab: 'ai-tutor', analysis: unsupportedOnlyAnalysis, analysisResult: unsupportedOnlyAnalysis.analysisResult })
+
+    expect(screen.getByText('Review needs a different pass')).toBeInTheDocument()
+    expect(screen.getByText('This problem needs a deeper review before the board walkthrough is ready.')).toBeInTheDocument()
+    expect(screen.queryByText('Summary')).not.toBeInTheDocument()
+  })
+
+  it('keeps fallback review language user-facing in the default panel', () => {
+    renderPanel({ activeTab: 'ai-tutor', analysis: unsupportedFallbackAnalysis, analysisResult: unsupportedFallbackAnalysis.analysisResult })
+
+    expect(screen.queryByText('AI-generated review')).not.toBeInTheDocument()
+    expect(screen.getByText('This problem needed a deeper review pass. Use the answer and next step below as the teaching guide.')).toBeInTheDocument()
+    expect(screen.getByText('x = 2 or x = -8')).toBeInTheDocument()
+  })
+
+  it('starts the guided solution overlay from AI Review', () => {
+    const onTutorWalkthroughEnter = vi.fn()
+    const onToggleTutorOverlay = vi.fn()
+
+    renderPanel({
+      activeTab: 'ai-tutor',
+      analysis: liveAnalysis,
+      analysisResult: liveAnalysis.analysisResult,
+      tutorWalkthroughActive: false,
+      overlayVisible: false,
+      onTutorWalkthroughEnter,
+      onToggleTutorOverlay,
+    })
+
+    expect(screen.getByText('Guided next step')).toBeInTheDocument()
+    expect(screen.getByText('Board markers off')).toBeInTheDocument()
+    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument()
+    expect(screen.getByText('Next line to show')).toBeInTheDocument()
+    expect(screen.getByText('5x = 35')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start walkthrough' }))
+
+    expect(onToggleTutorOverlay).toHaveBeenCalledTimes(1)
+    expect(onTutorWalkthroughEnter).toHaveBeenCalledTimes(1)
+  })
+
+  it('controls and clears the guided solution overlay from AI Review', () => {
+    const onTutorPlaybackPause = vi.fn()
+    const onTutorPlaybackPrevious = vi.fn()
+    const onTutorPlaybackNext = vi.fn()
+    const onTutorWalkthroughExit = vi.fn()
+    const onToggleTutorOverlay = vi.fn()
+
+    renderPanel({
+      activeTab: 'ai-tutor',
+      analysis: liveAnalysis,
+      analysisResult: liveAnalysis.analysisResult,
+      tutorWalkthroughActive: true,
+      tutorPlaybackIsPlaying: true,
+      overlayVisible: true,
+      activeTutorStepId: 'step-2',
+      onTutorPlaybackPause,
+      onTutorPlaybackPrevious,
+      onTutorPlaybackNext,
+      onTutorWalkthroughExit,
+      onToggleTutorOverlay,
+    })
+
+    expect(screen.getByText('Board markers on')).toBeInTheDocument()
+    expect(screen.getByText('Step 2 of 3')).toBeInTheDocument()
+    expect(screen.getByText('Current line')).toBeInTheDocument()
+    expect(screen.getByText('Playing')).toBeInTheDocument()
+    expect(screen.getAllByText('x = 7').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pause walkthrough' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear walkthrough' }))
+
+    expect(onTutorPlaybackPause).toHaveBeenCalledTimes(1)
+    expect(onTutorPlaybackPrevious).toHaveBeenCalledTimes(1)
+    expect(onTutorPlaybackNext).toHaveBeenCalledTimes(1)
+    expect(onTutorWalkthroughExit).toHaveBeenCalledTimes(1)
+    expect(onToggleTutorOverlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a review when no analysis is available yet', () => {
+    const onStartAnalysis = vi.fn()
+    renderPanel({ activeTab: 'ai-tutor', analysis: null, analysisResult: null, onStartAnalysis })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Review work' }))
+
+    expect(onStartAnalysis).toHaveBeenCalledTimes(1)
+    expect(onStartAnalysis).toHaveBeenCalledWith('quick')
+  })
+
+  it('clears the current AI review only after confirmation', () => {
+    const onClearAnalysisReview = vi.fn()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult, onClearAnalysisReview })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear AI review' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith('Clear this AI review?')
+    expect(onClearAnalysisReview).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps engine response details behind a development-only disclosure', () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText,
+      },
+    })
+
+    renderPanel({ activeTab: 'ai-tutor', analysis: unsupportedFallbackAnalysis, analysisResult: unsupportedFallbackAnalysis.analysisResult })
+
+  fireEvent.click(screen.getByText('Technical details'))
+  fireEvent.click(screen.getByRole('button', { name: 'View details' }))
+
+  expect(screen.getByText('Engine response')).toBeInTheDocument()
+    expect(screen.getByText(/"observedSteps"/)).toBeInTheDocument()
+    expect(screen.getByText(/"guidedSolutionSteps"/)).toBeInTheDocument()
+    expect(screen.getByText(/"deterministicResponse"/)).toBeInTheDocument()
+    expect(screen.getByText(/"fallbackRan": true/)).toBeInTheDocument()
+    expect(screen.getByText(/"fallbackSource": "anthropic"/)).toBeInTheDocument()
+    expect(screen.getByText(/"analysisSource": "fallback-llm"/)).toBeInTheDocument()
+    expect(screen.getByText(/"guidedSolutionSource": "mixed-reconstruction"/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy JSON' }))
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not clear the current AI review when confirmation is cancelled', () => {
+    const onClearAnalysisReview = vi.fn()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult, onClearAnalysisReview })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear AI review' }))
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(onClearAnalysisReview).not.toHaveBeenCalled()
   })
 
   it('renders a student-specific panel without tutor workflow scaffolding', () => {
@@ -263,270 +687,18 @@ describe('RightSidePanel', () => {
     expect(screen.getByRole('textbox', { name: 'Message your tutor' })).toBeInTheDocument()
   })
 
-  it('keeps only one primary board-focus action in the main surface and uses it', () => {
-    const onMarkStep = vi.fn()
-    renderPanel({ onMarkStep, analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
-
-    expect(screen.getAllByRole('button', { name: 'Focus board here' })).toHaveLength(1)
-    expect(screen.getByRole('button', { name: 'Focus board here' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Focus board here' }))
-
-    expect(onMarkStep).toHaveBeenCalledWith(1)
-    expect(screen.getByText('Board focus')).toBeInTheDocument()
-  })
-
-  it('routes the first response into the conversation detail view', () => {
-    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use quick-help response' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Open conversation' }))
-
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue(
-      'Write +17 on both sides before simplifying. Correct answer: x = 7. What should you add to both sides to cancel the -17?',
-    )
-  })
-
-  it('opens a focused detail view when requested', () => {
-    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open full steps' }))
-
-    expect(screen.getByText('Workflow detail')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Diagnosis' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('button', { name: 'Back to workflow' })).toBeInTheDocument()
-  })
-
-  it('shows persistent board focus feedback after marking a key step', () => {
-    renderPanel({ analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Focus board here' }))
-
-    expect(screen.getByText('Board focus')).toBeInTheDocument()
-    expect(screen.getAllByText('Marking step 1').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Add 17 to both sides').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Focus board here' })).toHaveAttribute('aria-pressed', 'true')
-  })
-
   it('maps the legacy help-request tab into the assist detail view', () => {
     renderPanel({ activeTab: 'help-request', analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
 
-    expect(screen.getByRole('tab', { name: 'Assist' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('button', { name: /Quick help/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Full help/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'AI Review' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByText('Summary')).toBeInTheDocument()
   })
 
-  it('shows a compact tutor assist entry point and no heavy assist content by default', () => {
-    const onStartAnalysis = vi.fn()
-    renderPanel({ activeTab: 'ai-tutor', initialTutorAssistState: 'ready', onStartAnalysis, analysis: liveAnalysis, analysisResult: liveAnalysis.analysisResult })
-
-    expect(screen.getByRole('heading', { name: 'Tutor Assist' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Quick help/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Full help/i })).toBeInTheDocument()
-    expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
-    expect(screen.queryByText('What to say next')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Go deeper' })).not.toBeInTheDocument()
-    expect(onStartAnalysis).not.toHaveBeenCalled()
-  })
-
-  it('requests quick assist only when the tutor explicitly asks and no analysis is available yet', () => {
-    const onStartAnalysis = vi.fn()
-    renderPanel({ activeTab: 'ai-tutor', initialTutorAssistState: 'ready', onStartAnalysis, analysis: null, analysisResult: null })
-
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-
-    expect(onStartAnalysis).toHaveBeenCalledTimes(1)
-    expect(onStartAnalysis).toHaveBeenCalledWith('quick')
-    expect(screen.getByText('Analyzing student work...')).toBeInTheDocument()
-  })
-
-  it('requests deeper help only when the tutor explicitly asks and no analysis is available yet', () => {
-    const onStartAnalysis = vi.fn()
-    renderPanel({ activeTab: 'ai-tutor', initialTutorAssistState: 'ready', onStartAnalysis, analysis: null, analysisResult: null })
-
-    fireEvent.click(screen.getByRole('button', { name: /Full help/i }))
-
-    expect(onStartAnalysis).toHaveBeenCalledTimes(1)
-    expect(onStartAnalysis).toHaveBeenCalledWith('full')
-    expect(screen.getByText('Analyzing student work...')).toBeInTheDocument()
-  })
-
-  it('opens simple assist on request and shows one issue plus one next move', () => {
-    const onStartAnalysis = vi.fn()
-    renderPanel({ activeTab: 'ai-tutor', initialTutorAssistState: 'ready', onStartAnalysis, analysis: liveAnalysis, analysisMode: 'quick', analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-
-    expect(onStartAnalysis).not.toHaveBeenCalled()
-    expect(screen.getByText('Keep it short and usable.')).toBeInTheDocument()
-    expect(screen.getByText('Likely issue')).toBeInTheDocument()
-    expect(screen.getByText('What to say next')).toBeInTheDocument()
-    expect(screen.getByText('Board focus')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Go deeper' })).toBeInTheDocument()
-    expect(screen.queryByText(/Confidence:/i)).not.toBeInTheDocument()
-  })
-
-  it('omits missing assist sections instead of showing unavailable cards', () => {
+  it('shows the review entry state when analysis is sparse', () => {
     renderPanel({ activeTab: 'ai-tutor', analysis: sparseAnalysis, analysisMode: 'quick', analysisResult: sparseAnalysis.analysisResult })
 
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-
-    expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
-    expect(screen.queryByText('What to say next')).not.toBeInTheDocument()
-    expect(screen.queryByText('Board focus')).not.toBeInTheDocument()
-    expect(screen.queryByText('No likely issue available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByText('No tutor-ready next move is available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByText('No walkthrough steps are available from this analysis.')).not.toBeInTheDocument()
-    expect(screen.queryByText(/Model:/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Confidence:/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Go deeper' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Use this reply' })).not.toBeInTheDocument()
-  })
-
-  it('persists tutor private notes across remounts for the same request', () => {
-    const firstRender = renderPanel({ activeTab: 'ai-tutor', assistContextKey: 'request-a', analysis: liveAnalysis, analysisMode: 'full', analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: /Full help/i }))
-
-    fireEvent.change(screen.getByRole('textbox', { name: 'Private tutor notes' }), {
-      target: { value: 'Check whether Maya is mixing up FOIL and square roots.' },
-    })
-
-    expect(screen.getByRole('textbox', { name: 'Private tutor notes' })).toHaveValue('Check whether Maya is mixing up FOIL and square roots.')
-
-    firstRender.unmount()
-
-    renderPanel({ activeTab: 'ai-tutor', assistContextKey: 'request-a', analysis: liveAnalysis, analysisMode: 'full', analysisResult: liveAnalysis.analysisResult })
-
-    expect(screen.getByRole('textbox', { name: 'Private tutor notes' })).toHaveValue('Check whether Maya is mixing up FOIL and square roots.')
-  })
-
-  it('does not hydrate tutor notes or deep mode across a different assist context', () => {
-    const firstRender = renderPanel({ activeTab: 'ai-tutor', assistContextKey: 'request-a', analysis: liveAnalysis, analysisMode: 'full', analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: /Full help/i }))
-    fireEvent.change(screen.getByRole('textbox', { name: 'Private tutor notes' }), {
-      target: { value: 'Only keep this on the first request.' },
-    })
-
-    firstRender.unmount()
-
-    renderPanel({ activeTab: 'ai-tutor', assistContextKey: 'request-b', analysis: liveAnalysis, analysisMode: 'full', analysisResult: liveAnalysis.analysisResult })
-
-    expect(screen.getByRole('button', { name: /Quick help/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Full help/i })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Private tutor notes' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Deep Assist')).not.toBeInTheDocument()
-  })
-
-  it('shows the tutor assist annotate action in the board move card', () => {
-    renderPanel({
-      activeTab: 'ai-tutor',
-      initialTutorAssistState: 'deep',
-      analysis: liveAnalysis,
-      analysisResult: liveAnalysis.analysisResult,
-      tutorWalkthroughActive: true,
-      activeTutorStepId: 'step-1',
-    })
-
-    expect(screen.getByRole('button', { name: 'Annotate' })).toBeInTheDocument()
-  })
-
-  it('shows board focus feedback when assist starts an annotation action', () => {
-    renderPanel({
-      activeTab: 'ai-tutor',
-      initialTutorAssistState: 'deep',
-      analysis: liveAnalysis,
-      analysisResult: liveAnalysis.analysisResult,
-      tutorWalkthroughActive: true,
-      activeTutorStepId: 'step-1',
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Annotate' }))
-
-    expect(screen.getByText('Board focus')).toBeInTheDocument()
-    expect(screen.getByText('Annotating step 1')).toBeInTheDocument()
-    expect(screen.getByText('From Assist')).toBeInTheDocument()
-  })
-
-  it('opens deep assist when the tutor explicitly asks for deeper help', () => {
-    const onTutorWalkthroughEnter = vi.fn()
-
-    renderPanel({
-      activeTab: 'ai-tutor',
-      analysis: liveAnalysis,
-      analysisMode: 'full',
-      analysisResult: liveAnalysis.analysisResult,
-      onTutorWalkthroughEnter,
-    })
-
-    expect(screen.queryByRole('button', { name: 'Walk me through it' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Full help/i }))
-
-    expect(screen.getByText('Deep Assist')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Walk me through it' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Exit walkthrough' })).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Walk me through it' }))
-    expect(onTutorWalkthroughEnter).toHaveBeenCalledTimes(1)
-  })
-
-  it('shows one active walkthrough step and lets the tutor exit back to quick assist', () => {
-    const onTutorWalkthroughExit = vi.fn()
-
-    renderPanel({
-      activeTab: 'ai-tutor',
-      initialTutorAssistState: 'deep',
-      analysis: liveAnalysis,
-      analysisResult: liveAnalysis.analysisResult,
-      tutorWalkthroughActive: true,
-      activeTutorStepId: 'step-1',
-      onTutorWalkthroughExit,
-    })
-
-    expect(screen.getByText('Step 1 of 2')).toBeInTheDocument()
-    expect(screen.getByText('Undo the minus 17 first so the x term is easier to isolate.')).toBeInTheDocument()
-    expect(screen.getAllByText('5x - 17 = 18').length).toBeGreaterThan(0)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Exit walkthrough' }))
-    expect(onTutorWalkthroughExit).toHaveBeenCalledTimes(1)
-  })
-
-  it('applies the best coaching move into the response composer from assist detail view', () => {
-    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisMode: 'quick', analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use this reply' }))
-
-    expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('textbox', { name: 'Message student' })).toHaveValue('What should you add to both sides to cancel the -17?')
-  })
-
-  it('closes assist back to the compact entry state', () => {
-    renderPanel({ activeTab: 'ai-tutor', analysis: liveAnalysis, analysisMode: 'quick', analysisResult: liveAnalysis.analysisResult })
-
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
-
-    expect(screen.getByRole('button', { name: /Quick help/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Full help/i })).toBeInTheDocument()
-    expect(screen.queryByText('Likely issue')).not.toBeInTheDocument()
-  })
-
-  it('renders live diagnosis and assist content from analysis when available', () => {
-    renderPanel({ analysis: liveAnalysis, analysisMode: 'quick', analysisResult: liveAnalysis.analysisResult })
-
-    expect(screen.getByRole('heading', { name: 'Write +17 on both sides before simplifying.' })).toBeInTheDocument()
-    expect(screen.getAllByText('Add 17 to both sides').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Use quick-help response' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Open full steps' }))
-    fireEvent.click(screen.getByRole('tab', { name: 'Assist' }))
-    fireEvent.click(screen.getByRole('button', { name: /Quick help/i }))
-
-    expect(screen.getByText('Keep it short and usable.')).toBeInTheDocument()
-    expect(screen.getByText('What should you add to both sides to cancel the -17?')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Review work' })).toBeInTheDocument()
+    expect(screen.queryByText('Correct answer')).not.toBeInTheDocument()
   })
 
   it('uses a safe generic student label in the recommended next move copy', () => {

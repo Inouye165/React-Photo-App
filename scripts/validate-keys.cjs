@@ -71,6 +71,26 @@ async function validateOpenAIKeyLive(apiKey) {
   }
 }
 
+function shouldTreatOpenAIValidationFailureAsWarning(error) {
+  if (!error) return false;
+
+  const message = error instanceof Error ? error.message : String(error);
+  const name = error instanceof Error ? error.name : '';
+  const normalized = `${name} ${message}`.toLowerCase();
+
+  return [
+    'abort',
+    'fetch failed',
+    'timed out',
+    'timeout',
+    'econnreset',
+    'enotfound',
+    'eai_again',
+    'network',
+    'socket',
+  ].some((token) => normalized.includes(token));
+}
+
 async function validateKeys() {
   const errors = [];
   
@@ -114,7 +134,12 @@ async function validateKeys() {
         errors.push(`OPENAI_API_KEY is invalid (HTTP ${result.status})`);
       }
     } catch (error) {
-      errors.push(`Failed to validate OPENAI_API_KEY: ${error.message}`);
+      if (shouldTreatOpenAIValidationFailureAsWarning(error)) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`⚠️  Skipping live OPENAI_API_KEY validation: ${message}`);
+      } else {
+        errors.push(`Failed to validate OPENAI_API_KEY: ${error.message}`);
+      }
     }
   }
 

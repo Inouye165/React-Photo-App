@@ -76,7 +76,6 @@ export interface RightSidePanelProps {
   onTutorStepSelect?: (stepId: string | null) => void
   onMarkStep?: (stepNumber: number) => void
   onBoardActionContextChange?: (context: BoardActionContext | null) => void
-  onClearAnalysisReview?: () => void
   sessionState?: 'queued' | 'live' | 'async'
   sessionBadgeText?: string
   sessionSummaryText?: string
@@ -200,12 +199,39 @@ const EMPTY_STATES: Record<VisibleTabId, EmptyStateConfig> = {
   },
 }
 
-const QUICK_REPLY_CHIPS = ['Great effort! 👍', "You're close!", "Let's try again", 'Check step 2']
-
-const PRIMARY_TABS: Array<{ id: VisibleTabId; title: string }> = [
-  { id: 'chat', title: 'Chat' },
-  { id: 'ai-tutor', title: 'AI Review' },
+const WORKFLOW_SECTION_ORDER: Array<{
+  id: VisibleTabId
+  title: string
+  subtitle: string
+  Icon: LucideIcon
+  accentClassName: string
+  sectionClassName?: string
+}> = [
+  {
+    id: 'steps',
+    title: 'Diagnosis',
+    subtitle: 'Likely mistake first, supporting steps underneath.',
+    Icon: List,
+    accentClassName: 'text-amber-300 bg-amber-500/12',
+    sectionClassName: 'border-amber-400/20 shadow-[0_20px_40px_rgba(0,0,0,0.24)]',
+  },
+  {
+    id: 'chat',
+    title: 'Response',
+    subtitle: 'Choose the next tutor move and send it fast.',
+    Icon: MessageSquareText,
+    accentClassName: 'text-sky-300 bg-sky-500/12',
+  },
+  {
+    id: 'ai-tutor',
+    title: 'Assist',
+    subtitle: 'Keep deeper coaching compact until you need it.',
+    Icon: Sparkles,
+    accentClassName: 'text-violet-300 bg-violet-500/12',
+  },
 ]
+
+const QUICK_REPLY_CHIPS = ['Great effort! ≡ƒæì', "You're close!", "Let's try again", 'Check step 2']
 
 function hasVisibleText(value?: string | null): boolean {
   return typeof value === 'string' && value.trim().length > 0
@@ -366,25 +392,6 @@ function getStepCard(stepCards: StepCard[], stepNumber: number): StepCard {
 function getLikelyIssueSummary(issue: StepCard | null): string | null {
   if (!issue) return null
   return issue.detail || issue.title || null
-}
-
-function buildEngineResponsePreview(
-  analysis: WhiteboardTutorResponse | null,
-  analysisResult: TutorAnalysisResult | null,
-): string {
-  return JSON.stringify(
-    {
-      analysisSource: analysis?.analysisSource ?? analysis?.analysisPipeline?.analysisSource ?? null,
-      deterministicResponse: analysis?.analysisPipeline?.deterministic ?? null,
-      fallbackRan: Boolean(analysis?.analysisPipeline?.fallback?.ran),
-      fallbackSource: analysis?.analysisPipeline?.fallback?.source ?? null,
-      guidedSolutionSource: analysisResult?.guidedSolutionMetadata?.source ?? null,
-      observedSteps: analysisResult?.observedSteps ?? [],
-      guidedSolutionSteps: analysisResult?.guidedSolutionSteps ?? [],
-    },
-    null,
-    2,
-  )
 }
 
 function createBoardActionContext(stepCards: StepCard[], stepNumber: number, mode: BoardActionMode, source: BoardActionSource): BoardActionContext {
@@ -1122,7 +1129,7 @@ function StepStatePopulated({
               disabled={analysisLoading || analysisPendingConfirmation}
               className="inline-flex items-center rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-semibold text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {analysisLoading ? 'Refreshing…' : analysisPendingConfirmation ? 'Confirming…' : 'Refresh diagnosis'}
+              {analysisLoading ? 'RefreshingΓÇª' : analysisPendingConfirmation ? 'ConfirmingΓÇª' : 'Refresh diagnosis'}
             </button>
           </div>
         </section>
@@ -1205,7 +1212,7 @@ function StepStatePopulated({
             disabled={analysisLoading || analysisPendingConfirmation}
             className="rounded-[8px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-semibold text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {analysisLoading ? 'Refreshing…' : analysisPendingConfirmation ? 'Confirming…' : 'Refresh diagnosis'}
+            {analysisLoading ? 'RefreshingΓÇª' : analysisPendingConfirmation ? 'ConfirmingΓÇª' : 'Refresh diagnosis'}
           </button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -1307,7 +1314,7 @@ function StepsPanel({
                   disabled={analysisLoading || analysisPendingConfirmation}
                   className="shrink-0 rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
                 >
-                  {analysisLoading ? 'Thinking…' : analysisPendingConfirmation ? 'Confirming…' : 'Run AI'}
+                  {analysisLoading ? 'ThinkingΓÇª' : analysisPendingConfirmation ? 'ConfirmingΓÇª' : 'Run AI'}
                 </button>
               </div>
               <p className="mt-2 text-[13px] leading-6 text-[#9CA3AF]">Run AI analysis to generate solution steps.</p>
@@ -1328,7 +1335,7 @@ function StepsPanel({
                 disabled={analysisLoading || analysisPendingConfirmation}
                 className="rounded-[10px] bg-[#F59E0B] px-4 py-2 text-[13px] font-semibold text-black transition hover:bg-[#f2ab28]"
               >
-                {analysisLoading ? 'Thinking…' : analysisPendingConfirmation ? 'Confirming…' : 'Run AI analysis'}
+                {analysisLoading ? 'ThinkingΓÇª' : analysisPendingConfirmation ? 'ConfirmingΓÇª' : 'Run AI analysis'}
               </button>
             </div>
           </div>
@@ -1371,297 +1378,6 @@ function StepsPanel({
           answerPairText={answerPairText}
           variant="detail"
         />
-      </div>
-    </div>
-  )
-}
-
-function AIReviewPanel({
-  analysis,
-  analysisResult,
-  analysisLoading,
-  analysisPendingConfirmation = false,
-  onStartAnalysis,
-  onRetryAnalysis,
-  overlayVisible = false,
-  tutorWalkthroughActive = false,
-  tutorPlaybackIsPlaying = false,
-  activeTutorStepId,
-  onToggleTutorOverlay,
-  onTutorWalkthroughEnter,
-  onTutorWalkthroughExit,
-  onTutorPlaybackPause,
-  onTutorPlaybackPlay,
-  onTutorPlaybackPrevious,
-  onTutorPlaybackNext,
-  onClearAnalysisReview,
-}: {
-  analysis: WhiteboardTutorResponse | null
-  analysisResult: TutorAnalysisResult | null
-  analysisLoading: boolean
-  analysisPendingConfirmation?: boolean
-  onStartAnalysis: (mode: 'quick' | 'full') => void
-  onRetryAnalysis: (mode: 'quick' | 'full') => void
-  overlayVisible?: boolean
-  tutorWalkthroughActive?: boolean
-  tutorPlaybackIsPlaying?: boolean
-  activeTutorStepId?: string | null
-  onToggleTutorOverlay?: () => void
-  onTutorWalkthroughEnter?: () => void
-  onTutorWalkthroughExit?: () => void
-  onTutorPlaybackPause?: () => void
-  onTutorPlaybackPlay?: () => void
-  onTutorPlaybackPrevious?: () => void
-  onTutorPlaybackNext?: () => void
-  onClearAnalysisReview?: () => void
-}): React.JSX.Element {
-  const [engineResponseVisible, setEngineResponseVisible] = useState(false)
-  const analysisSourceLabel = useMemo(() => getAnalysisSourceLabel(analysis), [analysis])
-  const stepCards = useMemo(() => buildStepCards(analysisResult), [analysisResult])
-  const primaryDiagnosisIssue = useMemo(() => getPrimaryDiagnosisIssue(stepCards), [stepCards])
-  const problemText = useMemo(() => getProblemText(analysis, analysisResult), [analysis, analysisResult])
-  const answerPairText = useMemo(() => getAnswerPairText(analysis, analysisResult), [analysis, analysisResult])
-  const guidedSteps = useMemo(() => analysisResult?.guidedSolutionSteps ?? analysisResult?.steps ?? [], [analysisResult])
-  const guidedIndex = useMemo(() => {
-    if (!guidedSteps.length) return 0
-    if (!activeTutorStepId) return 0
-    const matchIndex = guidedSteps.findIndex((step) => step.id === activeTutorStepId)
-    return matchIndex >= 0 ? matchIndex : 0
-  }, [activeTutorStepId, guidedSteps])
-  const guidedStep = guidedSteps[guidedIndex] ?? null
-  const previewStep = guidedSteps[Math.min(guidedIndex + 1, Math.max(guidedSteps.length - 1, 0))] ?? guidedStep
-  const engineResponsePreview = useMemo(() => buildEngineResponsePreview(analysis, analysisResult), [analysis, analysisResult])
-  const unsupportedDeterministic = Boolean(
-    analysis
-    && analysis.analysisPipeline?.deterministic?.supported === false
-    && stepCards.length === 0
-    && !answerPairText
-    && !guidedSteps.length,
-  )
-  const needsReviewEntry = !analysis || !analysisResult || (!analysisLoading && stepCards.length === 0 && !answerPairText)
-  const isFallbackReview = Boolean(analysis?.analysisPipeline?.fallback?.ran)
-  const summaryText = isFallbackReview
-    ? 'This problem needed a deeper review pass. Use the answer and next step below as the teaching guide.'
-    : analysisResult?.overallSummary?.trim() || primaryDiagnosisIssue?.detail || 'Review the current work before giving the next hint.'
-  const likelyMistakeText = primaryDiagnosisIssue?.detail || primaryDiagnosisIssue?.title || 'No likely mistake available from this review.'
-  const studentLineText = guidedStep?.studentText || guidedStep?.normalizedMath || primaryDiagnosisIssue?.title || ''
-  const guidedNextStepText = analysisResult?.steps.find((step) => step.status !== 'correct')?.correction?.trim()
-    || analysisResult?.steps.find((step) => step.status !== 'correct')?.kidFriendlyExplanation?.trim()
-    || analysisResult?.steps.find((step) => step.status !== 'correct')?.hint?.trim()
-    || ''
-
-  const handleCopyEngineResponse = async () => {
-    if (!navigator.clipboard?.writeText) return
-    await navigator.clipboard.writeText(engineResponsePreview)
-  }
-
-  const handleStartWalkthrough = () => {
-    if (!overlayVisible) {
-      onToggleTutorOverlay?.()
-    }
-    onTutorWalkthroughEnter?.()
-  }
-
-  const handleClearWalkthrough = () => {
-    if (overlayVisible) {
-      onToggleTutorOverlay?.()
-    }
-    onTutorWalkthroughExit?.()
-  }
-
-  const handleClearReview = () => {
-    if (!onClearAnalysisReview) return
-    if (window.confirm('Clear this AI review?')) {
-      onClearAnalysisReview()
-    }
-  }
-
-  if (unsupportedDeterministic) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-center">
-        <div className="mx-auto flex max-w-[340px] flex-col items-center gap-4 rounded-[16px] border border-white/10 bg-white/[0.03] px-5 py-6 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
-          <Lightbulb className="h-10 w-10 text-[#6B7280]" strokeWidth={1.75} aria-hidden="true" />
-          <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-[#F9FAFB]">Review needs a different pass</h3>
-            <p className="text-sm leading-6 text-[#9CA3AF]">This problem needs a deeper review before the board walkthrough is ready.</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (needsReviewEntry) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-center">
-        <div className="mx-auto flex max-w-[340px] flex-col items-center gap-4 rounded-[16px] border border-white/10 bg-white/[0.03] px-5 py-6 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
-          <Sparkles className="h-10 w-10 text-[#F59E0B]" strokeWidth={1.75} aria-hidden="true" />
-          <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-[#F9FAFB]">AI Review</h3>
-            <p className="text-sm leading-6 text-[#9CA3AF]">Run one review pass to get a likely mistake, next step, and board walkthrough.</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onStartAnalysis('quick')}
-            disabled={analysisLoading || analysisPendingConfirmation}
-            className="rounded-[10px] bg-[#F59E0B] px-4 py-2 text-[13px] font-semibold text-black transition hover:bg-[#f2ab28] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {analysisLoading ? 'Reviewing…' : analysisPendingConfirmation ? 'Confirming…' : 'Review work'}
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex h-full min-h-0 flex-col bg-[#111827] p-4">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-4 pb-6">
-          <section className="rounded-[16px] border border-white/10 bg-[linear-gradient(180deg,rgba(17,24,39,0.98),rgba(15,23,42,0.96))] px-4 py-4 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">AI Review</div>
-                <h3 className="mt-2 text-[18px] font-semibold text-[#F9FAFB]">{problemText || 'Current work review'}</h3>
-              </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => onRetryAnalysis('quick')}
-                  disabled={analysisLoading || analysisPendingConfirmation}
-                  className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {analysisLoading ? 'Reviewing…' : analysisPendingConfirmation ? 'Confirming…' : 'Refresh review'}
-                </button>
-                {onClearAnalysisReview ? (
-                  <button
-                    type="button"
-                    onClick={handleClearReview}
-                    className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                  >
-                    Clear AI review
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-              {answerPairText ? <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 font-semibold text-emerald-200">{answerPairText}</span> : null}
-              {analysisSourceLabel ? <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 font-semibold text-sky-200">{analysisSourceLabel}</span> : null}
-            </div>
-          </section>
-
-          <section className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Summary</div>
-            <p className="mt-2 text-[14px] leading-6 text-[#F9FAFB]">{summaryText}</p>
-          </section>
-
-          <section className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Likely mistake</div>
-            <p className="mt-2 text-[14px] leading-6 text-[#F9FAFB]">{likelyMistakeText}</p>
-          </section>
-
-          {studentLineText ? (
-            <section className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Student line</div>
-              <p className="mt-2 text-[14px] font-medium text-[#F9FAFB]">{studentLineText}</p>
-            </section>
-          ) : null}
-
-          {guidedNextStepText ? (
-            <section className="rounded-[14px] border border-sky-400/18 bg-sky-500/[0.06] px-4 py-4">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-200/80">Guided next step</div>
-              <p className="mt-2 text-[14px] leading-6 text-[#F9FAFB]">{guidedNextStepText}</p>
-            </section>
-          ) : null}
-
-          {guidedStep ? (
-            <section className="rounded-[14px] border border-amber-400/20 bg-amber-500/10 px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-100/80">Walkthrough</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
-                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 font-semibold text-[#F9FAFB]">{overlayVisible ? 'Board markers on' : 'Board markers off'}</span>
-                    <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 font-semibold text-[#F9FAFB]">Step {guidedIndex + 1} of {guidedSteps.length}</span>
-                    {tutorWalkthroughActive && tutorPlaybackIsPlaying ? <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-200">Playing</span> : null}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 rounded-[12px] border border-white/10 bg-black/15 px-3 py-3">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">{tutorWalkthroughActive ? 'Current line' : 'Next line to show'}</div>
-                <div className="mt-2 text-[15px] font-semibold text-[#F9FAFB]">{previewStep?.studentText || previewStep?.normalizedMath || previewStep?.shortLabel || ''}</div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {tutorWalkthroughActive ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={tutorPlaybackIsPlaying ? onTutorPlaybackPause : onTutorPlaybackPlay}
-                      className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                    >
-                      {tutorPlaybackIsPlaying ? 'Pause walkthrough' : 'Play walkthrough'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onTutorPlaybackPrevious}
-                      className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onTutorPlaybackNext}
-                      className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                    >
-                      Next
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleClearWalkthrough}
-                      className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                    >
-                      Clear walkthrough
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleStartWalkthrough}
-                    className="rounded-[10px] bg-[#F59E0B] px-3 py-2 text-[12px] font-semibold text-black transition hover:bg-[#f2ab28]"
-                  >
-                    Start walkthrough
-                  </button>
-                )}
-              </div>
-            </section>
-          ) : null}
-
-          {import.meta.env.DEV ? (
-            <details className="rounded-[14px] border border-white/10 bg-white/[0.03] px-4 py-4">
-              <summary className="cursor-pointer text-[12px] font-semibold text-[#D1D5DB]">Technical details</summary>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEngineResponseVisible((current) => !current)}
-                  className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB]"
-                >
-                  {engineResponseVisible ? 'Hide details' : 'View details'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCopyEngineResponse()}
-                  disabled={!navigator.clipboard?.writeText}
-                  className="rounded-[10px] border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-[#D1D5DB] transition hover:border-white/20 hover:text-[#F9FAFB] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Copy JSON
-                </button>
-              </div>
-              {engineResponseVisible ? (
-                <div className="mt-3 rounded-[12px] border border-white/10 bg-black/15 px-3 py-3">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-sky-100/85">Engine response</div>
-                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-[12px] leading-5 text-[#D1D5DB]">{engineResponsePreview}</pre>
-                </div>
-              ) : null}
-            </details>
-          ) : null}
-        </div>
       </div>
     </div>
   )
@@ -2932,44 +2648,56 @@ function TutorWorkflowOverview({
   )
 }
 
-void TutorAssistPanel
-void TutorWorkflowOverview
-
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
   className = '',
-  initialTab = 'chat',
+  initialTab = 'steps',
   activeTab,
   initialChatMessages,
+  initialTutorAssistState,
   studentName = 'Student',
   studentPresence = 'offline',
   studentLastSeenText = 'Last seen 2 hrs ago',
   panelMode = 'tutor',
   analysis,
+  analysisMode = null,
   analysisResult,
   analysisLoading,
   analysisPendingConfirmation = false,
   analysisError,
   onStartAnalysis,
   onRetryAnalysis,
+  onUseStrongerModel,
+  onLessonMessageChange,
+  assistContextKey,
   activeTutorStepId,
   tutorWalkthroughActive = false,
-  overlayVisible = false,
+  tutorPlaybackCanPlay = false,
   tutorPlaybackIsPlaying = false,
   onTutorWalkthroughEnter,
   onTutorWalkthroughExit,
-  onToggleTutorOverlay,
   onTutorPlaybackPlay,
   onTutorPlaybackPause,
   onTutorPlaybackPrevious,
   onTutorPlaybackNext,
+  onTutorPlaybackReplay,
+  onTutorStepSelect,
   onMarkStep,
   onBoardActionContextChange,
-  onClearAnalysisReview,
+  sessionState,
+  sessionBadgeText,
+  sessionSummaryText,
+  sessionMetaText,
+  sessionSubjectText,
+  sessionGradeText,
+  onPickUpSession,
+  onPassSession,
   width = 'clamp(380px, 35vw, 560px)',
   onTabChange,
 }) => {
   const requestedTab = useMemo(() => resolveVisibleTab(activeTab ?? initialTab), [activeTab, initialTab])
-  const [detailTab, setDetailTab] = useState<VisibleTabId>(() => (requestedTab === 'steps' ? 'ai-tutor' : requestedTab))
+  const [detailTab, setDetailTab] = useState<VisibleTabId | null>(() => (requestedTab === 'steps' ? null : requestedTab))
+  const [pendingAssistEntryMode, setPendingAssistEntryMode] = useState<TutorAssistRequestMode | null>(null)
+  const [workflowResponseMode, setWorkflowResponseMode] = useState<TutorResponseMode>('quick')
   const [chatMessages, setChatMessages] = useState<TutorMessage[]>(() => initialChatMessages ?? [])
   const [chatComposerValue, setChatComposerValue] = useState('')
   const [boardActionContext, setBoardActionContext] = useState<BoardActionContext | null>(null)
@@ -2987,6 +2715,17 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
     () => buildResponseRecommendation(analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep),
     [analysis, resolvedAnalysisResult, primaryDiagnosisIssue, primaryIssueStep],
   )
+  const resolvedTutorAssistState = pendingAssistEntryMode
+    ? (resolvedAnalysisResult || analysis ? pendingAssistEntryMode : 'loading')
+    : (initialTutorAssistState ?? 'ready')
+  const resolvedTutorAssistLoadingTarget = pendingAssistEntryMode ?? 'simple'
+  const showQuietTutorAssistChrome = panelMode === 'tutor'
+    && !analysis
+    && !resolvedAnalysisResult
+    && !analysisLoading
+    && !analysisPendingConfirmation
+    && !analysisError
+    && (detailTab === null || detailTab === 'ai-tutor')
 
   const resolvedWidth = typeof width === 'number' ? `${Math.max(width, 380)}px` : width
 
@@ -2997,10 +2736,24 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
     fontFamily: '"DM Sans", sans-serif',
   }
 
+  const handleOpenDetail = (tabId: VisibleTabId) => {
+    setPendingAssistEntryMode(null)
+    setDetailTab(tabId)
+    onTabChange?.(tabId)
+  }
+
   const handleDetailTabChange = (tabId: VisibleTabId) => {
-    const nextTab = tabId === 'steps' ? 'ai-tutor' : tabId
-    setDetailTab(nextTab)
-    onTabChange?.(nextTab)
+    setPendingAssistEntryMode(null)
+    setDetailTab(tabId)
+    onTabChange?.(tabId)
+  }
+
+  const handleSelectWorkflowMode = (mode: TutorResponseMode) => {
+    setWorkflowResponseMode(mode)
+
+    if (!analysisLoading && (!analysis || !resolvedAnalysisResult || analysisMode !== mode)) {
+      onStartAnalysis(mode)
+    }
   }
 
   useEffect(() => {
@@ -3014,7 +2767,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
   useEffect(() => {
     if (activeTab && activeTab !== previousActiveTabRef.current) {
       const nextTab = resolveVisibleTab(activeTab)
-      setDetailTab(nextTab === 'steps' ? 'ai-tutor' : nextTab)
+      setDetailTab(nextTab === 'steps' ? null : nextTab)
     }
 
     previousActiveTabRef.current = activeTab
@@ -3052,6 +2805,17 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       },
     ])
     setChatComposerValue('')
+  }
+
+  const handleUseAssistReply = (value: string) => {
+    if (!value) return
+
+    handleApplyComposerText(value, 'replace')
+
+    if (detailTab === 'ai-tutor') {
+      setDetailTab('chat')
+      onTabChange?.('chat')
+    }
   }
 
   const handleBoardAction = (stepNumber: number, mode: BoardActionMode, source: BoardActionSource) => {
@@ -3103,25 +2867,33 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
     if (tabId === 'ai-tutor') {
       return (
-        <AIReviewPanel
+        <TutorAssistPanel
+          initialState={resolvedTutorAssistState}
+          assistContextKey={assistContextKey}
           analysis={analysis}
+          analysisMode={analysisMode}
           analysisResult={resolvedAnalysisResult}
           analysisLoading={analysisLoading}
-          analysisPendingConfirmation={analysisPendingConfirmation}
+          analysisError={analysisError}
           onStartAnalysis={onStartAnalysis}
-          onRetryAnalysis={onRetryAnalysis}
-          overlayVisible={overlayVisible}
-          tutorWalkthroughActive={tutorWalkthroughActive}
-          tutorPlaybackIsPlaying={tutorPlaybackIsPlaying}
+          onUseStrongerModel={onUseStrongerModel}
           activeTutorStepId={activeTutorStepId}
-          onToggleTutorOverlay={onToggleTutorOverlay}
+          tutorWalkthroughActive={tutorWalkthroughActive}
+          tutorPlaybackCanPlay={tutorPlaybackCanPlay}
+          tutorPlaybackIsPlaying={tutorPlaybackIsPlaying}
           onTutorWalkthroughEnter={onTutorWalkthroughEnter}
           onTutorWalkthroughExit={onTutorWalkthroughExit}
-          onTutorPlaybackPause={onTutorPlaybackPause}
           onTutorPlaybackPlay={onTutorPlaybackPlay}
+          onTutorPlaybackPause={onTutorPlaybackPause}
           onTutorPlaybackPrevious={onTutorPlaybackPrevious}
           onTutorPlaybackNext={onTutorPlaybackNext}
-          onClearAnalysisReview={onClearAnalysisReview}
+          onTutorPlaybackReplay={onTutorPlaybackReplay}
+          onTutorStepSelect={onTutorStepSelect}
+          onUseReply={handleUseAssistReply}
+          boardActionContext={boardActionContext}
+          onBoardAction={handleBoardAction}
+          onLessonMessageChange={onLessonMessageChange}
+          loadingTargetState={resolvedTutorAssistLoadingTarget}
         />
       )
     }
@@ -3146,7 +2918,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             className="shrink-0 text-[16px] leading-none text-black/75 transition hover:text-black"
             aria-label="Dismiss presence notification"
           >
-            ×
+            ├ù
           </button>
         </div>
       ) : null}
@@ -3168,35 +2940,80 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       ) : (
       <>
       <div className="shrink-0 border-b border-[#374151] bg-[linear-gradient(180deg,rgba(31,41,55,0.96),rgba(17,24,39,0.98))] px-4 py-3">
-        <div className="space-y-2">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor sidebar</div>
-            <div className="mt-1 text-[14px] text-[#9CA3AF]">Chat by default. Review when you need a quick read on the work.</div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Tutor sidebar views">
-            {PRIMARY_TABS.map((section) => {
-              const isActive = section.id === detailTab
-
-              return (
+        {detailTab ? (
+          showQuietTutorAssistChrome && detailTab === 'ai-tutor' ? (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+                <div className="mt-1 text-[14px] text-[#9CA3AF]">Quick help first. Full help when you want the whole explanation.</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingAssistEntryMode(null)
+                  setDetailTab(null)
+                }}
+                className="rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
+              >
+                Back
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
+                  <div className="mt-1 text-[14px] font-semibold text-[#F9FAFB]">Workflow detail</div>
+                </div>
                 <button
-                  key={section.id}
                   type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => handleDetailTabChange(section.id)}
-                  className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827] ${
-                    isActive
-                      ? 'border-amber-400/40 bg-amber-500/12 text-[#F9FAFB]'
-                      : 'border-white/10 bg-white/[0.03] text-[#9CA3AF] hover:text-[#F9FAFB]'
-                  }`}
+                  onClick={() => {
+                    setPendingAssistEntryMode(null)
+                    setDetailTab(null)
+                  }}
+                  className="rounded-[8px] px-2 py-1 text-[11px] font-medium text-[#9CA3AF] outline-none transition hover:text-[#F9FAFB] focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827]"
                 >
-                  {section.title}
+                  Back to workflow
                 </button>
-              )
-            })}
-          </div>
-        </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2" role="tablist" aria-label="Workflow detail views">
+                {WORKFLOW_SECTION_ORDER.map((section) => {
+                  const isActive = section.id === detailTab
+
+                  return (
+                    <button
+                      key={section.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => handleDetailTabChange(section.id)}
+                      className={`rounded-[10px] border px-3 py-2 text-[12px] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-amber-300/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#111827] ${
+                        isActive
+                          ? 'border-amber-400/40 bg-amber-500/12 text-[#F9FAFB]'
+                          : 'border-white/10 bg-white/[0.03] text-[#9CA3AF] hover:text-[#F9FAFB]'
+                      }`}
+                    >
+                      {section.title}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        ) : (
+          showQuietTutorAssistChrome ? (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor Assist</div>
+              <div className="mt-1 text-[14px] text-[#9CA3AF]">Quiet by default. Open only the help you want.</div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#8f867d]">Tutor workflow</div>
+              <div className="mt-1 text-[14px] text-[#9CA3AF]">Diagnosis first. Response next. Assist when needed.</div>
+            </div>
+          )
+        )}
       </div>
 
       {analysisPendingConfirmation ? (
@@ -3213,7 +3030,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
             <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
             AI thinking
           </div>
-          <div className="mt-1 font-semibold">Analyzing the current board…</div>
+          <div className="mt-1 font-semibold">Analyzing the current boardΓÇª</div>
           <div className="mt-1 text-sky-100/80">Gathering solution steps, response guidance, and assist recommendations.</div>
         </div>
       ) : null}
@@ -3259,11 +3076,32 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-hidden bg-[#111827]">
-        <section className="h-full min-h-0 p-4">
-          <div className="h-full overflow-hidden rounded-[16px] border border-white/10 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
-            {renderPanelContent(detailTab)}
-          </div>
-        </section>
+        {detailTab ? (
+          <section className="h-full min-h-0 p-4">
+            <div className="h-full overflow-hidden rounded-[16px] border border-white/10 shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+              {renderPanelContent(detailTab)}
+            </div>
+          </section>
+        ) : (
+          <TutorWorkflowOverview
+            analysis={analysis}
+            analysisResult={analysisResult}
+            boardActionContext={boardActionContext}
+            onBoardAction={handleBoardAction}
+            onUseReply={handleUseAssistReply}
+            onOpenDetail={handleOpenDetail}
+            onSelectMode={handleSelectWorkflowMode}
+            preferredMode={workflowResponseMode}
+            sessionState={sessionState}
+            sessionBadgeText={sessionBadgeText}
+            sessionSummaryText={sessionSummaryText}
+            sessionMetaText={sessionMetaText}
+            sessionSubjectText={sessionSubjectText}
+            sessionGradeText={sessionGradeText}
+            onPickUpSession={onPickUpSession}
+            onPassSession={onPassSession}
+          />
+        )}
       </div>
       </>
       )}

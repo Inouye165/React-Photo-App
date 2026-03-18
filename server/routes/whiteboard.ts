@@ -11,7 +11,7 @@ import * as Y from 'yjs';
 import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
 import { buildLegacyTutorPayload, parseStructuredTutorAnalysis } from '../tutor/analysisParser';
-import { buildMathFacts, type DeterministicMathFacts } from '../math';
+import { buildMathFacts, type DeterministicMathFacts, type TutorAnalysisPipeline, type TutorAnalysisSource } from '../math';
 const supabase = require('../lib/supabaseClient');
 
 const gzipAsync = promisify(gzip);
@@ -80,6 +80,9 @@ const WHITEBOARD_TRANSCRIPTION_MODEL = 'gemini-2.0-flash';
 const WHITEBOARD_TRANSCRIPTION_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash'];
 const WHITEBOARD_EVALUATION_MODEL = 'claude-sonnet-4-20250514';
 const SHOULD_LOG_TUTOR_FIX_DEBUG = process.env.TUTOR_DEBUG === 'true';
+const MEMBERSHIP_FALLBACK_LOG_WINDOW_MS = 15_000;
+
+const membershipFallbackLogTimestamps = new Map<string, number>();
 
 type TutorModelTier = 'standard' | 'stronger';
 
@@ -114,6 +117,61 @@ type TutorModelConfig = {
 function tutorFixDebug(label: string, details: Record<string, unknown>): void {
   if (!SHOULD_LOG_TUTOR_FIX_DEBUG) return;
   console.info('[TUTOR-FIX-DEBUG]', label, details);
+}
+
+function logMathEngine(stage: string, details: Record<string, unknown>): void {
+  console.log(`[MATH-ENGINE] ${stage}`, details);
+}
+
+function logMembershipFallback(
+  level: 'log' | 'warn',
+  message: string,
+  details: Record<string, unknown>,
+): void {
+  const dedupeKey = [
+    message,
+    String(details.boardId ?? ''),
+    String(details.userId ?? ''),
+    String(details.reason ?? details.code ?? ''),
+  ].join(':');
+  const now = Date.now();
+  const lastLoggedAt = membershipFallbackLogTimestamps.get(dedupeKey) ?? 0;
+
+  if (now - lastLoggedAt < MEMBERSHIP_FALLBACK_LOG_WINDOW_MS) {
+    return;
+  }
+
+  membershipFallbackLogTimestamps.set(dedupeKey, now);
+  console[level](message, details);
+}
+
+function isMathEngineFallbackUsed(mathFacts: DeterministicMathFacts): boolean {
+  return !mathFacts.supported || mathFacts.confidence === 'low' || mathFacts.domain === 'unknown';
+}
+
+function buildMathEnginePayloadSummary(response: ReturnType<typeof buildLegacyTutorPayload>): Record<string, unknown> {
+  return {
+    analysisSource: response.analysisSource ?? null,
+    stepCount: response.analysisResult?.steps?.length ?? 0,
+    finalAnswerCount: response.analysisResult?.finalAnswers?.length ?? 0,
+    hasProblemText: Boolean(response.analysisResult?.problemText?.trim()),
+    hasOverallSummary: Boolean(response.analysisResult?.overallSummary?.trim()),
+  };
+}
+
+function buildTutorAnalysisPipeline(mathFacts: DeterministicMathFacts): TutorAnalysisPipeline {
+  const analysisSource: TutorAnalysisSource = mathFacts.supported ? 'deterministic' : 'fallback-llm';
+
+  return {
+    analysisSource,
+    deterministic: mathFacts,
+    fallback: {
+      ran: !mathFacts.supported,
+      source: !mathFacts.supported ? 'anthropic' : null,
+      type: !mathFacts.supported ? 'llm-evaluation' : null,
+      reason: !mathFacts.supported ? mathFacts.unsupportedReason ?? 'Deterministic checker unsupported.' : undefined,
+    },
+  };
 }
 
 function resolveTutorModelTier(value: unknown): TutorModelTier {
@@ -784,6 +842,7 @@ async function callWhiteboardTranscription(
 }
 
 async function callWhiteboardEvaluation(
+  boardId: string,
   body: WhiteboardTutorBody,
   transcription: WhiteboardTutorTranscription,
   mathFacts: DeterministicMathFacts,
@@ -852,8 +911,34 @@ async function callWhiteboardEvaluation(
       validatorWarnings: parsedAnalysis.validatorWarnings,
     });
 
+    const analysisPipeline = buildTutorAnalysisPipeline(mathFacts);
+    const response = buildLegacyTutorPayload(parsedAnalysis, {
+      mathFacts,
+      analysisSource: analysisPipeline.analysisSource,
+      analysisPipeline,
+    });
+    const fallbackUsed = isMathEngineFallbackUsed(mathFacts);
+
+    logMathEngine('analysis result', {
+      boardId,
+      parsedProblemSummary: parsedAnalysis.problemText || transcription.problem || null,
+      detectedError: mathFacts.detectedError ?? null,
+      correctAnswer: parsedAnalysis.finalAnswers?.[0] ?? response.correctSolution ?? null,
+      fallbackUsed,
+      compactPayloadSummary: buildMathEnginePayloadSummary(response),
+    });
+
+    if (fallbackUsed) {
+      logMathEngine('fallback used', {
+        boardId,
+        reason: mathFacts.unsupportedReason ?? mathFacts.confidence,
+        supported: mathFacts.supported,
+        domain: mathFacts.domain,
+      });
+    }
+
     return {
-      response: buildLegacyTutorPayload(parsedAnalysis, { mathFacts }),
+      response,
       modelUsed: evaluationModel,
     };
   } catch (error) {
@@ -867,11 +952,21 @@ async function callWhiteboardEvaluation(
   }
 }
 
-async function callWhiteboardTutor(body: WhiteboardTutorBody): Promise<WhiteboardTutorRouteResponse> {
+async function callWhiteboardTutor(boardId: string, body: WhiteboardTutorBody): Promise<WhiteboardTutorRouteResponse> {
   const modelConfig = getConfiguredTutorModelConfig(body);
   const { transcription, modelUsed: transcriptionModel } = await callWhiteboardTranscription(body, modelConfig.transcriptionModel);
+  logMathEngine('parsed input', {
+    boardId,
+    extractedText: transcription.problem || body.textContent?.trim() || null,
+    parsedProblemSummary: transcription.problem || null,
+    inputMode: body.inputMode ?? 'photo',
+    transcriptionModel,
+    visibleStepCount: transcription.steps.length,
+    regionCount: transcription.regions.length,
+  });
   const mathFacts = buildMathFacts(transcription.problem, transcription.steps);
   const { response, modelUsed: evaluationModel } = await callWhiteboardEvaluation(
+    boardId,
     body,
     transcription,
     mathFacts,
@@ -1310,7 +1405,7 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
       .maybeSingle();
 
     if (error) {
-      console.warn('[WB-HTTP] membership-fallback query failed', {
+      logMembershipFallback('warn', '[WB-HTTP] membership-fallback query failed', {
         boardId,
         userId,
         code: error.code,
@@ -1321,7 +1416,7 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
 
     const matched = Boolean(data?.room_id);
     if (matched) {
-      console.log('[WB-HTTP] membership-fallback matched', { boardId, userId });
+      logMembershipFallback('log', '[WB-HTTP] membership-fallback matched', { boardId, userId, reason: 'room_members' });
       return true;
     }
 
@@ -1343,7 +1438,7 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
 
     const ownerMatched = String((roomData as { created_by?: unknown } | null)?.created_by ?? '') === userId;
     if (ownerMatched) {
-      console.log('[WB-HTTP] membership-owner-fallback matched', { boardId, userId });
+      logMembershipFallback('log', '[WB-HTTP] membership-owner-fallback matched', { boardId, userId, reason: 'created_by' });
       return true;
     }
 
@@ -2278,6 +2373,14 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         }
 
         const body = req.body as WhiteboardTutorBody;
+        logMathEngine('request received', {
+          boardId,
+          inputMode: body.inputMode ?? 'photo',
+          mode: body.mode ?? 'analysis',
+          modelTier: body.modelTier ?? 'standard',
+          messageCount: body.messages?.length ?? 0,
+          skipCache: Boolean(body.skipCache),
+        });
         const modelConfig = getConfiguredTutorModelConfig(body);
         if (modelConfig.requestedTier === 'stronger' && !modelConfig.strongerModelAvailable) {
           return res.status(409).json({ success: false, error: 'A stronger tutor model is not configured for this request.' });
@@ -2296,10 +2399,16 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
             problemText: cachedTutorResponse.analysisResult?.problemText ?? cachedTutorResponse.problem ?? '',
             stepCount: cachedTutorResponse.analysisResult?.steps?.length ?? cachedTutorResponse.steps?.length ?? 0,
           });
+          logMathEngine('response sent', {
+            boardId,
+            cacheSource: 'server-cache',
+            fallbackUsed: cachedTutorResponse.mathFacts ? isMathEngineFallbackUsed(cachedTutorResponse.mathFacts) : null,
+            compactPayloadSummary: buildMathEnginePayloadSummary(cachedTutorResponse),
+          });
           return res.status(200).json({ ...withTutorCacheSource(cachedTutorResponse, 'server-cache'), messages, boardId });
         }
 
-        const tutorResponse = await callWhiteboardTutor(body);
+        const tutorResponse = await callWhiteboardTutor(boardId, body);
         await writeWhiteboardTutorCache(db, boardId, body, tutorResponse);
         const messages = [...(body.messages ?? []), { role: 'assistant', content: tutorResponse.reply }];
         tutorFixDebug('assistant-data-source', {
@@ -2311,6 +2420,12 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           cacheSource: 'fresh',
           problemText: tutorResponse.analysisResult.problemText,
           stepCount: tutorResponse.analysisResult.steps.length,
+        });
+        logMathEngine('response sent', {
+          boardId,
+          cacheSource: 'fresh',
+          fallbackUsed: tutorResponse.mathFacts ? isMathEngineFallbackUsed(tutorResponse.mathFacts) : null,
+          compactPayloadSummary: buildMathEnginePayloadSummary(tutorResponse),
         });
 
         return res.status(200).json({ ...withTutorCacheSource(tutorResponse, 'fresh'), messages, boardId });

@@ -345,6 +345,94 @@ describe('whiteboard tutor route', () => {
     expect(mockGenerateContent.mock.invocationCallOrder[0]).toBeLessThan(mockAnthropicCreate.mock.invocationCallOrder[0])
   })
 
+  test('emits distinct math engine logs for a fresh tutor request', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        inputMode: 'text',
+        textContent: 'Solve 2x = 10',
+        mode: 'analysis',
+      })
+
+    expect(res.status).toBe(200)
+    expect(consoleLogSpy).toHaveBeenCalledWith('[MATH-ENGINE] request received', expect.objectContaining({ boardId }))
+    expect(consoleLogSpy).toHaveBeenCalledWith('[MATH-ENGINE] parsed input', expect.objectContaining({ boardId, parsedProblemSummary: 'Solve 2x = 10' }))
+    expect(consoleLogSpy).toHaveBeenCalledWith('[MATH-ENGINE] analysis result', expect.objectContaining({ boardId, correctAnswer: 'x = 5' }))
+    expect(consoleLogSpy).toHaveBeenCalledWith('[MATH-ENGINE] response sent', expect.objectContaining({ boardId, cacheSource: 'fresh' }))
+
+    consoleLogSpy.mockRestore()
+  })
+
+  test('labels unsupported deterministic problems as fallback LLM reviews', async () => {
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        inputMode: 'text',
+        textContent: 'Solve for x: (x+3)² - 5 = 20',
+        mode: 'analysis',
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.mathFacts).toMatchObject({
+      supported: false,
+      canonicalProblem: '(x+3)^2-5=20',
+    })
+    expect(res.body.analysisSource).toBe('fallback-llm')
+    expect(res.body.analysisPipeline).toMatchObject({
+      analysisSource: 'fallback-llm',
+      deterministic: {
+        supported: false,
+        canonicalProblem: '(x+3)^2-5=20',
+      },
+      fallback: {
+        ran: true,
+        source: 'anthropic',
+        type: 'llm-evaluation',
+      },
+    })
+  })
+
+  test('deduplicates repeated membership fallback matched logs across repeated requests', async () => {
+    const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const originalNodeEnv = process.env.NODE_ENV
+    const db = createMockDb({ roomMembers: [], rooms: [{ id: boardId }], tutorCache: [] })
+    supabaseState.roomMembers = [{ room_id: boardId, user_id: 'user-1' }]
+    const app = createTestApp({ db, authMode: 'ok' })
+    process.env.NODE_ENV = 'development'
+
+    const requestBody = {
+      inputMode: 'text',
+      textContent: 'Solve 2x = 10',
+      mode: 'analysis',
+    }
+
+    const firstResponse = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send(requestBody)
+
+    const secondResponse = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send(requestBody)
+
+    expect(firstResponse.status).toBe(200)
+    expect(secondResponse.status).toBe(200)
+
+    const membershipFallbackCalls = consoleLogSpy.mock.calls.filter(
+      ([message]) => message === '[WB-HTTP] membership-fallback matched',
+    )
+    expect(membershipFallbackCalls).toHaveLength(1)
+
+    process.env.NODE_ENV = originalNodeEnv
+    consoleLogSpy.mockRestore()
+  })
+
   test('rejects stronger tier requests when no stronger models are configured', async () => {
     const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })
