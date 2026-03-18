@@ -7,11 +7,19 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-Restricted-red.svg)](LICENSE)
 
-Lumina is a personal photo workspace project focused on secure uploads, background processing, and privacy-friendly defaults.
+Lumina started as a private photo workspace and has evolved into a broader invite-based platform for messaging, whiteboards, games, tutoring/help flows, labs, and photo-related experiments.
 
-The frontend is a work in progress, while the backend and security pieces are the primary focus. The long-term goal is a private photo space without relying on big-tech social platforms.
+The frontend is still evolving, while the backend and security pieces remain a major focus. Photos are still part of the product, but they are no longer the main story.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
+
+## Current Product Areas
+
+*   **Messages & chat:** Private rooms and direct conversation flows.
+*   **Whiteboards:** Shared boards for collaboration, tutoring, and working through ideas.
+*   **Games:** Chess is the clearest live area today, with other game ideas behind it.
+*   **Tutoring/help flows:** Guided interaction patterns for teaching and support.
+*   **Labs & photo tools:** Experimental features, including the photo workflows Lumina started with.
 
 ## Why I'm Building This
 
