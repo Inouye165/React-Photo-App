@@ -61,7 +61,10 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       clearBackground: () => canvasRef.current?.clearBackground(),
       toggleBackgroundFitMode: () => canvasRef.current?.toggleBackgroundFitMode(),
       toggleViewMode: () => canvasRef.current?.toggleViewMode(),
+      undo: () => canvasRef.current?.undo(),
+      redo: () => canvasRef.current?.redo(),
       setAnnotationTool: (tool: AnnotationTool) => canvasRef.current?.setAnnotationTool(tool),
+      setAnnotationStyle: (style) => canvasRef.current?.setAnnotationStyle(style),
     }))
     return (
       <div className={`flex h-full w-full flex-col ${className || ''}`}>

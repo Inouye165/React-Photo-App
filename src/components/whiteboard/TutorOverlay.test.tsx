@@ -47,6 +47,7 @@ function Harness() {
       <TutorOverlay
         analysisResult={analysisResult}
         activeStepId={activeStepId}
+        analysisSource="deterministic"
         lessonMessage={{
           title: 'Here’s what I notice',
           body: 'You started correctly. Keep the equation balanced on both sides.',
@@ -108,9 +109,8 @@ describe('Tutor overlay integration', () => {
   it('shows the lesson tracker on the whiteboard', () => {
     render(<Harness />)
 
-    expect(screen.getByText('Lesson Tracker')).toBeInTheDocument()
-    expect(screen.getByText('Here’s what I notice')).toBeInTheDocument()
-    expect(screen.getByText(/Keep the equation balanced on both sides/i)).toBeInTheDocument()
+    expect(screen.queryByText('Lesson Tracker')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /hide board markers/i })).toBeInTheDocument()
   })
 
   it('maps region coordinates into the displayed image frame', () => {
@@ -119,6 +119,7 @@ describe('Tutor overlay integration', () => {
         <TutorOverlay
           analysisResult={analysisResult}
           activeStepId="step-1"
+          analysisSource="fallback-llm"
           lessonMessage={null}
           boardFrame={{ left: 40, top: 132, width: 700, height: 315 }}
           visible
@@ -160,6 +161,7 @@ describe('Tutor overlay integration', () => {
         <TutorOverlay
           analysisResult={blankAnalysisResult}
           activeStepId="step-blank"
+          analysisSource="deterministic"
           lessonMessage={null}
           boardFrame={{ left: 40, top: 80, width: 700, height: 420 }}
           visible
@@ -171,6 +173,7 @@ describe('Tutor overlay integration', () => {
     )
 
     expect(screen.queryByText('Tutor Focus')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /hide board markers/i })).toBeInTheDocument()
   })
 
   it('does not render placeholder no-region copy when guidance exists without a mapped region', () => {
@@ -196,6 +199,7 @@ describe('Tutor overlay integration', () => {
         <TutorOverlay
           analysisResult={noRegionAnalysisResult}
           activeStepId="step-no-region"
+          analysisSource="fallback-llm"
           lessonMessage={null}
           boardFrame={{ left: 40, top: 80, width: 700, height: 420 }}
           visible
@@ -206,7 +210,65 @@ describe('Tutor overlay integration', () => {
       </div>,
     )
 
-    expect(screen.getByText('Tutor Focus')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /hide board markers/i })).toBeInTheDocument()
     expect(screen.queryByText(/No precise region was detected/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps the overlay canvas clean while still exposing the active step number', () => {
+    const guidedAnalysisResult: TutorAnalysisResult = {
+      ...analysisResult,
+      observedSteps: analysisResult.steps,
+      guidedSolutionSteps: [
+        {
+          ...analysisResult.steps[0],
+          origin: 'observed',
+          observedStepId: 'step-1',
+        },
+        {
+          ...analysisResult.steps[1],
+          origin: 'observed',
+          observedStepId: 'step-2',
+        },
+        {
+          id: 'step-3',
+          index: 2,
+          studentText: 'x = 4',
+          normalizedMath: 'x = 4',
+          status: 'correct',
+          shortLabel: 'Final answer',
+          kidFriendlyExplanation: 'This finishes the solve.',
+          origin: 'final-answer',
+        },
+      ],
+      guidedSolutionMetadata: {
+        source: 'mixed-reconstruction',
+        isComplete: true,
+        reachesFinalAnswers: true,
+        synthesizedStepCount: 1,
+        hasSynthesizedContinuation: true,
+      },
+    }
+
+    render(
+      <div className="relative" style={{ width: 900, height: 600 }}>
+        <TutorOverlay
+          analysisResult={guidedAnalysisResult}
+          activeStepId="step-1"
+          analysisSource="fallback-llm"
+          lessonMessage={null}
+          boardFrame={{ left: 40, top: 80, width: 700, height: 420 }}
+          visible
+          reducedMotion
+          onToggleVisible={() => undefined}
+          onSelectStep={() => undefined}
+        />
+      </div>,
+    )
+
+    expect(screen.getByRole('button', { name: /hide board markers/i })).toHaveTextContent('Step 1')
+    expect(screen.queryByText('Current line')).not.toBeInTheDocument()
+    expect(screen.queryByText('2x + 3 = 11')).not.toBeInTheDocument()
+    expect(screen.queryByText('Suggested next line')).not.toBeInTheDocument()
+    expect(screen.queryByText('AI-generated overlay')).not.toBeInTheDocument()
   })
 })

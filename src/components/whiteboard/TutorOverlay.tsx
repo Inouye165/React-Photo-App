@@ -1,18 +1,17 @@
 import React from 'react'
-import { motion } from 'framer-motion'
 import { Eye, EyeOff } from 'lucide-react'
-import type { TutorAnalysisResult, TutorStepAnalysis } from '../../types/whiteboard'
+import type { TutorAnalysisResult, TutorStepAnalysis, WhiteboardTutorAnalysisSource } from '../../types/whiteboard'
 import type { WhiteboardBoardFrame } from './types'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
 import {
   projectTutorRegionToBoardFrame,
-  resolveTutorCalloutPosition,
   resolveTutorOverlayFocus,
 } from './tutorOverlayGeometry'
 
 type TutorOverlayProps = {
   analysisResult: TutorAnalysisResult | null
   activeStepId: string | null
+  analysisSource?: WhiteboardTutorAnalysisSource | null
   lessonMessage?: TutorLessonMessage | null
   boardFrame: WhiteboardBoardFrame | null
   visible: boolean
@@ -37,6 +36,7 @@ function getStatusTone(step: TutorStepAnalysis): string {
 const TutorOverlay: React.FC<TutorOverlayProps> = ({
   analysisResult,
   activeStepId,
+  analysisSource = null,
   lessonMessage = null,
   boardFrame,
   visible,
@@ -44,13 +44,12 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
   onToggleVisible,
   onSelectStep,
 }) => {
-  const { activeStep, activeRegion, visibleRegionIds, showRegionIndices } = resolveTutorOverlayFocus(analysisResult, activeStepId)
-  const activeRegionFrame = boardFrame && activeRegion ? projectTutorRegionToBoardFrame(boardFrame, activeRegion) : null
-  const calloutPosition = boardFrame && activeRegionFrame ? resolveTutorCalloutPosition(boardFrame, activeRegionFrame) : null
-  const activeStepTitle = activeStep?.shortLabel?.trim() || ''
-  const activeStepBody = activeStep?.kidFriendlyExplanation?.trim() || ''
-  const activeStepCorrection = activeStep?.correction?.trim() || ''
-  const hasActiveGuidance = Boolean(activeStepTitle || activeStepBody || activeStepCorrection)
+  void analysisSource
+  void lessonMessage
+  void reducedMotion
+  const { activeStep, visibleRegionIds, showRegionIndices } = resolveTutorOverlayFocus(analysisResult, activeStepId)
+  const guidedSteps = analysisResult?.guidedSolutionSteps?.length ? analysisResult.guidedSolutionSteps : (analysisResult?.steps ?? [])
+  const activeStepNumber = typeof activeStep?.index === 'number' ? activeStep.index + 1 : null
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
@@ -58,10 +57,15 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
         <button
           type="button"
           onClick={onToggleVisible}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(17,17,17,0.8)] px-4 py-2 text-[13px] font-semibold text-[#F0EDE8] shadow-[0_16px_30px_rgba(0,0,0,0.28)] backdrop-blur"
+          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(17,17,17,0.76)] px-4 py-2 text-[13px] font-semibold text-[#F0EDE8] shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur"
         >
           {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          {visible ? 'Hide tutor overlay' : 'Show tutor overlay'}
+          {visible ? 'Hide board markers' : 'Show board markers'}
+          {visible && activeStepNumber ? (
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] font-medium text-white/85">
+              Step {activeStepNumber}
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -77,24 +81,12 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
                 height: boardFrame.height,
               }}
             >
-              {lessonMessage ? (
-                <motion.aside
-                  initial={reducedMotion ? { opacity: 1 } : { opacity: 0, x: -8, y: 8 }}
-                  animate={reducedMotion ? { opacity: 1 } : { opacity: 1, x: 0, y: 0 }}
-                  transition={reducedMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className="pointer-events-auto absolute left-4 top-4 z-10 max-w-[360px] rounded-[18px] border border-white/10 bg-[rgba(12,12,14,0.92)] px-4 py-3 text-[#F0EDE8] shadow-[0_26px_44px_rgba(0,0,0,0.3)] backdrop-blur"
-                >
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#c6b4a4]">Lesson Tracker</div>
-                  <div className="mt-1 text-[16px] font-semibold text-[#F0EDE8]">{lessonMessage.title}</div>
-                  <p className="mt-2 whitespace-pre-line text-[14px] leading-[1.6] text-[#F0EDE8]">{lessonMessage.body}</p>
-                </motion.aside>
-              ) : null}
-
               {analysisResult.regions.filter((region) => visibleRegionIds.includes(region.id)).map((region, index) => {
                 const isActive = activeStep?.regionId === region.id
                 const frame = projectTutorRegionToBoardFrame(boardFrame, region)
                 const visibleRegionIndex = visibleRegionIds.indexOf(region.id)
-            const stepForRegion = analysisResult.steps.find((step) => step.regionId === region.id)
+                const stepForRegion = guidedSteps.find((step) => step.regionId === region.id)
+                  ?? analysisResult.steps.find((step) => step.regionId === region.id)
 
                 return (
                   <button
@@ -110,7 +102,7 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
                       width: frame.width,
                       height: frame.height,
                       borderColor: isActive ? getStatusTone(stepForRegion ?? analysisResult.steps[index] ?? activeStep ?? analysisResult.steps[0]) : 'rgba(255,255,255,0.2)',
-                      boxShadow: isActive ? `0 0 0 3px ${getStatusTone(stepForRegion ?? activeStep ?? analysisResult.steps[0]).replace('0.9', '0.18')}, 0 24px 40px rgba(0,0,0,0.18)` : '0 10px 24px rgba(0,0,0,0.14)',
+                      boxShadow: isActive ? `0 0 0 3px ${getStatusTone(stepForRegion ?? activeStep ?? analysisResult.steps[0]).replace('0.9', '0.18')}, 0 16px 28px rgba(0,0,0,0.16)` : '0 8px 20px rgba(0,0,0,0.12)',
                       background: isActive ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
                     }}
                   >
@@ -128,30 +120,6 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
                   </button>
                 )
               })}
-
-              {activeStep && hasActiveGuidance ? (
-                <motion.div
-                  initial={reducedMotion ? { opacity: 1 } : { opacity: 0, scale: 0.98, y: 8 }}
-                  animate={reducedMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
-                  transition={reducedMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className="pointer-events-auto absolute max-w-[340px] rounded-[18px] border border-white/10 bg-[rgba(12,12,14,0.9)] px-4 py-3 text-[#F0EDE8] shadow-[0_26px_44px_rgba(0,0,0,0.3)] backdrop-blur"
-                  style={activeRegionFrame && calloutPosition
-                    ? {
-                        left: calloutPosition.left,
-                        top: calloutPosition.top,
-                      }
-                    : {
-                        left: '50%',
-                        bottom: 32,
-                        transform: 'translateX(-50%)',
-                      }}
-                >
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#c6b4a4]">Tutor Focus</div>
-                  {activeStepTitle ? <div className="mt-1 text-[16px] font-semibold text-[#F0EDE8]">{activeStepTitle}</div> : null}
-                  {activeStepBody ? <p className="mt-2 text-[14px] leading-[1.6] text-[#F0EDE8]">{activeStepBody}</p> : null}
-                  {activeStepCorrection ? <p className="mt-2 text-[13px] leading-[1.6] text-amber-200">What to do instead: {activeStepCorrection}</p> : null}
-                </motion.div>
-              ) : null}
             </div>
           ) : null}
         </div>

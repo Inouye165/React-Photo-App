@@ -110,4 +110,26 @@ describe('useTutorPlayback', () => {
 
     vi.useRealTimers()
   })
+
+  it('handles long guided sequences without truncating playback state', () => {
+    const longSteps = Array.from({ length: 60 }, (_, index) => ({ id: `step-${index + 1}` }))
+    const { result } = renderHook(() => useTutorPlayback({ steps: longSteps, reducedMotion: false, initialStepId: 'step-1' }))
+
+    act(() => {
+      result.current.enterWalkthrough()
+    })
+
+    act(() => {
+      result.current.moveToIndex(59)
+    })
+
+    expect(result.current.activeStepId).toBe('step-60')
+
+    act(() => {
+      result.current.next()
+    })
+
+    expect(result.current.activeStepId).toBe('step-60')
+    expect(result.current.activeStepIndex).toBe(59)
+  })
 })

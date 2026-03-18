@@ -98,6 +98,7 @@ const {
   createWhiteboardInvite,
   getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  listTutorQueueRequests,
   resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
   addRoomMember,
@@ -110,6 +111,7 @@ const {
   createWhiteboardInvite: vi.fn(),
   getActiveWhiteboardHelpRequest: vi.fn(),
   getWhiteboardSessionDetails: vi.fn(),
+  listTutorQueueRequests: vi.fn(),
   resolveWhiteboardHelpRequest: vi.fn(),
   updateWhiteboardTitle: vi.fn(),
   addRoomMember: vi.fn(),
@@ -128,6 +130,11 @@ const whiteboardPadState = vi.hoisted(() => ({
   hasBackground: false,
   asset: null as null | { dataUrl: string; mimeType: string; name: string },
   clearBackground: vi.fn(),
+  undo: vi.fn(),
+  redo: vi.fn(),
+  setAnnotationTool: vi.fn(),
+  setAnnotationStyle: vi.fn(),
+  latestProps: null as null | Record<string, unknown>,
 }))
 
 vi.mock('../api/whiteboards', () => ({
@@ -137,6 +144,7 @@ vi.mock('../api/whiteboards', () => ({
   createWhiteboardInvite,
   getActiveWhiteboardHelpRequest,
   getWhiteboardSessionDetails,
+  listTutorQueueRequests,
   resolveWhiteboardHelpRequest,
   updateWhiteboardTitle,
 }))
@@ -238,6 +246,8 @@ vi.mock('../components/whiteboard/WhiteboardPad', async () => {
   const ReactModule = await import('react')
   return {
     default: ReactModule.forwardRef((props: any, ref) => {
+      whiteboardPadState.latestProps = props
+
       ReactModule.useEffect(() => {
         props.onHasBackgroundChange?.(whiteboardPadState.hasBackground)
         props.onBackgroundImageAssetChange?.(whiteboardPadState.asset)
@@ -246,7 +256,10 @@ vi.mock('../components/whiteboard/WhiteboardPad', async () => {
       ReactModule.useImperativeHandle(ref, () => ({
         clearBackground: whiteboardPadState.clearBackground,
         insertImageFile: vi.fn(),
-        setAnnotationTool: vi.fn(),
+        undo: whiteboardPadState.undo,
+        redo: whiteboardPadState.redo,
+        setAnnotationTool: whiteboardPadState.setAnnotationTool,
+        setAnnotationStyle: whiteboardPadState.setAnnotationStyle,
       }))
 
       return <div data-testid="whiteboard-pad" />
@@ -277,6 +290,11 @@ describe('WhiteboardSessionPage', () => {
     whiteboardPadState.hasBackground = false
     whiteboardPadState.asset = null
     whiteboardPadState.clearBackground.mockReset()
+    whiteboardPadState.undo.mockReset()
+    whiteboardPadState.redo.mockReset()
+    whiteboardPadState.setAnnotationTool.mockReset()
+    whiteboardPadState.setAnnotationStyle.mockReset()
+    whiteboardPadState.latestProps = null
 
     analyzeWhiteboardPhoto.mockResolvedValue(sampleAnalysisResponse)
     ensureWhiteboardMembership.mockResolvedValue({ ok: true })
@@ -304,6 +322,7 @@ describe('WhiteboardSessionPage', () => {
       created_at: '2026-03-06T00:00:00.000Z',
       updated_at: '2026-03-06T00:00:00.000Z',
     })
+    listTutorQueueRequests.mockResolvedValue([])
     resolveWhiteboardHelpRequest.mockResolvedValue(undefined)
     updateWhiteboardTitle.mockResolvedValue(undefined)
     addRoomMember.mockResolvedValue(undefined)
@@ -1486,10 +1505,68 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.queryByRole('button', { name: /share/i })).not.toBeInTheDocument()
     expect(screen.getByText('Board reference')).toBeInTheDocument()
 
-    expect(screen.getByText('Active tab: steps')).toBeInTheDocument()
+    expect(screen.getByText('Active tab: chat')).toBeInTheDocument()
     expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('Please check my work')
     expect(screen.getByTestId('panel-session-meta').textContent ?? '').toMatch(/^Started .* · /)
     expect(screen.getByTestId('panel-session-grade')).toHaveTextContent('')
+  })
+
+  it('re-enables markers and applies style before activating the selected tool', async () => {
+    whiteboardPadState.hasBackground = true
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Pen' })).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Markers off' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pen' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Markers on' })).toBeInTheDocument()
+    })
+
+    expect(whiteboardPadState.latestProps?.annotationMode).toBe(true)
+    expect(whiteboardPadState.setAnnotationStyle).toHaveBeenCalledWith({
+      strokeColor: '#111827',
+      strokeWidth: 2,
+      opacity: 100,
+    })
+    expect(whiteboardPadState.setAnnotationTool).toHaveBeenCalledWith('pen')
+    expect(whiteboardPadState.setAnnotationStyle.mock.invocationCallOrder[0]).toBeLessThan(
+      whiteboardPadState.setAnnotationTool.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('shows undo and redo in the toolbar and forwards the actions to the whiteboard pad', async () => {
+    whiteboardPadState.hasBackground = true
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Undo' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Redo' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+
+    expect(whiteboardPadState.undo).toHaveBeenCalledTimes(1)
+    expect(whiteboardPadState.redo).toHaveBeenCalledTimes(1)
   })
 
   it('formats live session relative time from the real request timestamp instead of persisted text', () => {

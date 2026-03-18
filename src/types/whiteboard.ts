@@ -165,12 +165,35 @@ export type TutorStepAnalysis = {
   regionId?: string
 }
 
+export type TutorGuidedStepOrigin = 'observed' | 'synthesized' | 'branch' | 'final-answer'
+
+export type TutorGuidedSolutionSource = 'deterministic' | 'fallback-llm' | 'cached-analysis' | 'mixed-reconstruction' | 'observed-only'
+
+export type TutorGuidedSolutionStep = TutorStepAnalysis & {
+  origin: TutorGuidedStepOrigin
+  observedStepId?: string
+  branchKey?: string
+  branchLabel?: string
+}
+
+export type TutorGuidedSolutionMetadata = {
+  source: TutorGuidedSolutionSource
+  isComplete: boolean
+  reachesFinalAnswers: boolean
+  synthesizedStepCount: number
+  hasSynthesizedContinuation: boolean
+  completenessReason?: string
+}
+
 export type TutorAnalysisResult = {
   problemText: string
   finalAnswers: string[]
   overallSummary: string
   regions: TutorDetectedRegion[]
   steps: TutorStepAnalysis[]
+  observedSteps?: TutorStepAnalysis[]
+  guidedSolutionSteps?: TutorGuidedSolutionStep[]
+  guidedSolutionMetadata?: TutorGuidedSolutionMetadata
   validatorWarnings: string[]
   canAnimate: boolean
 }
@@ -249,12 +272,27 @@ export type WhiteboardTutorMathFacts = {
   unsupportedReason?: string
 }
 
+export type WhiteboardTutorAnalysisSource = 'deterministic' | 'fallback-llm'
+
+export type WhiteboardTutorAnalysisPipeline = {
+  analysisSource: WhiteboardTutorAnalysisSource
+  deterministic: WhiteboardTutorMathFacts | null
+  fallback: {
+    ran: boolean
+    source: 'anthropic' | null
+    type: 'llm-evaluation' | null
+    reason?: string
+  }
+}
+
 export type WhiteboardTutorResponse = {
   reply: string
   messages: WhiteboardTutorMessage[]
   cacheSource?: WhiteboardTutorCacheSource
   modelMetadata?: WhiteboardTutorModelMetadata
   mathFacts?: WhiteboardTutorMathFacts | null
+  analysisSource?: WhiteboardTutorAnalysisSource
+  analysisPipeline?: WhiteboardTutorAnalysisPipeline | null
   analysisResult: TutorAnalysisResult | null
   sections: WhiteboardTutorSections
   problem: string

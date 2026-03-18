@@ -1,4 +1,4 @@
-import type { TutorAnalysisResult, TutorDetectedRegion, TutorStepAnalysis } from '../../types/whiteboard'
+import type { TutorAnalysisResult, TutorDetectedRegion, TutorGuidedSolutionStep, TutorStepAnalysis } from '../../types/whiteboard'
 import type { WhiteboardBoardFrame } from './types'
 
 export type TutorOverlayRegionFrame = {
@@ -14,7 +14,7 @@ export type TutorOverlayCalloutPosition = {
 }
 
 export type TutorOverlayFocusState = {
-  activeStep: TutorStepAnalysis | null
+  activeStep: TutorGuidedSolutionStep | null
   activeRegion: TutorDetectedRegion | null
   visibleRegionIds: string[]
   showRegionIndices: boolean
@@ -47,8 +47,21 @@ function findRegionById(analysisResult: TutorAnalysisResult, regionId: string | 
   return analysisResult.regions.find((region) => region.id === regionId) ?? null
 }
 
+function getObservedSteps(analysisResult: TutorAnalysisResult): TutorStepAnalysis[] {
+  return analysisResult.observedSteps && analysisResult.observedSteps.length > 0 ? analysisResult.observedSteps : analysisResult.steps
+}
+
+function getGuidedSteps(analysisResult: TutorAnalysisResult): TutorGuidedSolutionStep[] {
+  return analysisResult.guidedSolutionSteps && analysisResult.guidedSolutionSteps.length > 0 ? analysisResult.guidedSolutionSteps : getObservedSteps(analysisResult).map((step, index) => ({
+    ...step,
+    index,
+    origin: 'observed',
+    observedStepId: step.id,
+  }))
+}
+
 function getPreferredIssueStep(analysisResult: TutorAnalysisResult): TutorStepAnalysis | null {
-  const issueSteps = analysisResult.steps
+  const issueSteps = getObservedSteps(analysisResult)
     .filter((step) => isIssueStep(step) && findRegionById(analysisResult, step.regionId))
     .sort((left, right) => {
       const priorityDelta = getIssuePriority(left) - getIssuePriority(right)
@@ -60,20 +73,34 @@ function getPreferredIssueStep(analysisResult: TutorAnalysisResult): TutorStepAn
 }
 
 export function getPreferredTutorOverlayStepId(analysisResult: TutorAnalysisResult | null): string | null {
-  if (!analysisResult?.steps.length) return null
+  if (!analysisResult) return null
+
+  const observedSteps = getObservedSteps(analysisResult)
+  if (!observedSteps.length) return null
 
   const preferredIssueStep = getPreferredIssueStep(analysisResult)
   if (preferredIssueStep) return preferredIssueStep.id
 
-  const firstRegionStep = analysisResult.steps.find((step) => findRegionById(analysisResult, step.regionId))
-  return firstRegionStep?.id ?? analysisResult.steps[0]?.id ?? null
+  const firstRegionStep = observedSteps.find((step) => findRegionById(analysisResult, step.regionId))
+  return firstRegionStep?.id ?? observedSteps[0]?.id ?? null
 }
 
 export function resolveTutorOverlayFocus(
   analysisResult: TutorAnalysisResult | null,
   activeStepId: string | null,
 ): TutorOverlayFocusState {
-  if (!analysisResult?.steps.length) {
+  if (!analysisResult) {
+    return {
+      activeStep: null,
+      activeRegion: null,
+      visibleRegionIds: [],
+      showRegionIndices: false,
+    }
+  }
+
+  const observedSteps = getObservedSteps(analysisResult)
+  const guidedSteps = getGuidedSteps(analysisResult)
+  if (!guidedSteps.length) {
     return {
       activeStep: null,
       activeRegion: null,
@@ -83,12 +110,12 @@ export function resolveTutorOverlayFocus(
   }
 
   const preferredStepId = getPreferredTutorOverlayStepId(analysisResult)
-  const activeStep = analysisResult.steps.find((step) => step.id === (activeStepId ?? preferredStepId))
-    ?? analysisResult.steps.find((step) => step.id === preferredStepId)
-    ?? analysisResult.steps[0]
+  const activeStep = guidedSteps.find((step) => step.id === (activeStepId ?? preferredStepId))
+    ?? guidedSteps.find((step) => step.id === preferredStepId)
+    ?? guidedSteps[0]
     ?? null
 
-  const issueStepsWithRegions = analysisResult.steps
+  const issueStepsWithRegions = observedSteps
     .filter((step) => isIssueStep(step) && findRegionById(analysisResult, step.regionId))
     .sort((left, right) => {
       const priorityDelta = getIssuePriority(left) - getIssuePriority(right)
@@ -104,6 +131,15 @@ export function resolveTutorOverlayFocus(
       activeStep,
       activeRegion,
       visibleRegionIds: [activeRegion.id],
+      showRegionIndices: false,
+    }
+  }
+
+  if (activeStepId && !activeRegion) {
+    return {
+      activeStep,
+      activeRegion: null,
+      visibleRegionIds: [],
       showRegionIndices: false,
     }
   }

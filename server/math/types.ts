@@ -42,3 +42,18 @@ export type SolvedMathProblem = {
   confidence: MathFactConfidence
   unsupportedReason?: string
 }
+
+export type TutorAnalysisSource = 'deterministic' | 'fallback-llm'
+
+export type TutorAnalysisFallback = {
+  ran: boolean
+  source: 'anthropic' | null
+  type: 'llm-evaluation' | null
+  reason?: string
+}
+
+export type TutorAnalysisPipeline = {
+  analysisSource: TutorAnalysisSource
+  deterministic: DeterministicMathFacts | null
+  fallback: TutorAnalysisFallback
+}
