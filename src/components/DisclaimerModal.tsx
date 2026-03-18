@@ -67,16 +67,16 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
         {/* Scrollable Content Body */}
         <div className="px-6 py-6 space-y-5 overflow-y-auto">
           <p className="text-slate-600 text-sm leading-relaxed">
-            Welcome! You're joining a beta version of our family hub — for sharing photos, planning gatherings, learning together, and playing games.
+            Welcome! You're joining a beta version of Lumina, a private workspace for messages, whiteboards, games, tutoring/help flows, labs, and photo experiments.
           </p>
 
           {/* --- Existing Sections: AI, Security, Warning --- */}
           <div className="flex gap-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
             <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-amber-900 mb-1">Smart Organization &amp; Features</h3>
+              <h3 className="font-semibold text-amber-900 mb-1">Workspace Features</h3>
               <p className="text-sm text-amber-800">
-                We analyze photos to surface helpful information — for example, likely locations, scenery tags, and suggested albums. This metadata helps keep your family library organized and improves search, maps, and sharing suggestions. Processed data is stored securely to power these convenience features.
+                Lumina includes messaging, shared whiteboards, games, tutoring/help flows, labs, and some photo-based tools. Parts of the product are still experimental, and features may change as the app evolves.
               </p>
             </div>
           </div>
@@ -94,14 +94,14 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
             <div>
               <h3 className="font-semibold text-blue-900 mb-1">Data Recovery Warning</h3>
               <p className="text-sm text-blue-800">
-                As a work-in-progress, <strong>data recovery is NOT available.</strong> If you delete a photo, it is permanently removed. Please do not upload sensitive personal documents (e.g., financial/medical records) at this time.
+                As a work-in-progress, <strong>data recovery is NOT available.</strong> If you delete content, it may be permanently removed. Please do not upload sensitive personal documents or other high-risk information at this time.
               </p>
             </div>
           </div>
           {/* Acknowledgment Section */}
           <div className="pt-4 border-t border-slate-200">
             <p className="text-sm text-slate-600 mb-4">
-              By accepting, you confirm that you've read these notes and agree to use this beta release. Your consent enables features like shared albums, event planning, and in-app helpers.
+              By accepting, you confirm that you've read these notes and agree to use this beta release. Your consent enables the current workspace features and experiments available in Lumina.
             </p>
             {/* Checkbox */}
             <label className="flex items-start gap-3 cursor-pointer group">

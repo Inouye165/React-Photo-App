@@ -26,17 +26,17 @@ describe('LandingPage', () => {
     const scope = within(container);
     expect(scope.getByRole('heading', { name: 'Lumina' })).toBeInTheDocument();
     expect(
-      scope.getByText(/Upload a photo, and I'll tell you what it is, where it was, or what it's worth\./i)
+      scope.getByText(/A private, invite-based workspace for messages, whiteboards, games, tutoring, and experiments\./i)
     ).toBeInTheDocument();
     expect(scope.getByText(/Beta Access/i)).toBeInTheDocument();
     
     // Value props
-    expect(scope.getByText('Scenery')).toBeInTheDocument();
-    expect(scope.getByText(/Discover the exact location/i)).toBeInTheDocument();
-    expect(scope.getByText('Collectibles')).toBeInTheDocument();
-    expect(scope.getByText(/Get instant valuations/i)).toBeInTheDocument();
-    expect(scope.getByText('Secure')).toBeInTheDocument();
-    expect(scope.getByText(/Your memories are private/i)).toBeInTheDocument();
+    expect(scope.getByText('Messages')).toBeInTheDocument();
+    expect(scope.getByText(/Private rooms for conversation/i)).toBeInTheDocument();
+    expect(scope.getByText('Whiteboards')).toBeInTheDocument();
+    expect(scope.getByText(/Collaborative boards for sketching ideas/i)).toBeInTheDocument();
+    expect(scope.getByText('Games, Help, and Labs')).toBeInTheDocument();
+    expect(scope.getByText(/Chess, tutoring flows, experimental tools/i)).toBeInTheDocument();
 
     expect(scope.getByText('I have an account')).toBeInTheDocument();
     expect(scope.getByText('Request Access')).toBeInTheDocument();

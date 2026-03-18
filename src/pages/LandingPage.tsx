@@ -174,29 +174,29 @@ const LandingPage: React.FC = () => {
           Lumina
         </h1>
         <p className="text-slate-200/80 text-lg md:text-xl max-w-md mb-8">
-          Upload a photo, and I'll tell you what it is, where it was, or what it's worth.
+          A private, invite-based workspace for messages, whiteboards, games, tutoring, and experiments.
         </p>
 
         <div className="space-y-4 max-w-md">
           <div className="flex items-start gap-3">
-            <span className="text-2xl" role="img" aria-label="scenery">🏞️</span>
+            <span className="text-2xl" role="img" aria-label="messages">💬</span>
             <div>
-              <h3 className="font-semibold text-white">Scenery</h3>
-              <p className="text-slate-300 text-sm">Discover the exact location and details of your scenic shots.</p>
+              <h3 className="font-semibold text-white">Messages</h3>
+              <p className="text-slate-300 text-sm">Private rooms for conversation, coordination, and quick updates.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="text-2xl" role="img" aria-label="collectibles">🏺</span>
+            <span className="text-2xl" role="img" aria-label="whiteboards">🧩</span>
             <div>
-              <h3 className="font-semibold text-white">Collectibles</h3>
-              <p className="text-slate-300 text-sm">Get instant valuations and descriptions for your treasures.</p>
+              <h3 className="font-semibold text-white">Whiteboards</h3>
+              <p className="text-slate-300 text-sm">Collaborative boards for sketching ideas, teaching, and working things through.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="text-2xl" role="img" aria-label="secure">🔒</span>
+            <span className="text-2xl" role="img" aria-label="games and labs">♟️</span>
             <div>
-              <h3 className="font-semibold text-white">Secure</h3>
-              <p className="text-slate-300 text-sm">Your memories are private and encrypted.</p>
+              <h3 className="font-semibold text-white">Games, Help, and Labs</h3>
+              <p className="text-slate-300 text-sm">Chess, tutoring flows, experimental tools, and photo features that still have a place in the mix.</p>
             </div>
           </div>
         </div>
@@ -218,7 +218,7 @@ const LandingPage: React.FC = () => {
           I have an account
         </h3>
         <p className="text-slate-500">
-          Sign in to access your secure photo library.
+          Sign in to access your private workspace.
         </p>
       </button>
 
@@ -230,7 +230,7 @@ const LandingPage: React.FC = () => {
           Request Access
         </h3>
         <p className="text-slate-500">
-          Interested in joining our private beta? Get in touch.
+          Interested in the private beta? Request an invite.
         </p>
       </button>
     </div>
