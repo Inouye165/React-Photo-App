@@ -524,6 +524,15 @@ a:hover,
   pointer-events: none !important;
 }
 
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__top-right,
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__footer-left,
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__footer-right {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .whiteboard-annotation-mode .excalidraw .App-toolbar,
 .whiteboard-annotation-mode .excalidraw .App-toolbar-container,
 .whiteboard-annotation-mode .excalidraw .selected-shape-actions,

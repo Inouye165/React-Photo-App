@@ -40,6 +40,7 @@ import type {
 } from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel, { type BoardActionContext as RightSidePanelBoardActionContext, type ChatPreviewMessage, type TabType } from '../components/whiteboard/RightSidePanel'
 import { AITutorTab, ChatTab, HelpRequestTab } from '../components/whiteboard/tabs'
+import ChatWindow from '../components/chat/ChatWindow'
 import {
   analyzeWhiteboardPhoto,
   createWhiteboardHelpRequest,
@@ -425,6 +426,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isTextInputFocused, setIsTextInputFocused] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
   const [hasBoardContent, setHasBoardContent] = useState(false)
+  const [boardViewModeEnabled, setBoardViewModeEnabled] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [boardFrame, setBoardFrame] = useState<WhiteboardBoardFrame | null>(null)
   const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('contain')
@@ -2959,12 +2961,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               ) : null}
 
               {mobileActiveTab === 'chat' ? (
-                <ChatTab
-                  className="h-full"
-                  onRequestHumanTutor={() => {
-                    return undefined
-                  }}
-                />
+                panelMode === 'tutor' ? (
+                  <div className="h-full min-h-0 overflow-hidden bg-white">
+                    <ChatWindow roomId={boardId} mode="conversation" />
+                  </div>
+                ) : (
+                  <ChatTab
+                    className="h-full"
+                    onRequestHumanTutor={() => {
+                      return undefined
+                    }}
+                  />
+                )
               ) : null}
             </div>
 
@@ -3029,6 +3037,26 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                         <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} compact />
                         <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} compact />
                         <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} compact />
+                      </div>
+                      <div className="flex flex-col gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
+                        <ToolbarActionButton
+                          label="Background"
+                          onClick={() => whiteboardPadRef.current?.openBackgroundPicker()}
+                          icon={<Camera className="h-4 w-4" />}
+                          compact
+                        />
+                        <ToolbarActionButton
+                          label={backgroundFitMode === 'width' ? 'Show full' : 'Fit width'}
+                          onClick={() => whiteboardPadRef.current?.toggleBackgroundFitMode()}
+                          icon={<Copy className="h-4 w-4" />}
+                          compact
+                        />
+                        <ToolbarActionButton
+                          label={boardViewModeEnabled ? 'Draw mode' : 'View mode'}
+                          onClick={() => whiteboardPadRef.current?.toggleViewMode()}
+                          icon={<Edit3 className="h-4 w-4" />}
+                          compact
+                        />
                       </div>
                       {annotationTool !== 'eraser' ? (
                         <div className="rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] px-2 py-2">
@@ -3208,6 +3236,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                           Remove photo
                         </span>
                       </button>
+                      {backgroundInfo ? (
+                        <div className="rounded-[10px] border border-white/8 bg-[rgba(17,17,17,0.82)] px-3 py-2 text-[11px] text-slate-300">
+                          <div className="font-semibold text-white">Background</div>
+                          <div className="mt-1 truncate" title={backgroundInfo.name}>{backgroundInfo.name}</div>
+                          <div className="mt-1 text-slate-400">{backgroundInfo.convertedType ?? backgroundInfo.originalType ?? 'image/*'}</div>
+                        </div>
+                      ) : null}
                     </div>
 
                     {confirmRemovePhoto ? (
@@ -3239,6 +3274,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     className="h-full"
                     annotationMode={annotationMode}
                     onRealtimeStatusChange={handleRealtimeStatusChange}
+                    onViewModeChange={setBoardViewModeEnabled}
                     onHasBoardContentChange={setHasBoardContent}
                     onHasBackgroundChange={handleBackgroundChange}
                     onBackgroundFitModeChange={setBackgroundFitMode}
@@ -3246,6 +3282,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
                     onBoardFrameChange={setBoardFrame}
                     onAccessDenied={handleWhiteboardAccessDenied}
+                    minimalChrome
                   />
                   {shouldRenderTutorOverlay ? (
                     <TutorOverlay
@@ -3324,6 +3361,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 className="whiteboard-side-panel"
                 width={isTutorActiveSessionFocus ? 'clamp(380px, 34vw, 520px)' : 'clamp(320px, 28vw, 440px)'}
                 activeTab={desktopSidePanelTab}
+                chatRoomId={panelMode === 'tutor' ? boardId : null}
                 studentName={participantDisplayName}
                 studentPresence={studentPresence}
                 studentLastSeenText={participantLastSeenText}

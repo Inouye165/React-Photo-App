@@ -168,6 +168,10 @@ vi.mock('../components/rooms/RoomMembersModal', () => ({
   default: () => null,
 }))
 
+vi.mock('../components/chat/ChatWindow', () => ({
+  default: ({ roomId }: { roomId: string | null }) => <div data-testid="page-chat-window">Shared chat room: {roomId ?? 'none'}</div>,
+}))
+
 vi.mock('../components/whiteboard/RightSidePanel', () => ({
   default: (props: any) => {
     const ReactModule = require('react')

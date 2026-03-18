@@ -703,6 +703,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   token: string | null
   mode: 'viewer' | 'pad'
   className?: string
+  minimalChrome?: boolean
   onAccessDenied?: () => void
   onRealtimeStatusChange?: (status: WhiteboardRealtimeStatus) => void
   onViewModeChange?: (enabled: boolean) => void
@@ -974,6 +975,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       token,
       mode,
       className,
+      minimalChrome = false,
       onAccessDenied,
       onRealtimeStatusChange,
       onViewModeChange,
@@ -2893,7 +2895,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         }}
       />
 
-      <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
+      <section className={`whiteboard-shell flex h-full w-full flex-col ${minimalChrome ? 'whiteboard-minimal-chrome' : ''} ${className || ''}`} aria-label="Collaborative whiteboard">
         <input
           ref={fileInputRef}
           type="file"
@@ -2936,7 +2938,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                 viewModeEnabled={viewModeEnabled}
                 zenModeEnabled={false}
                 onChange={handleChange}
-                renderTopRightUI={annotationMode ? undefined : renderTopRightUI}
+                renderTopRightUI={annotationMode || minimalChrome ? undefined : renderTopRightUI}
               >
                 <MainMenu>
                   <MainMenu.DefaultItems.LoadScene />
