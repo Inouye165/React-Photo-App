@@ -359,10 +359,12 @@ function ToolbarActionButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`rounded-[8px] border border-white/10 bg-white/[0.04] font-medium text-white transition hover:bg-white/[0.08] hover:text-amber-100 ${compact ? 'px-2.5 py-2 text-[13px]' : 'px-3 py-2 text-sm'} ${className}`}
+      className={`inline-flex min-h-9 box-border items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.04] font-medium leading-none text-white transition hover:bg-white/[0.08] hover:text-amber-100 ${compact ? 'px-2.5 py-2 text-[13px]' : 'px-3 py-2 text-sm'} ${className}`}
     >
-      <span className="flex items-center gap-2">
-        {icon}
+      <span className="flex w-full items-center justify-center gap-2 text-center leading-none">
+        <span className="flex shrink-0 items-center justify-center" aria-hidden="true">
+          {icon}
+        </span>
         {label}
       </span>
     </button>

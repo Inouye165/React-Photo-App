@@ -5,7 +5,7 @@ import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3, Copy, Share2, Tras
 import { DndContext, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS as DndCSS } from '@dnd-kit/utilities'
-import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle, deleteWhiteboard } from '../api/whiteboards'
+import { listMyWhiteboards, createWhiteboard, updateWhiteboardTitle, deleteWhiteboard, listTutorQueueRequests } from '../api/whiteboards'
 import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
 import { ApiError } from '../api/httpClient'
@@ -1071,6 +1071,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const [shareTarget, setShareTarget] = useState<{ id: string; name: string } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
+  const [tutorQueuePendingCount, setTutorQueuePendingCount] = useState<number | null>(null)
   const prefersReducedMotion = useReducedMotion()
   const isDesktop = useDesktopLayout()
   const canUseTutorQueue = user?.app_metadata?.role === 'admin' || user?.app_metadata?.is_tutor === true || profile?.is_tutor === true
@@ -1078,6 +1079,52 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const handleOpenTutorQueue = useCallback(() => {
     navigate('/tutor/queue')
   }, [navigate])
+
+  useEffect(() => {
+    if (!canUseTutorQueue) {
+      setTutorQueuePendingCount(null)
+      return undefined
+    }
+
+    let cancelled = false
+
+    const loadTutorQueueCount = async () => {
+      try {
+        const pendingRequests = await listTutorQueueRequests({ status: 'pending' })
+        if (!cancelled) {
+          setTutorQueuePendingCount(Array.isArray(pendingRequests) ? pendingRequests.length : 0)
+        }
+      } catch {
+        if (!cancelled) {
+          setTutorQueuePendingCount(null)
+        }
+      }
+    }
+
+    const handleRefresh = () => {
+      if (document.visibilityState === 'visible') {
+        void loadTutorQueueCount()
+      }
+    }
+
+    void loadTutorQueueCount()
+    const intervalId = window.setInterval(() => {
+      void loadTutorQueueCount()
+    }, 10000)
+
+    document.addEventListener('visibilitychange', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+    }
+  }, [canUseTutorQueue])
+
+  const tutorQueueCountLabel = typeof tutorQueuePendingCount === 'number' ? String(tutorQueuePendingCount) : '...'
+  const tutorQueueAriaLabel = `Tutor help queue (${tutorQueueCountLabel})`
 
   useEffect(() => {
     console.log('[WB-HUB] ambient-glow version 1.00 loaded')
@@ -1291,9 +1338,16 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
               {canUseTutorQueue ? (
                 <button
                   onClick={handleOpenTutorQueue}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors text-white font-medium text-xs"
+                  type="button"
+                  aria-label={tutorQueueAriaLabel}
+                  title="Open pending tutoring help requests"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#1A1A1A] px-2 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#2A2A2A]"
                 >
-                  <span>Queue</span>
+                  <Clock className="h-3.5 w-3.5 text-[#c6b4a4]" aria-hidden="true" />
+                  <span>Help Requests</span>
+                  <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#2A2A2A] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#f3ece4]">
+                    {tutorQueueCountLabel}
+                  </span>
                 </button>
               ) : null}
               <button 
@@ -1377,9 +1431,16 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
             {canUseTutorQueue ? (
               <button
                 onClick={handleOpenTutorQueue}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] transition-colors text-white font-medium"
+                type="button"
+                aria-label={tutorQueueAriaLabel}
+                title="Open pending tutoring help requests"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1A1A1A] px-4 py-2 text-white font-medium transition-colors hover:bg-[#2A2A2A]"
               >
-                Tutor Queue
+                <Clock className="h-4 w-4 text-[#c6b4a4]" aria-hidden="true" />
+                <span>Help Requests</span>
+                <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-[#2A2A2A] px-2 py-0.5 text-xs font-semibold leading-none text-[#f3ece4]">
+                  {tutorQueueCountLabel}
+                </span>
               </button>
             ) : null}
             <button 
