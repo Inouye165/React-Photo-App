@@ -129,6 +129,7 @@ const mockAuthState = vi.hoisted(() => ({
 const whiteboardPadState = vi.hoisted(() => ({
   hasBackground: false,
   asset: null as null | { dataUrl: string; mimeType: string; name: string },
+  clearCanvas: vi.fn(),
   clearBackground: vi.fn(),
   undo: vi.fn(),
   redo: vi.fn(),
@@ -165,6 +166,10 @@ vi.mock('../components/ChessUserMenu', () => ({
 
 vi.mock('../components/rooms/RoomMembersModal', () => ({
   default: () => null,
+}))
+
+vi.mock('../components/chat/ChatWindow', () => ({
+  default: ({ roomId }: { roomId: string | null }) => <div data-testid="page-chat-window">Shared chat room: {roomId ?? 'none'}</div>,
 }))
 
 vi.mock('../components/whiteboard/RightSidePanel', () => ({
@@ -254,6 +259,7 @@ vi.mock('../components/whiteboard/WhiteboardPad', async () => {
       }, [])
 
       ReactModule.useImperativeHandle(ref, () => ({
+        clearCanvas: whiteboardPadState.clearCanvas,
         clearBackground: whiteboardPadState.clearBackground,
         insertImageFile: vi.fn(),
         undo: whiteboardPadState.undo,
@@ -289,6 +295,7 @@ describe('WhiteboardSessionPage', () => {
     }
     whiteboardPadState.hasBackground = false
     whiteboardPadState.asset = null
+    whiteboardPadState.clearCanvas.mockReset()
     whiteboardPadState.clearBackground.mockReset()
     whiteboardPadState.undo.mockReset()
     whiteboardPadState.redo.mockReset()
@@ -1511,7 +1518,7 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByTestId('panel-session-grade')).toHaveTextContent('')
   })
 
-  it('re-enables markers and applies style before activating the selected tool', async () => {
+  it('shows the layers toolbox and still applies style before activating the selected tool', async () => {
     whiteboardPadState.hasBackground = true
 
     render(
@@ -1526,13 +1533,15 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByRole('button', { name: 'Pen' })).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('button', { name: 'Markers off' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Layers' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /markers off/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Layers' }))
+
+    expect(screen.getByText('Tutor layers appear here after an analysis is available.')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Tutor overlay' })).toBeDisabled()
 
     fireEvent.click(screen.getByRole('button', { name: 'Pen' }))
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Markers on' })).toBeInTheDocument()
-    })
 
     expect(whiteboardPadState.latestProps?.annotationMode).toBe(true)
     expect(whiteboardPadState.setAnnotationStyle).toHaveBeenCalledWith({
@@ -1567,6 +1576,27 @@ describe('WhiteboardSessionPage', () => {
 
     expect(whiteboardPadState.undo).toHaveBeenCalledTimes(1)
     expect(whiteboardPadState.redo).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears the board from the desktop toolbar and shows restore guidance', async () => {
+    whiteboardPadState.hasBackground = true
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /clear board/i })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /clear board/i }))
+
+    expect(whiteboardPadState.clearCanvas).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Board cleared. Use Undo to restore it.')).toBeInTheDocument()
   })
 
   it('formats live session relative time from the real request timestamp instead of persisted text', () => {

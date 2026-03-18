@@ -14,6 +14,7 @@ type BackgroundFitMode = 'width' | 'contain'
 type WhiteboardPadProps = {
   boardId: string
   className?: string
+  minimalChrome?: boolean
   onAccessDenied?: () => void
   onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'offline') => void
   onViewModeChange?: (enabled: boolean) => void
@@ -31,6 +32,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     {
       boardId,
       className,
+      minimalChrome,
       onAccessDenied,
       onRealtimeStatusChange,
       onViewModeChange,
@@ -58,6 +60,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     useImperativeHandle(ref, () => ({
       openBackgroundPicker: () => canvasRef.current?.openBackgroundPicker(),
       insertImageFile: (file) => canvasRef.current?.insertImageFile(file) ?? Promise.resolve(),
+      clearCanvas: () => canvasRef.current?.clearCanvas(),
       clearBackground: () => canvasRef.current?.clearBackground(),
       toggleBackgroundFitMode: () => canvasRef.current?.toggleBackgroundFitMode(),
       toggleViewMode: () => canvasRef.current?.toggleViewMode(),
@@ -75,6 +78,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             token={token}
             mode="pad"
             className="h-full"
+            minimalChrome={minimalChrome}
             onAccessDenied={onAccessDenied}
             onRealtimeStatusChange={onRealtimeStatusChange}
             onViewModeChange={onViewModeChange}

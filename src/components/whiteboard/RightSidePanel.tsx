@@ -9,6 +9,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
+import ChatWindow from '../chat/ChatWindow'
 import type { TutorLessonMessage } from './tabs/AITutorTab'
 import type { TutorAnalysisResult, TutorStepAnalysis, WhiteboardTutorResponse } from '../../types/whiteboard'
 import type { TutorStepStatus } from '../../types/whiteboard'
@@ -18,6 +19,7 @@ export type TabType = 'ai-tutor' | 'help-request' | 'chat' | 'steps'
 
 export interface RightSidePanelProps {
   className?: string
+  chatRoomId?: string | null
   initialTab?: TabType
   activeTab?: TabType
   initialChatMessages?: ChatPreviewMessage[]
@@ -2937,6 +2939,7 @@ void TutorWorkflowOverview
 
 const RightSidePanel: React.FC<RightSidePanelProps> = ({
   className = '',
+  chatRoomId = null,
   initialTab = 'chat',
   activeTab,
   initialChatMessages,
@@ -3064,6 +3067,14 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
   const renderPanelContent = (tabId: VisibleTabId): React.JSX.Element => {
     if (tabId === 'chat') {
+      if (panelMode === 'tutor' && chatRoomId) {
+        return (
+          <div className="min-h-0 flex-1 overflow-hidden rounded-[16px] border border-white/10 bg-white shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
+            <ChatWindow roomId={chatRoomId} mode="conversation" />
+          </div>
+        )
+      }
+
       return (
         <ChatPanel
           messages={chatMessages}

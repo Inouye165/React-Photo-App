@@ -5,6 +5,10 @@ import RightSidePanel from './RightSidePanel'
 import { resetTutorAssistPersistenceForTests } from './tutorAssistPersistence'
 import type { WhiteboardTutorResponse } from '../../types/whiteboard'
 
+vi.mock('../chat/ChatWindow', () => ({
+  default: ({ roomId }: { roomId: string | null }) => <div data-testid="whiteboard-chat-window">Shared chat room: {roomId ?? 'none'}</div>,
+}))
+
 const liveAnalysis: WhiteboardTutorResponse = {
   reply: 'Problem: Solve for x: 5x - 17 = 18',
   messages: [{ role: 'assistant', content: 'Solve for x: 5x - 17 = 18' }],
@@ -445,6 +449,12 @@ describe('RightSidePanel', () => {
     expect(screen.queryByRole('tab', { name: 'Diagnosis' })).not.toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: 'Assist' })).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Message student' })).toBeInTheDocument()
+  })
+
+  it('reuses the shared chat conversation when a whiteboard room is provided', () => {
+    renderPanel({ chatRoomId: 'board-1' })
+
+    expect(screen.getByTestId('whiteboard-chat-window')).toHaveTextContent('Shared chat room: board-1')
   })
 
   it('shows visible analysis status for confirmation, loading, and errors', () => {

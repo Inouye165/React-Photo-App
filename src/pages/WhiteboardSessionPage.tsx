@@ -12,6 +12,7 @@ import {
   Eraser,
   Highlighter,
   ImageMinus,
+  Layers3,
   MapPin,
   MoreVertical,
   PenTool,
@@ -39,6 +40,7 @@ import type {
 } from '../components/whiteboard/WhiteboardCanvas'
 import RightSidePanel, { type BoardActionContext as RightSidePanelBoardActionContext, type ChatPreviewMessage, type TabType } from '../components/whiteboard/RightSidePanel'
 import { AITutorTab, ChatTab, HelpRequestTab } from '../components/whiteboard/tabs'
+import ChatWindow from '../components/chat/ChatWindow'
 import {
   analyzeWhiteboardPhoto,
   createWhiteboardHelpRequest,
@@ -124,6 +126,12 @@ type FormattedProblemLine = {
   id: string
   type: FormattedProblemLineType
   text: string
+}
+
+type TutorLayerOption = {
+  id: string
+  label: string
+  description: string
 }
 
 function getSafeErrorDetails(error: unknown): { code: string | null; status: number | null; message: string } {
@@ -418,6 +426,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isTextInputFocused, setIsTextInputFocused] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
   const [hasBoardContent, setHasBoardContent] = useState(false)
+  const [boardViewModeEnabled, setBoardViewModeEnabled] = useState(false)
   const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [boardFrame, setBoardFrame] = useState<WhiteboardBoardFrame | null>(null)
   const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('contain')
@@ -427,11 +436,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobilePhotoContainerHeight, setMobilePhotoContainerHeight] = useState<number | null>(null)
   const [photoTransform, setPhotoTransform] = useState<PhotoTransformState>(DEFAULT_PHOTO_TRANSFORM)
   const [annotationMode, setAnnotationMode] = useState(false)
-  const [annotationMarkers] = useState([
-    { id: 1, x: 45, y: 35, label: '①', color: '#EF4444' },
-    { id: 2, x: 45, y: 55, label: '②', color: '#F59E0B' },
-  ])
-  const [zoomLevel, setZoomLevel] = useState(100)
   const [analysis, setAnalysis] = useState<WhiteboardTutorResponse | null>(null)
   const [activeTutorModelTier, setActiveTutorModelTier] = useState<WhiteboardTutorModelTier>('standard')
   const [analysisLoading, setAnalysisLoading] = useState(false)
@@ -456,6 +460,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [mobileOverflowOpen, setMobileOverflowOpen] = useState(false)
   const [mobileToolbarVisible, setMobileToolbarVisible] = useState(false)
   const [desktopSidePanelOpen, setDesktopSidePanelOpen] = useState(false)
+  const [desktopLayersOpen, setDesktopLayersOpen] = useState(false)
+  const [tutorOverlayLayerEnabled, setTutorOverlayLayerEnabled] = useState(true)
+  const [visibleTutorLayerIds, setVisibleTutorLayerIds] = useState<string[]>([])
+  const [boardActionNotice, setBoardActionNotice] = useState<string | null>(null)
   const [desktopSidePanelTab, setDesktopSidePanelTab] = useState<TabType>('chat')
   const [activeBoardActionContext, setActiveBoardActionContext] = useState<RightSidePanelBoardActionContext | null>(null)
   const [sessionState, setSessionState] = useState<SessionState>('idle')
@@ -482,6 +490,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const shareMenuRef = useRef<HTMLDivElement | null>(null)
   const mobileOverflowRef = useRef<HTMLDivElement | null>(null)
   const shapeMenuRef = useRef<HTMLDivElement | null>(null)
+  const layersMenuRef = useRef<HTMLDivElement | null>(null)
   const hasBackgroundRef = useRef(false)
   const lastBackgroundAssetSignatureRef = useRef<string | null>(null)
   const helpRequestMutationVersionRef = useRef(0)
@@ -578,6 +587,41 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     () => resolveTutorOverlayFrame(hasBackground && backgroundInfo ? boardFrame : null, backgroundInfo, backgroundFitMode),
     [backgroundFitMode, backgroundInfo, boardFrame, hasBackground],
   )
+  const tutorOverlayActive = Boolean(tutorLessonMessage || tutorPlayback.isWalkthroughActive || activeBoardActionContext?.source === 'assist')
+  const tutorLayerOptions = useMemo<TutorLayerOption[]>(() => {
+    if (!structuredAnalysisResult) {
+      return []
+    }
+
+    const steps = structuredAnalysisResult.guidedSolutionSteps?.length
+      ? structuredAnalysisResult.guidedSolutionSteps
+      : structuredAnalysisResult.steps
+    const seenRegionIds = new Set<string>()
+    const nextOptions: TutorLayerOption[] = []
+
+    for (const step of steps) {
+      if (!step.regionId || seenRegionIds.has(step.regionId)) {
+        continue
+      }
+
+      seenRegionIds.add(step.regionId)
+      nextOptions.push({
+        id: step.regionId,
+        label: `Layer ${nextOptions.length + 1}`,
+        description: step.shortLabel?.trim() || step.studentText?.trim() || step.kidFriendlyExplanation?.trim() || `Step ${nextOptions.length + 1}`,
+      })
+    }
+
+    return nextOptions
+  }, [structuredAnalysisResult])
+  const visibleTutorRegionIds = useMemo(
+    () => tutorLayerOptions.filter((layer) => visibleTutorLayerIds.includes(layer.id)).map((layer) => layer.id),
+    [tutorLayerOptions, visibleTutorLayerIds],
+  )
+  const shouldRenderTutorOverlay = Boolean(
+    structuredAnalysisResult && effectiveTutorInputMode === 'photo' && tutorOverlayActive && tutorOverlayLayerEnabled,
+  )
+  const areTutorMarkersVisible = shouldRenderTutorOverlay && tutorOverlayVisible && visibleTutorRegionIds.length > 0
   const buildTutorRequestMessages = useCallback((helpMode: TutorHelpMode) => {
     const correctedQuestionMessages = effectiveTutorInputMode === 'photo' && textContent.trim()
       ? [{
@@ -611,7 +655,6 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     [activeTutorModelTier, buildTutorAnalysisCacheKey, tutorHelpMode],
   )
   const tutorAssistContextKey = analysisDeviceCacheKey
-  const tutorOverlayActive = Boolean(tutorLessonMessage || tutorPlayback.isWalkthroughActive || activeBoardActionContext?.source === 'assist')
 
   const sessionStatusMeta = useMemo(() => {
     if (isTutorView) {
@@ -1097,6 +1140,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [annotationStrokeColor, annotationTool, applyAnnotationStyle])
 
   const handleUndo = useCallback(() => {
+    setBoardActionNotice(null)
     whiteboardPadRef.current?.undo()
     if (isMobileLayout) {
       scheduleMobileToolbarHide()
@@ -1104,11 +1148,26 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [isMobileLayout, scheduleMobileToolbarHide])
 
   const handleRedo = useCallback(() => {
+    setBoardActionNotice(null)
     whiteboardPadRef.current?.redo()
     if (isMobileLayout) {
       scheduleMobileToolbarHide()
     }
   }, [isMobileLayout, scheduleMobileToolbarHide])
+
+  const handleClearBoard = useCallback(() => {
+    whiteboardPadRef.current?.clearCanvas()
+    setBoardActionNotice('Board cleared. Use Undo to restore it.')
+    setDesktopLayersOpen(false)
+  }, [])
+
+  const handleTutorLayerToggle = useCallback((layerId: string) => {
+    setVisibleTutorLayerIds((current) => (
+      current.includes(layerId)
+        ? current.filter((id) => id !== layerId)
+        : [...current, layerId]
+    ))
+  }, [])
 
   const applyAnalysisResponse = useCallback((response: WhiteboardTutorResponse, requestedModelTier: WhiteboardTutorModelTier | undefined, helpMode: TutorHelpMode) => {
     setAnalysis(response)
@@ -1431,6 +1490,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
 
   const handleRemovePhoto = useCallback(() => {
     whiteboardPadRef.current?.clearBackground()
+    setBoardActionNotice(null)
     if (mobilePhotoObjectUrl) {
       URL.revokeObjectURL(mobilePhotoObjectUrl)
     }
@@ -1895,6 +1955,9 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       if (shapeMenuRef.current && !shapeMenuRef.current.contains(target)) {
         setShapeMenuOpen(false)
       }
+      if (layersMenuRef.current && !layersMenuRef.current.contains(target)) {
+        setDesktopLayersOpen(false)
+      }
     }
 
     document.addEventListener('mousedown', handleOutside)
@@ -1950,6 +2013,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       setConfirmRemovePhoto(false)
     }
   }, [hasBackground, isMobileLayout, mobileActiveTab])
+
+  useEffect(() => {
+    if (!tutorLayerOptions.length) {
+      setVisibleTutorLayerIds([])
+      return
+    }
+
+    setVisibleTutorLayerIds((current) => {
+      const filtered = current.filter((layerId) => tutorLayerOptions.some((layer) => layer.id === layerId))
+      return filtered.length > 0 ? filtered : tutorLayerOptions.map((layer) => layer.id)
+    })
+  }, [tutorLayerOptions])
 
   useEffect(() => {
     if (!isMobileLayout || !mobileToolbarVisible || !hasBackground || mobileActiveTab !== 'homework') {
@@ -2506,6 +2581,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           </div>
         ) : null}
 
+        {boardActionNotice ? (
+          <div className="border-b border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            {boardActionNotice}
+          </div>
+        ) : null}
+
         <div className="flex min-h-[52px] w-full items-center justify-between gap-3 border-b border-[#374151] bg-[#1F2937] px-4 py-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
             <span className={`inline-flex rounded-full px-[10px] py-[3px] text-[12px] font-medium ${sessionStatusMeta.pillClassName}`}>
@@ -2880,12 +2961,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               ) : null}
 
               {mobileActiveTab === 'chat' ? (
-                <ChatTab
-                  className="h-full"
-                  onRequestHumanTutor={() => {
-                    return undefined
-                  }}
-                />
+                panelMode === 'tutor' ? (
+                  <div className="h-full min-h-0 overflow-hidden bg-white">
+                    <ChatWindow roomId={boardId} mode="conversation" />
+                  </div>
+                ) : (
+                  <ChatTab
+                    className="h-full"
+                    onRequestHumanTutor={() => {
+                      return undefined
+                    }}
+                  />
+                )
               ) : null}
             </div>
 
@@ -2918,7 +3005,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
           <div className={`flex min-h-0 flex-1 overflow-hidden ${isTutorActiveSessionFocus ? 'bg-[#0b1220]' : ''}`}>
             <div
               className={`relative flex min-w-0 flex-1 flex-col overflow-hidden ${isTutorActiveSessionFocus ? 'border-r border-white/10 bg-[#0f172a]' : ''}`}
-              style={isTutorActiveSessionFocus ? { flex: '1 1 58%' } : undefined}
+              style={isTutorActiveSessionFocus ? { flex: '1 1 62%' } : undefined}
             >
               {isTutorActiveSessionFocus ? (
                 <div className="border-b border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(9,14,26,0.96))] px-4 py-3">
@@ -2937,19 +3024,39 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   </div>
                 </div>
               ) : null}
-              {hasBackground ? (
-                <div className={`pointer-events-none absolute left-3 z-20 ${isTutorActiveSessionFocus ? 'top-20' : 'top-3'}`}>
-                  <div className="pointer-events-auto flex max-w-[168px] flex-col gap-2 rounded-[12px] border border-white/8 bg-[rgba(9,14,24,0.84)] px-2 py-2 shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur-sm">
-                    <div className="flex flex-col gap-1.5">
-                    <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
-                        <ToolbarActionButton label="Undo" onClick={handleUndo} icon={<Undo2 className="h-4 w-4" />} />
-                        <ToolbarActionButton label="Redo" onClick={handleRedo} icon={<Redo2 className="h-4 w-4" />} />
+              <div className={`flex min-h-0 flex-1 ${hasBackground ? 'gap-3 px-3 py-3' : ''}`}>
+                {hasBackground ? (
+                  <aside className="z-20 flex w-[104px] shrink-0 flex-col gap-2">
+                    <div className="flex flex-col gap-2 rounded-[14px] border border-white/8 bg-[rgba(9,14,24,0.84)] p-2 shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur-sm">
+                      <div className="grid grid-cols-2 gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
+                        <ToolbarActionButton label="Undo" onClick={handleUndo} icon={<Undo2 className="h-4 w-4" />} compact className="justify-center px-2" />
+                        <ToolbarActionButton label="Redo" onClick={handleRedo} icon={<Redo2 className="h-4 w-4" />} compact className="justify-center px-2" />
                       </div>
-                    <div className="flex flex-col gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
-                        <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} />
-                        <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} />
-                        <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} />
-                        <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} />
+                      <div className="flex flex-col gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
+                        <ToolButton active={annotationTool === 'pen'} label="Pen" onClick={() => handleAnnotationToolSelect('pen')} icon={<PenTool className="h-4 w-4" />} compact />
+                        <ToolButton active={annotationTool === 'highlighter'} label="Highlighter" onClick={() => handleAnnotationToolSelect('highlighter')} icon={<Highlighter className="h-4 w-4" />} compact />
+                        <ToolButton active={annotationTool === 'text'} label="Text" onClick={() => handleAnnotationToolSelect('text')} icon={<Type className="h-4 w-4" />} compact />
+                        <ToolButton active={annotationTool === 'eraser'} label="Eraser" onClick={() => handleAnnotationToolSelect('eraser')} icon={<Eraser className="h-4 w-4" />} compact />
+                      </div>
+                      <div className="flex flex-col gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] p-1">
+                        <ToolbarActionButton
+                          label="Background"
+                          onClick={() => whiteboardPadRef.current?.openBackgroundPicker()}
+                          icon={<Camera className="h-4 w-4" />}
+                          compact
+                        />
+                        <ToolbarActionButton
+                          label={backgroundFitMode === 'width' ? 'Show full' : 'Fit width'}
+                          onClick={() => whiteboardPadRef.current?.toggleBackgroundFitMode()}
+                          icon={<Copy className="h-4 w-4" />}
+                          compact
+                        />
+                        <ToolbarActionButton
+                          label={boardViewModeEnabled ? 'Draw mode' : 'View mode'}
+                          onClick={() => whiteboardPadRef.current?.toggleViewMode()}
+                          icon={<Edit3 className="h-4 w-4" />}
+                          compact
+                        />
                       </div>
                       {annotationTool !== 'eraser' ? (
                         <div className="rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] px-2 py-2">
@@ -2994,7 +3101,10 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                       <div className="relative" ref={shapeMenuRef}>
                         <button
                           type="button"
-                          onClick={() => setShapeMenuOpen((prev) => !prev)}
+                          onClick={() => {
+                            setDesktopLayersOpen(false)
+                            setShapeMenuOpen((prev) => !prev)
+                          }}
                           className={`w-full rounded-[8px] px-3 py-2 text-sm font-medium transition ${
                             ['arrow', 'rectangle', 'ellipse'].includes(annotationTool)
                               ? 'bg-amber-500 text-slate-950'
@@ -3027,130 +3137,168 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                           </div>
                         ) : null}
                       </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setAnnotationMode((prev) => !prev)}
-                        title={annotationMode ? 'Hide markers' : 'Show markers'}
-                        className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
-                          annotationMode
-                            ? 'border-amber-500/50 bg-amber-500/10 text-amber-400'
-                            : 'border-white/10 bg-transparent text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        <MapPin className="h-3.5 w-3.5" />
-                        {annotationMode ? 'Markers on' : 'Markers off'}
-                      </button>
-                      {/* Zoom control */}
-                      <div className="flex items-center justify-between gap-1 rounded-lg border border-white/8 bg-[rgba(17,17,17,0.82)] px-2 py-1">
+                      <div className="relative" ref={layersMenuRef}>
                         <button
                           type="button"
-                          onClick={() => setZoomLevel((z) => Math.max(50, z - 10))}
-                          className="px-1 text-sm text-slate-400 transition hover:text-white"
-                        >−</button>
-                        <span className="min-w-[36px] text-center text-xs text-slate-400">{zoomLevel}%</span>
-                        <button
-                          type="button"
-                          onClick={() => setZoomLevel((z) => Math.min(200, z + 10))}
-                          className="px-1 text-sm text-slate-400 transition hover:text-white"
-                        >+</button>
+                          onClick={() => {
+                            setShapeMenuOpen(false)
+                            setDesktopLayersOpen((prev) => !prev)
+                          }}
+                          className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                            desktopLayersOpen
+                              ? 'border-amber-500/50 bg-amber-500/10 text-amber-200'
+                              : 'border-white/10 bg-transparent text-slate-300 hover:border-white/20 hover:text-white'
+                          }`}
+                          aria-expanded={desktopLayersOpen}
+                          aria-haspopup="menu"
+                        >
+                          <Layers3 className="h-3.5 w-3.5" />
+                          Layers
+                        </button>
+                        {desktopLayersOpen ? (
+                          <div className="absolute left-full top-0 z-20 ml-2 w-72 rounded-[12px] border border-white/10 bg-slate-900 p-3 shadow-2xl" role="menu" aria-label="Layer visibility">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">Visible Layers</div>
+                            <div className="mt-3 space-y-2">
+                              <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-white/6 bg-white/[0.03] px-3 py-2 text-left">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 text-amber-400"
+                                  checked={tutorOverlayLayerEnabled}
+                                  disabled={!structuredAnalysisResult}
+                                  onChange={(event) => setTutorOverlayLayerEnabled(event.target.checked)}
+                                  aria-label="Tutor overlay"
+                                />
+                                <span>
+                                  <span className="block text-sm font-semibold text-white">Tutor overlay</span>
+                                  <span className="block text-xs text-slate-400">Show guided highlights on top of the board.</span>
+                                </span>
+                              </label>
+                              <label className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-white/6 bg-white/[0.03] px-3 py-2 text-left">
+                                <input
+                                  type="checkbox"
+                                  className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 text-amber-400"
+                                  checked={tutorOverlayVisible}
+                                  disabled={!structuredAnalysisResult || !tutorOverlayLayerEnabled}
+                                  onChange={(event) => setTutorOverlayVisible(event.target.checked)}
+                                  aria-label="Markers"
+                                />
+                                <span>
+                                  <span className="block text-sm font-semibold text-white">Markers</span>
+                                  <span className="block text-xs text-slate-400">Show step markers only when the overlay is enabled.</span>
+                                </span>
+                              </label>
+                              {tutorLayerOptions.length > 0 ? (
+                                <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                                  {tutorLayerOptions.map((layer) => (
+                                    <label key={layer.id} className="flex cursor-pointer items-start gap-3 rounded-[10px] border border-white/6 bg-white/[0.03] px-3 py-2 text-left">
+                                      <input
+                                        type="checkbox"
+                                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-950 text-amber-400"
+                                        checked={visibleTutorLayerIds.includes(layer.id)}
+                                        disabled={!tutorOverlayLayerEnabled || !tutorOverlayVisible}
+                                        onChange={() => handleTutorLayerToggle(layer.id)}
+                                        aria-label={layer.label}
+                                      />
+                                      <span>
+                                        <span className="block text-sm font-semibold text-white">{layer.label}</span>
+                                        <span className="block text-xs text-slate-400">{layer.description}</span>
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="rounded-[10px] border border-dashed border-white/10 px-3 py-3 text-xs text-slate-400">
+                                  Tutor layers appear here after an analysis is available.
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                      {/* Clear annotations */}
                       <button
                         type="button"
-                        onClick={() => {
-                          return undefined
-                        }}
-                        title="Clear annotations"
-                        className="rounded-lg p-1.5 text-slate-500 transition hover:bg-red-500/10 hover:text-red-400"
+                        onClick={handleClearBoard}
+                        title="Clear board"
+                        className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-500/10 hover:text-red-300"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <span className="flex items-center gap-2 text-[12px] font-medium">
+                          <Trash2 className="h-4 w-4" />
+                          Clear board
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={handleRemovePhotoRequest}
-                        className="rounded-[8px] px-2 py-2 text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
+                        className="rounded-[8px] px-2 py-2 text-left text-[12px] font-medium text-[#c6b4a4]/70 transition hover:bg-red-500/8 hover:text-red-200"
                       >
                         <span className="flex items-center gap-2">
                           <ImageMinus className="h-3.5 w-3.5" />
                           Remove photo
                         </span>
                       </button>
+                      {backgroundInfo ? (
+                        <div className="rounded-[10px] border border-white/8 bg-[rgba(17,17,17,0.82)] px-3 py-2 text-[11px] text-slate-300">
+                          <div className="font-semibold text-white">Background</div>
+                          <div className="mt-1 truncate" title={backgroundInfo.name}>{backgroundInfo.name}</div>
+                          <div className="mt-1 text-slate-400">{backgroundInfo.convertedType ?? backgroundInfo.originalType ?? 'image/*'}</div>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
 
-                  {confirmRemovePhoto ? (
-                    <div className="flex flex-col gap-2 rounded-[8px] border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                      <span>Remove this photo? This can't be undone.</span>
-                      <button
-                        type="button"
-                        onClick={handleRemovePhoto}
-                        className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
-                      >
-                        Yes, Remove
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelRemovePhoto}
-                        className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="relative min-h-0 flex-1">
-                <>
-                <WhiteboardPad
-                  ref={whiteboardPadRef}
-                  boardId={boardId}
-                  className="h-full"
-                  annotationMode={annotationMode}
-                  onRealtimeStatusChange={handleRealtimeStatusChange}
-                  onHasBoardContentChange={setHasBoardContent}
-                  onHasBackgroundChange={handleBackgroundChange}
-                  onBackgroundFitModeChange={setBackgroundFitMode}
-                  onBackgroundInfoChange={setBackgroundInfo}
-                  onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
-                  onBoardFrameChange={setBoardFrame}
-                  onAccessDenied={handleWhiteboardAccessDenied}
-                />
-                {annotationMode ? (
-                  <div className="pointer-events-none absolute inset-0 z-10">
-                    {annotationMarkers.map((marker) => (
-                      <div
-                        key={marker.id}
-                        className="absolute flex h-6 w-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-[11px] font-bold shadow-lg"
-                        style={{
-                          left: `${marker.x}%`,
-                          top: `${marker.y}%`,
-                          backgroundColor: marker.color,
-                          color: '#000',
-                        }}
-                      >
-                        {marker.label}
+                    {confirmRemovePhoto ? (
+                      <div className="flex flex-col gap-2 rounded-[10px] border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-100">
+                        <span>Remove this photo? This can't be undone.</span>
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          className="rounded-[8px] bg-red-500 px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-red-400"
+                        >
+                          Yes, Remove
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCancelRemovePhoto}
+                          className="rounded-[8px] bg-white/10 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-white/15"
+                        >
+                          Cancel
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    ) : null}
+                  </aside>
                 ) : null}
-                {structuredAnalysisResult && effectiveTutorInputMode === 'photo' && tutorOverlayActive ? (
-                  <TutorOverlay
-                    analysisResult={structuredAnalysisResult}
-                    activeStepId={tutorPlayback.activeStepId}
-                    analysisSource={analysis?.analysisSource ?? null}
-                    lessonMessage={tutorLessonMessage}
-                    boardFrame={tutorOverlayFrame}
-                    visible={tutorOverlayVisible}
-                    reducedMotion={Boolean(prefersReducedMotion)}
-                    onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
-                    onSelectStep={tutorPlayback.setActiveStepId}
+
+                <div className="relative min-h-0 min-w-0 flex-1">
+                  <WhiteboardPad
+                    ref={whiteboardPadRef}
+                    boardId={boardId}
+                    className="h-full"
+                    annotationMode={annotationMode}
+                    onRealtimeStatusChange={handleRealtimeStatusChange}
+                    onViewModeChange={setBoardViewModeEnabled}
+                    onHasBoardContentChange={setHasBoardContent}
+                    onHasBackgroundChange={handleBackgroundChange}
+                    onBackgroundFitModeChange={setBackgroundFitMode}
+                    onBackgroundInfoChange={setBackgroundInfo}
+                    onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
+                    onBoardFrameChange={setBoardFrame}
+                    onAccessDenied={handleWhiteboardAccessDenied}
+                    minimalChrome
                   />
-                ) : null}
-                  </>
+                  {shouldRenderTutorOverlay ? (
+                    <TutorOverlay
+                      analysisResult={structuredAnalysisResult}
+                      activeStepId={tutorPlayback.activeStepId}
+                      analysisSource={analysis?.analysisSource ?? null}
+                      lessonMessage={tutorLessonMessage}
+                      boardFrame={tutorOverlayFrame}
+                      visible={areTutorMarkersVisible}
+                      reducedMotion={Boolean(prefersReducedMotion)}
+                      onToggleVisible={() => setTutorOverlayVisible((current) => !current)}
+                      onSelectStep={tutorPlayback.setActiveStepId}
+                      allowedRegionIds={visibleTutorRegionIds}
+                      showVisibilityToggle={false}
+                    />
+                  ) : null}
 
                   {inputMode !== 'text' && photoGuidanceVisible ? (
                     <div className="pointer-events-none absolute left-1/2 top-5 z-20 w-full max-w-[420px] -translate-x-1/2 px-4">
@@ -3205,13 +3353,15 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                     </div>
                   ) : null}
                 </div>
+              </div>
             </div>
 
             {desktopSidePanelOpen ? (
               <RightSidePanel
                 className="whiteboard-side-panel"
-                width={isTutorActiveSessionFocus ? 'clamp(480px, 42vw, 720px)' : 'clamp(380px, 35vw, 560px)'}
+                width={isTutorActiveSessionFocus ? 'clamp(380px, 34vw, 520px)' : 'clamp(320px, 28vw, 440px)'}
                 activeTab={desktopSidePanelTab}
+                chatRoomId={panelMode === 'tutor' ? boardId : null}
                 studentName={participantDisplayName}
                 studentPresence={studentPresence}
                 studentLastSeenText={participantLastSeenText}
@@ -3266,7 +3416,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 assistContextKey={tutorAssistContextKey}
                 activeTutorStepId={tutorPlayback.activeStepId}
                 tutorWalkthroughActive={tutorPlayback.isWalkthroughActive}
-                overlayVisible={tutorOverlayVisible}
+                overlayVisible={areTutorMarkersVisible}
                 tutorPlaybackCanPlay={tutorPlayback.canPlay}
                 tutorPlaybackIsPlaying={tutorPlayback.isPlaying}
                 onTutorWalkthroughEnter={tutorPlayback.enterWalkthrough}

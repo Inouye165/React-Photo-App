@@ -477,7 +477,7 @@ a:hover,
   flex: 1;
   min-height: 0;
   background: #111111;
-  padding: 0 88px 0 24px;
+  padding: 16px;
 }
 
 .whiteboard-page {
@@ -518,6 +518,15 @@ a:hover,
 .whiteboard-stage .excalidraw .App-toolbar,
 .whiteboard-stage .excalidraw .App-toolbar-container,
 .whiteboard-stage .excalidraw .selected-shape-actions {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__top-right,
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__footer-left,
+.whiteboard-minimal-chrome .excalidraw .layer-ui__wrapper__footer-right {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
