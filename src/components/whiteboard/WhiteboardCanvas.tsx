@@ -757,6 +757,7 @@ export type WhiteboardRealtimeStatus = 'connected' | 'connecting' | 'offline'
 export type WhiteboardCanvasHandle = {
   openBackgroundPicker: () => void
   insertImageFile: (file: File) => Promise<void>
+  clearCanvas: () => void
   clearBackground: () => void
   toggleBackgroundFitMode: () => void
   toggleViewMode: () => void
@@ -764,6 +765,14 @@ export type WhiteboardCanvasHandle = {
   redo: () => void
   setAnnotationTool: (tool: AnnotationTool) => void
   setAnnotationStyle: (style: AnnotationStyle) => void
+}
+
+type WhiteboardSceneSnapshot = {
+  elements: ExcalidrawElement[]
+  appState: AppState
+  files: BinaryFiles
+  backgroundInfo: BackgroundInfo | null
+  backgroundAsset: BackgroundImageAsset | null
 }
 
 function resolveAppState(value: unknown): PersistedAppState {
@@ -786,6 +795,31 @@ function resolveAppState(value: unknown): PersistedAppState {
 function resolveFiles(value: unknown): BinaryFiles {
   if (!value || typeof value !== 'object') return {}
   return value as BinaryFiles
+}
+
+function resolveBackgroundImageAsset(
+  elements: readonly ExcalidrawElement[],
+  files: BinaryFiles,
+  backgroundInfo: BackgroundInfo | null,
+): BackgroundImageAsset | null {
+  const backgroundElement = elements.find(isBackgroundElement)
+  if (!backgroundElement || !(('fileId' in backgroundElement) && typeof backgroundElement.fileId === 'string')) {
+    return null
+  }
+
+  const file = files[backgroundElement.fileId]
+  if (!file || typeof file.dataURL !== 'string' || file.dataURL.length === 0) {
+    return null
+  }
+
+  return {
+    dataUrl: file.dataURL,
+    mimeType:
+      typeof file.mimeType === 'string'
+        ? file.mimeType
+        : backgroundInfo?.convertedType ?? backgroundInfo?.originalType ?? 'image/webp',
+    name: backgroundInfo?.convertedName ?? backgroundInfo?.name ?? 'whiteboard-background',
+  }
 }
 
 function resolveElements(value: unknown): ExcalidrawElement[] | null {
@@ -995,6 +1029,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const excalidrawReadyRef = useRef(false)
   const idleCommitTimerRef = useRef<number | null>(null)
   const lastRealtimeStatusRef = useRef<WhiteboardRealtimeStatus | null>(null)
+  const lastClearedSceneRef = useRef<WhiteboardSceneSnapshot | null>(null)
 
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false)
   const [backgroundCaptureOpen, setBackgroundCaptureOpen] = useState(false)
@@ -1188,6 +1223,28 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       onBackgroundImageAssetChangeRef.current?.(null)
     }
   }, [hasBackground])
+
+  const buildSceneSnapshot = useCallback((): WhiteboardSceneSnapshot | null => {
+    const api = excalidrawApiRef.current
+    const map = mapRef.current
+    if (!api || !map) return null
+
+    const elements = api.getSceneElements()
+    const files = resolveFiles(map.get('files'))
+    if (elements.length === 0 && Object.keys(files).length === 0) {
+      return null
+    }
+
+    const currentBackgroundInfo = resolveBackgroundInfo(map.get('backgroundInfo')) ?? backgroundInfo
+
+    return {
+      elements: [...elements],
+      appState: { ...api.getAppState() },
+      files: { ...files },
+      backgroundInfo: currentBackgroundInfo,
+      backgroundAsset: resolveBackgroundImageAsset(elements, files, currentBackgroundInfo),
+    }
+  }, [backgroundInfo])
 
   const updateBoardRect = useCallback(() => {
     const frame = boardFrameRef.current
@@ -1966,13 +2023,69 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     })
   }, [])
 
+  const restoreClearedScene = useCallback(() => {
+    const snapshot = lastClearedSceneRef.current
+    const api = excalidrawApiRef.current
+    const doc = docRef.current
+    const map = mapRef.current
+    if (!snapshot || !api || !doc || !map) {
+      return false
+    }
+
+    pendingLocalSceneRef.current = null
+    pendingSyncRef.current = null
+    if (syncThrottleTimerRef.current !== null) {
+      window.clearTimeout(syncThrottleTimerRef.current)
+      syncThrottleTimerRef.current = null
+    }
+
+    suppressSyncRef.current = true
+    api.updateScene({
+      elements: snapshot.elements,
+      appState: snapshot.appState,
+    })
+    requestAnimationFrame(() => {
+      suppressSyncRef.current = false
+    })
+
+    doc.transact(() => {
+      map.set('elements', snapshot.elements)
+      map.set('files', snapshot.files)
+      map.set('appState', pickPersistedAppState(snapshot.appState))
+      if (snapshot.backgroundInfo) {
+        map.set('backgroundInfo', snapshot.backgroundInfo)
+      } else {
+        map.delete('backgroundInfo')
+      }
+      map.set('updatedAt', Date.now())
+    }, LOCAL_ORIGIN)
+
+    lastSyncedElementsRef.current = buildElementVersionMap(snapshot.elements)
+    lastSyncedAppStateRef.current = pickPersistedAppState(snapshot.appState)
+    lastSyncedFilesRef.current = getFileKeys(snapshot.files)
+    lastNonEmptySceneRef.current = snapshot.elements.length > 0
+    setHasBackground(snapshot.elements.some(isBackgroundElement))
+    setHasBoardContent(hasNonBackgroundElements(snapshot.elements))
+    setBackgroundInfo(snapshot.backgroundInfo)
+    onBackgroundImageAssetChangeRef.current?.(snapshot.backgroundAsset)
+    lastClearedSceneRef.current = null
+    return true
+  }, [])
+
   const triggerHistoryAction = useCallback((action: 'undo' | 'redo') => {
     const root = stageViewportRef.current
     if (!root) return
 
     const actionButton = root.querySelector<HTMLButtonElement>(`[data-testid="button-${action}"]`)
     if (actionButton && !actionButton.disabled) {
+      if (action === 'undo') {
+        lastClearedSceneRef.current = null
+      }
       actionButton.click()
+      return
+    }
+
+    if (action === 'undo' && restoreClearedScene()) {
       return
     }
 
@@ -2009,7 +2122,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       document.dispatchEvent(new KeyboardEvent('keydown', eventInit))
       window.dispatchEvent(new KeyboardEvent('keydown', eventInit))
     }
-  }, [])
+  }, [restoreClearedScene])
 
   const flushSceneToYjs = useCallback(
     (scene: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles }) => {
@@ -2197,10 +2310,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     [applyPendingRemoteScene, commitPendingLocalScene],
   )
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback((options?: { preserveUndoSnapshot?: boolean }) => {
     const doc = docRef.current
     const map = mapRef.current
     const api = excalidrawApiRef.current
+
+    if (options?.preserveUndoSnapshot) {
+      lastClearedSceneRef.current = buildSceneSnapshot()
+    }
 
     isResettingRef.current = true
     pendingLocalSceneRef.current = null
@@ -2246,7 +2363,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       lastNonEmptySceneRef.current = false
     })
     setHasBackground(false)
-  }, [])
+    setHasBoardContent(false)
+    setBackgroundInfo(null)
+  }, [buildSceneSnapshot])
+
+  const clearCanvas = useCallback(() => {
+    handleReset({ preserveUndoSnapshot: true })
+  }, [handleReset])
 
   useEffect(() => {
     if (!token) {
@@ -2526,6 +2649,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       }
 
       nextElements = simplified.elements
+      if (nextElements.length > 0 || Object.keys(files).length > 0) {
+        lastClearedSceneRef.current = null
+      }
       lastNonEmptySceneRef.current = nextElements.length > 0
       setHasBackground(nextElements.some(isBackgroundElement))
       setHasBoardContent(hasNonBackgroundElements(nextElements))
@@ -2557,6 +2683,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         setBackgroundPickerOpen(true)
       },
       insertImageFile,
+      clearCanvas: () => {
+        clearCanvas()
+      },
       clearBackground: () => {
         handleBackgroundClear()
       },
@@ -2575,7 +2704,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       setAnnotationTool,
       setAnnotationStyle,
     }),
-    [handleBackgroundClear, insertImageFile, setAnnotationStyle, setAnnotationTool, triggerHistoryAction],
+    [clearCanvas, handleBackgroundClear, insertImageFile, setAnnotationStyle, setAnnotationTool, triggerHistoryAction],
   )
 
   return (
@@ -2813,7 +2942,6 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                   <MainMenu.DefaultItems.LoadScene />
                   <MainMenu.DefaultItems.SaveToActiveFile />
                   <MainMenu.DefaultItems.Export />
-                  <MainMenu.DefaultItems.ClearCanvas />
                   <MainMenu.Separator />
                   <MainMenu.DefaultItems.ToggleTheme />
                   <MainMenu.DefaultItems.ChangeCanvasBackground />

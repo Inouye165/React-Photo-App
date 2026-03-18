@@ -58,6 +58,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     useImperativeHandle(ref, () => ({
       openBackgroundPicker: () => canvasRef.current?.openBackgroundPicker(),
       insertImageFile: (file) => canvasRef.current?.insertImageFile(file) ?? Promise.resolve(),
+      clearCanvas: () => canvasRef.current?.clearCanvas(),
       clearBackground: () => canvasRef.current?.clearBackground(),
       toggleBackgroundFitMode: () => canvasRef.current?.toggleBackgroundFitMode(),
       toggleViewMode: () => canvasRef.current?.toggleViewMode(),

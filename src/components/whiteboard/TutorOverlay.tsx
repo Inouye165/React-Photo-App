@@ -18,6 +18,8 @@ type TutorOverlayProps = {
   reducedMotion: boolean
   onToggleVisible: () => void
   onSelectStep: (stepId: string) => void
+  allowedRegionIds?: string[]
+  showVisibilityToggle?: boolean
 }
 
 function getStatusTone(step: TutorStepAnalysis): string {
@@ -43,6 +45,8 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
   reducedMotion,
   onToggleVisible,
   onSelectStep,
+  allowedRegionIds,
+  showVisibilityToggle = true,
 }) => {
   void analysisSource
   void lessonMessage
@@ -50,24 +54,29 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
   const { activeStep, visibleRegionIds, showRegionIndices } = resolveTutorOverlayFocus(analysisResult, activeStepId)
   const guidedSteps = analysisResult?.guidedSolutionSteps?.length ? analysisResult.guidedSolutionSteps : (analysisResult?.steps ?? [])
   const activeStepNumber = typeof activeStep?.index === 'number' ? activeStep.index + 1 : null
+  const filteredRegionIds = allowedRegionIds?.length
+    ? visibleRegionIds.filter((regionId) => allowedRegionIds.includes(regionId))
+    : visibleRegionIds
 
   return (
     <div className="pointer-events-none absolute inset-0 z-20">
-      <div className="pointer-events-auto absolute right-4 top-4">
-        <button
-          type="button"
-          onClick={onToggleVisible}
-          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(17,17,17,0.76)] px-4 py-2 text-[13px] font-semibold text-[#F0EDE8] shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur"
-        >
-          {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-          {visible ? 'Hide board markers' : 'Show board markers'}
-          {visible && activeStepNumber ? (
-            <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] font-medium text-white/85">
-              Step {activeStepNumber}
-            </span>
-          ) : null}
-        </button>
-      </div>
+      {showVisibilityToggle ? (
+        <div className="pointer-events-auto absolute right-4 top-4">
+          <button
+            type="button"
+            onClick={onToggleVisible}
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(17,17,17,0.76)] px-4 py-2 text-[13px] font-semibold text-[#F0EDE8] shadow-[0_14px_28px_rgba(0,0,0,0.22)] backdrop-blur"
+          >
+            {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            {visible ? 'Hide board markers' : 'Show board markers'}
+            {visible && activeStepNumber ? (
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[11px] font-medium text-white/85">
+                Step {activeStepNumber}
+              </span>
+            ) : null}
+          </button>
+        </div>
+      ) : null}
 
       {visible && analysisResult ? (
         <div className="absolute inset-0">
@@ -81,10 +90,10 @@ const TutorOverlay: React.FC<TutorOverlayProps> = ({
                 height: boardFrame.height,
               }}
             >
-              {analysisResult.regions.filter((region) => visibleRegionIds.includes(region.id)).map((region, index) => {
+              {analysisResult.regions.filter((region) => filteredRegionIds.includes(region.id)).map((region, index) => {
                 const isActive = activeStep?.regionId === region.id
                 const frame = projectTutorRegionToBoardFrame(boardFrame, region)
-                const visibleRegionIndex = visibleRegionIds.indexOf(region.id)
+                const visibleRegionIndex = filteredRegionIds.indexOf(region.id)
                 const stepForRegion = guidedSteps.find((step) => step.regionId === region.id)
                   ?? analysisResult.steps.find((step) => step.regionId === region.id)
 

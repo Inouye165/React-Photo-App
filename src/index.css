@@ -477,7 +477,7 @@ a:hover,
   flex: 1;
   min-height: 0;
   background: #111111;
-  padding: 0 88px 0 24px;
+  padding: 16px;
 }
 
 .whiteboard-page {
