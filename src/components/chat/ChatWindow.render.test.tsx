@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import ChatWindow from './ChatWindow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
+import type { ReactElement, ReactNode } from 'react'
 
 const testState = vi.hoisted(() => {
   const senderUser = { id: 'user-sender', username: 'Sender User' }
@@ -232,15 +233,16 @@ vi.mock('../IdentityGate', () => ({
 }))
 
 import { sendMessage } from '../../api'
+import * as AuthContextModule from '../../contexts/AuthContext'
 
-const { TestAuthProvider } = require('../../contexts/AuthContext') as {
+const { TestAuthProvider } = AuthContextModule as typeof AuthContextModule & {
   TestAuthProvider: ({
     value,
     children,
   }: {
     value: { user: { id: string } | null; profile: { username?: string | null } | null }
-    children: React.ReactNode
-  }) => React.ReactElement
+    children: ReactNode
+  }) => ReactElement
 }
 
 function renderChatWindowForUser(user: { id: string; username: string }) {
