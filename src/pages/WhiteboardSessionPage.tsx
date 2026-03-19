@@ -501,6 +501,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const touchPanStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null)
   const previousAnalysisDeviceCacheKeyRef = useRef<string | null>(null)
   const activeAnalysisRequestKeyRef = useRef<string | null>(null)
+  const panelLayoutSyncInitializedRef = useRef(false)
   const prefersReducedMotion = useReducedMotion()
 
   const currentUserId = user?.id ?? null
@@ -522,6 +523,41 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     [activeHelpRequest?.claimedByUsername, panelMode, studentDisplayName],
   )
   const isTutorActiveSessionFocus = isTutorView && sessionState === 'live' && desktopSidePanelOpen
+
+  useEffect(() => {
+    if (isMobileLayout) return
+
+    if (!panelLayoutSyncInitializedRef.current) {
+      panelLayoutSyncInitializedRef.current = true
+      return
+    }
+
+    let frameOne: number | null = null
+    let frameTwo: number | null = null
+    let cancelled = false
+
+    const dispatchLayoutResize = () => {
+      if (cancelled) return
+      window.dispatchEvent(new Event('resize'))
+    }
+
+    frameOne = window.requestAnimationFrame(() => {
+      dispatchLayoutResize()
+      frameTwo = window.requestAnimationFrame(() => {
+        dispatchLayoutResize()
+      })
+    })
+
+    return () => {
+      cancelled = true
+      if (frameOne !== null) {
+        window.cancelAnimationFrame(frameOne)
+      }
+      if (frameTwo !== null) {
+        window.cancelAnimationFrame(frameTwo)
+      }
+    }
+  }, [desktopSidePanelOpen, isMobileLayout])
   const requestSummarySource = useMemo(
     () => activeHelpRequest?.requestText?.trim() || activeHelpRequest?.problemDraft?.trim() || null,
     [activeHelpRequest?.problemDraft, activeHelpRequest?.requestText],

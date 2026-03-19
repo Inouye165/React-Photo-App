@@ -457,6 +457,13 @@ describe('RightSidePanel', () => {
     expect(screen.getByTestId('whiteboard-chat-window')).toHaveTextContent('Shared chat room: board-1')
   })
 
+  it('uses the shared chat conversation for student-mode whiteboards when a room is provided', () => {
+    renderPanel({ panelMode: 'student', chatRoomId: 'board-student-1' })
+
+    expect(screen.getByTestId('whiteboard-chat-window')).toHaveTextContent('Shared chat room: board-student-1')
+    expect(screen.queryByRole('textbox', { name: 'Message your tutor' })).not.toBeInTheDocument()
+  })
+
   it('shows visible analysis status for confirmation, loading, and errors', () => {
     const onRetryAnalysis = vi.fn()
     const { rerender } = renderPanel({ analysisPendingConfirmation: true })

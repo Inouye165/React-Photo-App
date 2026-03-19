@@ -27,7 +27,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('../../supabaseClient', () => ({ supabase: {} }))
 vi.mock('../../api', () => ({ API_BASE_URL: '', getAccessToken: () => Promise.resolve(''), getPhotos: vi.fn(), sendMessage: vi.fn() }))
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: null, profile: null }) }))
-vi.mock('../../hooks/useChatRealtime', () => ({ useChatRealtime: () => ({ messages: [], loading: false, error: null }) }))
+vi.mock('../../hooks/useChatRealtime', () => ({ useChatRealtime: () => ({ messages: [], loading: false, error: null, upsertLocalMessage: () => {}, refetchMessages: async () => {} }) }))
 vi.mock('../../hooks/usePresence', () => ({ usePresence: () => ({ isUserOnline: () => false }) }))
 vi.mock('../../hooks/useChatTyping', () => ({ useChatTyping: () => ({ typingUsernames: [], handleInputChange: () => {}, handleInputSubmit: () => {} }) }))
 vi.mock('./ChatBubble', () => ({ default: () => null }))
