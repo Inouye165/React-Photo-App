@@ -1713,6 +1713,42 @@ describe('WhiteboardSessionPage', () => {
     expect(screen.getByRole('button', { name: 'Hide panel' })).toBeInTheDocument()
   })
 
+  it('dispatches a resize signal when the desktop panel toggles so the whiteboard can remeasure', async () => {
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent')
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Open panel' })).toBeInTheDocument()
+    })
+
+    dispatchEventSpy.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(
+        dispatchEventSpy.mock.calls.some(([event]) => event instanceof Event && event.type === 'resize'),
+      ).toBe(true)
+    })
+
+    dispatchEventSpy.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide panel' }))
+
+    await waitFor(() => {
+      expect(
+        dispatchEventSpy.mock.calls.some(([event]) => event instanceof Event && event.type === 'resize'),
+      ).toBe(true)
+    })
+  })
+
   it('shows tutor board context near the canvas and routes back to chat', async () => {
     mockAuthState.value = {
       user: { id: 'user-1', app_metadata: { role: 'admin' } },

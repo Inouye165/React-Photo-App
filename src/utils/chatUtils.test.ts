@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { asChatMessage, sortMessages } from './chatUtils'
 
 describe('chatUtils.asChatMessage', () => {
-  it('accepts UUID message id and UUID photo_id string', () => {
+  it('accepts string ids and preserves string photo ids', () => {
     const msg = asChatMessage({
       id: '11111111-1111-4111-8111-111111111111',
       room_id: 'room-1',
@@ -18,7 +18,7 @@ describe('chatUtils.asChatMessage', () => {
     expect(msg?.photo_id).toBe('22222222-2222-4222-8222-222222222222')
   })
 
-  it('returns null when id is not a UUID string', () => {
+  it('stringifies numeric message ids from the local chat schema', () => {
     const msg = asChatMessage({
       id: 123,
       room_id: 'room-1',
@@ -28,10 +28,11 @@ describe('chatUtils.asChatMessage', () => {
       created_at: new Date().toISOString(),
     })
 
-    expect(msg).toBeNull()
+    expect(msg).not.toBeNull()
+    expect(msg?.id).toBe('123')
   })
 
-  it('treats non-string photo_id as null', () => {
+  it('stringifies numeric photo ids so attachments survive normalization', () => {
     const msg = asChatMessage({
       id: '11111111-1111-4111-8111-111111111111',
       room_id: 'room-1',
@@ -42,7 +43,20 @@ describe('chatUtils.asChatMessage', () => {
     })
 
     expect(msg).not.toBeNull()
-    expect(msg?.photo_id).toBeNull()
+    expect(msg?.photo_id).toBe('42')
+  })
+
+  it('returns null when the id cannot be normalized', () => {
+    const msg = asChatMessage({
+      id: { value: 123 },
+      room_id: 'room-1',
+      sender_id: 'user-1',
+      content: 'hi',
+      photo_id: null,
+      created_at: new Date().toISOString(),
+    })
+
+    expect(msg).toBeNull()
   })
 })
 

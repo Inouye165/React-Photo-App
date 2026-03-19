@@ -81,7 +81,7 @@ function formatTime(iso: string): string {
 
 export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace' }: ChatWindowProps) {
   const { user, profile } = useAuth()
-  const { messages, loading, error, upsertLocalMessage } = useChatRealtime(roomId, { userId: user?.id ?? null })
+  const { messages, loading, error, upsertLocalMessage, refetchMessages } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
   const isConversationMode = mode === 'conversation'
 
@@ -556,8 +556,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       setDraft('')
       setSelectedPhotoId(null)
       setPickerOpen(false)
+      void refetchMessages()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      void refetchMessages()
       console.error('[ChatWindow] Failed to send message', {
         roomId,
         userId: user?.id ?? null,
@@ -827,7 +829,20 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         data-testid="chat-messages"
       >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
-        {error && <div className="text-sm text-red-600">Failed to load messages: {error}</div>}
+        {error && (
+          <div className={messages.length > 0 ? 'text-sm text-amber-700' : 'text-sm text-red-600'}>
+            {messages.length > 0 ? 'Live updates are recovering. Latest messages may appear with a short delay.' : `Failed to load messages: ${error}`}{' '}
+            <button
+              type="button"
+              onClick={() => {
+                void refetchMessages()
+              }}
+              className="underline"
+            >
+              Retry now
+            </button>
+          </div>
+        )}
 
         {!loading && !error && messages.length === 0 && (
           <div className="text-sm text-slate-500">No messages yet. Say hi.</div>

@@ -3164,17 +3164,25 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
       {panelMode === 'student' ? (
         <div className="min-h-0 flex-1 overflow-hidden bg-[#111827]">
-          <StudentPanel
-            messages={chatMessages}
-            composerValue={chatComposerValue}
-            onComposerValueChange={setChatComposerValue}
-            onApplyComposerText={handleApplyComposerText}
-            onSendMessage={handleSendChatMessage}
-            boardActionContext={boardActionContext}
-            studentName={studentName}
-            studentPresence={studentPresence}
-            studentLastSeenText={studentLastSeenText}
-          />
+          {chatRoomId ? (
+            <section className="h-full min-h-0 p-4">
+              <div className="h-full overflow-hidden rounded-[16px] border border-white/10 bg-white shadow-[0_18px_36px_rgba(0,0,0,0.22)]">
+                <ChatWindow roomId={chatRoomId} mode="conversation" />
+              </div>
+            </section>
+          ) : (
+            <StudentPanel
+              messages={chatMessages}
+              composerValue={chatComposerValue}
+              onComposerValueChange={setChatComposerValue}
+              onApplyComposerText={handleApplyComposerText}
+              onSendMessage={handleSendChatMessage}
+              boardActionContext={boardActionContext}
+              studentName={studentName}
+              studentPresence={studentPresence}
+              studentLastSeenText={studentLastSeenText}
+            />
+          )}
         </div>
       ) : (
       <>

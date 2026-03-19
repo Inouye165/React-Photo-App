@@ -1,5 +1,27 @@
 import type { ChatMessage } from '../types/chat'
 
+function normalizeRequiredString(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? trimmed : null
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+
+  return null
+}
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (value == null) return null
+  return normalizeRequiredString(value)
+}
+
 export function sortMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   return [...messages].sort((a, b) => {
     const at = Date.parse(a.created_at)
@@ -45,19 +67,24 @@ export function asChatMessage(row: unknown): ChatMessage | null {
   }
   const r = row as Record<string, unknown>
 
-  if (typeof r.id !== 'string' || !r.id.trim()) {
-    logDrop('id is missing or not a UUID string', r)
+  const normalizedId = normalizeRequiredString(r.id)
+  if (!normalizedId) {
+    logDrop('id is missing or invalid', r)
     return null
   }
 
-  if (typeof r.room_id !== 'string') {
+  const normalizedRoomId = normalizeRequiredString(r.room_id)
+  if (!normalizedRoomId) {
     logDrop('room_id is missing or invalid', r)
     return null
   }
-  if (typeof r.sender_id !== 'string') {
+
+  const normalizedSenderId = normalizeRequiredString(r.sender_id)
+  if (!normalizedSenderId) {
     logDrop('sender_id is missing or invalid', r)
     return null
   }
+
   if (typeof r.content !== 'string') {
     logDrop('content is missing or invalid', r)
     return null
@@ -67,12 +94,12 @@ export function asChatMessage(row: unknown): ChatMessage | null {
     return null
   }
 
-  const normalizedPhotoId = r.photo_id == null ? null : typeof r.photo_id === 'string' && r.photo_id.trim() ? r.photo_id : null
+  const normalizedPhotoId = normalizeOptionalString(r.photo_id)
 
   return {
-    id: r.id,
-    room_id: r.room_id,
-    sender_id: r.sender_id,
+    id: normalizedId,
+    room_id: normalizedRoomId,
+    sender_id: normalizedSenderId,
     content: r.content,
     photo_id: normalizedPhotoId,
     created_at: r.created_at,

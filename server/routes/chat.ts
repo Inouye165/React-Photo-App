@@ -3,6 +3,7 @@ import type { Knex } from 'knex';
 import { z } from 'zod';
 
 const { validateRequest } = require('../validation/validateRequest');
+const supabase = require('../lib/supabaseClient');
 
 type AuthenticatedRequest = Request & {
   user?: {
@@ -43,9 +44,16 @@ export default function createChatRouter({ db }: { db: Knex }) {
           return res.status(401).json({ error: 'Unauthorized' });
         }
 
-        const membership = await db('room_members')
-          .where({ room_id: roomId, user_id: userId })
-          .first();
+        const { data: membership, error: membershipError } = await supabase
+          .from('room_members')
+          .select('room_id, user_id')
+          .eq('room_id', roomId)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (membershipError) {
+          return res.status(500).json({ error: 'Failed to verify room membership' });
+        }
 
         if (!membership) {
           return res.status(403).json({ error: 'You are not a member of this room.' });
@@ -62,14 +70,20 @@ export default function createChatRouter({ db }: { db: Knex }) {
           return res.status(400).json({ error: 'Message content is empty' });
         }
 
-        const [insertedMessage] = await db('messages')
+        const { data: insertedMessage, error: insertError } = await supabase
+          .from('messages')
           .insert({
             room_id: roomId,
             sender_id: userId,
             content: trimmedContent,
             photo_id: normalizedPhotoId,
           })
-          .returning(['id', 'room_id', 'sender_id', 'content', 'photo_id', 'created_at']);
+          .select('id, room_id, sender_id, content, photo_id, created_at')
+          .single();
+
+        if (insertError || !insertedMessage) {
+          return res.status(500).json({ error: 'Failed to send message' });
+        }
 
         return res.status(201).json(insertedMessage);
       } catch (err) {
