@@ -1,7 +1,7 @@
 import type { Photo } from '../types/photo'
 import type { ChatMessage, ChatRoom, ChatRoomMetadata, ChatRoomType } from '../types/chat'
 import { supabase } from '../supabaseClient'
-import { API_BASE_URL, request } from './httpClient'
+import { API_BASE_URL, ApiError, request } from './httpClient'
 import { getAuthHeadersAsync } from './auth'
 import { logActivity } from './activity'
 
@@ -351,25 +351,43 @@ export async function setRoomOwner(roomId: string, userId: string, isOwner: bool
 }
 
 export async function sendMessage(roomId: string, content: string, photoId?: PhotoId | null): Promise<ChatMessage> {
-  const userId = await requireAuthedUserId()
   if (!roomId) throw new Error('Missing roomId')
 
   const trimmed = content.trim()
   const hasPhoto = photoId != null && photoId !== ''
   if (!trimmed && !hasPhoto) throw new Error('Message content is empty')
 
-  const { data, error } = await supabase
-    .from('messages')
-    .insert({ room_id: roomId, sender_id: userId, content: trimmed, photo_id: hasPhoto ? photoId : null })
-    .select('id, room_id, sender_id, content, photo_id, created_at')
-    .single()
+  const headers = await getAuthHeadersAsync(true)
+  let data: ChatMessage
 
-  if (error) throw error
+  try {
+    data = await request<ChatMessage>({
+      path: `/api/v1/chat/rooms/${roomId}/messages`,
+      method: 'POST',
+      headers,
+      body: {
+        content: trimmed,
+        photoId: hasPhoto ? photoId : null,
+      },
+    })
+  } catch (error) {
+    console.error('[CHAT-SEND] request failed', {
+      roomId,
+      hasPhoto,
+      contentLength: trimmed.length,
+      status: error instanceof ApiError ? error.status ?? null : null,
+      code: error instanceof ApiError ? error.code ?? null : null,
+      details: error instanceof ApiError ? error.details ?? null : null,
+      message: error instanceof Error ? error.message : String(error),
+    })
+    throw error
+  }
+
   if (!data) throw new Error('Failed to send message')
 
   if (import.meta.env.DEV) {
     try {
-      console.log('[api/chat] sendMessage inserted', { roomId, userId, data })
+      console.log('[api/chat] sendMessage inserted', { roomId, data })
     } catch {
       // ignore
     }

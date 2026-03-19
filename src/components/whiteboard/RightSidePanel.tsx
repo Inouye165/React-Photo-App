@@ -3067,7 +3067,7 @@ const RightSidePanel: React.FC<RightSidePanelProps> = ({
 
   const renderPanelContent = (tabId: VisibleTabId): React.JSX.Element => {
     if (tabId === 'chat') {
-      if (panelMode === 'tutor' && chatRoomId) {
+      if (chatRoomId) {
         return (
           <div className="min-h-0 flex-1 overflow-hidden rounded-[16px] border border-white/10 bg-white shadow-[0_18px_36px_rgba(0,0,0,0.18)]">
             <ChatWindow roomId={chatRoomId} mode="conversation" />

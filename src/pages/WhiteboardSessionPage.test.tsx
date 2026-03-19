@@ -189,6 +189,7 @@ vi.mock('../components/whiteboard/RightSidePanel', () => ({
       <div data-testid="right-side-panel" id="whiteboard-side-panel" data-active-tab={props.activeTab ?? props.initialTab ?? ''}>
         <div>Active tab: {props.activeTab ?? props.initialTab ?? ''}</div>
         <div>Panel mode: {props.panelMode ?? 'student'}</div>
+        <div>Panel chat room: {props.chatRoomId ?? 'none'}</div>
         <div>Participant name: {props.studentName ?? ''}</div>
         <div>Participant status text: {props.studentLastSeenText ?? ''}</div>
         <div data-testid="panel-session-summary">{props.sessionSummaryText ?? ''}</div>
@@ -474,6 +475,7 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Panel mode: tutor')).toBeInTheDocument()
     })
 
+    expect(screen.getByText('Panel chat room: board-1')).toBeInTheDocument()
     expect(screen.getByTestId('panel-session-summary')).toHaveTextContent('')
     expect(screen.getByTestId('panel-session-meta')).toHaveTextContent('')
     expect(screen.getByTestId('panel-session-grade')).toHaveTextContent('')
@@ -879,6 +881,7 @@ describe('WhiteboardSessionPage', () => {
 
     expect(screen.getByText('Active tab: help-request')).toBeInTheDocument()
     expect(screen.getByText('Panel mode: student')).toBeInTheDocument()
+    expect(screen.getByText('Panel chat room: board-1')).toBeInTheDocument()
   })
 
   it('submits a help request instead of running tutor analysis for students', async () => {
@@ -1508,6 +1511,7 @@ describe('WhiteboardSessionPage', () => {
     })
 
     expect(screen.getByText('Tutor Focus')).toBeInTheDocument()
+    expect(screen.getByText('Panel chat room: board-1')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Tutor queue' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /share/i })).not.toBeInTheDocument()
     expect(screen.getByText('Board reference')).toBeInTheDocument()
@@ -1766,6 +1770,7 @@ describe('WhiteboardSessionPage', () => {
       expect(screen.getByText('Panel mode: student')).toBeInTheDocument()
     })
 
+    expect(screen.getByText('Panel chat room: board-1')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Trigger board context' }))
 
     expect(screen.queryByText('Focused Step On Board')).not.toBeInTheDocument()

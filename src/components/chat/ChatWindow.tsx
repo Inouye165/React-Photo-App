@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage, leaveOrDeleteRoom } from '../../api'
+import { ApiError } from '../../api/httpClient'
 import { useNavigate } from 'react-router-dom'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
@@ -479,7 +480,8 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     }
   }, [pickerOpen, pickerPhotos.length, pickerReloadKey, roomId])
 
-  const canSend = Boolean(roomId && user?.id && memberRosterLoaded && memberIds.includes(user.id)) && !sending
+  const hasKnownMembershipMismatch = Boolean(user?.id && memberRosterLoaded && memberIds.length > 0 && !memberIds.includes(user.id))
+  const canSend = Boolean(roomId && user?.id) && !sending
 
   const composerMountedRef = useRef<boolean>(false)
 
@@ -539,7 +541,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     handleInputSubmit()
 
     // Membership guard: ensure current user is a member of the room
-    if (user?.id && memberRosterLoaded && !memberIds.includes(user.id)) {
+    if (hasKnownMembershipMismatch) {
       setSendError('You are not a member of this room.')
       return
     }
@@ -556,7 +558,19 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       setPickerOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (import.meta.env.DEV) console.error('[ChatWindow] Failed to send message:', err)
+      console.error('[ChatWindow] Failed to send message', {
+        roomId,
+        userId: user?.id ?? null,
+        memberRosterLoaded,
+        memberCount: memberIds.length,
+        hasKnownMembershipMismatch,
+        draftLength: trimmed.length,
+        hasSelectedPhoto: selectedPhotoId != null,
+        status: err instanceof ApiError ? err.status ?? null : null,
+        code: err instanceof ApiError ? err.code ?? null : null,
+        details: err instanceof ApiError ? err.details ?? null : null,
+        message,
+      })
       setSendError(message)
     } finally {
       setSending(false)
@@ -964,7 +978,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           </div>
         )}
 
-        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && (
+        {hasKnownMembershipMismatch && (
           <div className="mb-2 text-sm text-red-600">You can't send messages in this room</div>
         )}
 
