@@ -39,6 +39,42 @@ function createAdminRouter({ db }) {
     return true;
   }
 
+  async function attachCommentDetails(rows) {
+    const userIds = [...new Set(rows.map((row) => row.user_id).filter((value) => typeof value === 'string' && value.length > 0))];
+    const photoIds = [...new Set(rows.map((row) => row.photo_id).filter((value) => Number.isInteger(value) && value > 0))];
+
+    const usernamesById = new Map();
+    const filenamesById = new Map();
+
+    if (userIds.length > 0) {
+      try {
+        const users = await db('users').select('id', 'username').whereIn('id', userIds);
+        for (const user of users) {
+          usernamesById.set(user.id, user.username ?? null);
+        }
+      } catch (error) {
+        console.warn('[admin] Comments user lookup skipped:', error);
+      }
+    }
+
+    if (photoIds.length > 0) {
+      try {
+        const photos = await db('photos').select('id', 'filename').whereIn('id', photoIds);
+        for (const photo of photos) {
+          filenamesById.set(photo.id, photo.filename ?? null);
+        }
+      } catch (error) {
+        console.warn('[admin] Comments photo lookup skipped:', error);
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      username: row.user_id ? usernamesById.get(row.user_id) ?? null : null,
+      filename: Number.isInteger(row.photo_id) ? filenamesById.get(row.photo_id) ?? null : null
+    }));
+  }
+
   // Initialize Supabase Admin Client with Service Role Key
   // SECURITY: Service Role Key bypasses RLS and must NEVER be exposed to frontend
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -240,7 +276,8 @@ function createAdminRouter({ db }) {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
       const offset = parseInt(req.query.offset, 10) || 0;
 
-      // Build query using Knex query builder with joins
+      // Query comments first, then hydrate related usernames and filenames separately.
+      // This keeps moderation available even when linked user/photo rows are missing.
       let query = db('comments as c')
         .select(
           'c.id',
@@ -249,12 +286,8 @@ function createAdminRouter({ db }) {
           'c.content',
           'c.is_reviewed',
           'c.created_at',
-          'c.updated_at',
-          'u.username',
-          'p.filename'
-        )
-        .leftJoin('users as u', 'c.user_id', 'u.id')
-        .leftJoin('photos as p', 'c.photo_id', 'p.id');
+          'c.updated_at'
+        );
 
       // Add is_reviewed filter if provided
       if (isReviewed === 'true' || isReviewed === 'false') {
@@ -266,6 +299,7 @@ function createAdminRouter({ db }) {
         .orderBy('c.created_at', 'desc')
         .limit(limit)
         .offset(offset);
+      const data = await attachCommentDetails(result);
 
       // Get total count for pagination
       let countQuery = db('comments');
@@ -277,7 +311,7 @@ function createAdminRouter({ db }) {
 
       return res.json({
         success: true,
-        data: result,
+        data,
         total,
         limit,
         offset

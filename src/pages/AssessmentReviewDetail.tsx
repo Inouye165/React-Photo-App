@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, House, Shield } from 'lucide-react'
 import { request, ApiError } from '../api/httpClient'
 import { getAuthHeadersAsync } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
@@ -38,6 +39,8 @@ export default function AssessmentReviewDetail() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = useMemo(() => user?.app_metadata?.role === 'admin', [user])
+
+  const handleBackNavigation = () => navigate(-1)
 
   const [row, setRow] = useState<AssessmentRow | null>(null)
   const [loading, setLoading] = useState(false)
@@ -145,6 +148,22 @@ export default function AssessmentReviewDetail() {
           <div className="mx-auto max-w-6xl rounded-2xl border border-slate-700 bg-slate-800/70 p-6">
             <h1 className="mb-2 text-2xl font-semibold text-white">Assessment Review</h1>
             <p className="text-slate-300">You do not have permission to view this page.</p>
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={handleBackNavigation}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
+              <button
+                onClick={() => navigateWithTransition(navigate, '/')}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <House size={16} />
+                <span>Home</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -170,13 +189,39 @@ export default function AssessmentReviewDetail() {
             </Link>
           </div>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-slate-100 hover:border-slate-400 disabled:opacity-50"
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleBackNavigation}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Back"
+          >
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <button
+            onClick={() => navigateWithTransition(navigate, '/admin')}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Admin Dashboard"
+          >
+            <Shield size={16} />
+            <span>Admin</span>
+          </button>
+          <button
+            onClick={() => navigateWithTransition(navigate, '/')}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Home"
+          >
+            <House size={16} />
+            <span>Home</span>
+          </button>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-slate-100 hover:border-slate-400 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? <div className="mb-4 p-3 rounded border border-red-200 bg-red-50 text-red-700">{error}</div> : null}

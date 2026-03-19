@@ -101,6 +101,7 @@ const createMockDb = () => {
       const createChain = () => {
         const chain = {
           where: jest.fn(function() { return this; }),
+          whereIn: jest.fn(function() { return this; }),
           orderBy: jest.fn(function() { return this; }),
           limit: jest.fn(function() { return this; }),
           offset: jest.fn(function() { return this; }),
@@ -109,6 +110,17 @@ const createMockDb = () => {
           count: jest.fn().mockResolvedValue([{ total: '0' }]),
           select: jest.fn(function() { return this; }),
           leftJoin: jest.fn(function() { return this; }),
+          then: jest.fn((resolve) => resolve([]))
+        };
+        return chain;
+      };
+      return createChain();
+    }
+    if (tableName === 'users' || tableName === 'photos') {
+      const createChain = () => {
+        const chain = {
+          select: jest.fn(function() { return this; }),
+          whereIn: jest.fn(function() { return this; }),
           then: jest.fn((resolve) => resolve([]))
         };
         return chain;
@@ -340,6 +352,72 @@ describe('Admin Routes', () => {
       
       // Verify Knex-style query methods were called (not db.query)
       expect(mockDb).toHaveBeenCalledWith('comments as c');
+    });
+
+    it('should still return comments when related user or photo lookups fail', async () => {
+      const commentsRows = [
+        {
+          id: 7,
+          photo_id: 999,
+          user_id: 'missing-user',
+          content: 'Needs review',
+          is_reviewed: false,
+          created_at: '2026-03-18T00:00:00.000Z',
+          updated_at: '2026-03-18T00:00:00.000Z'
+        }
+      ];
+
+      const resilientDb = jest.fn((tableName) => {
+        if (tableName === 'comments as c') {
+          const chain = {
+            select: jest.fn(function() { return this; }),
+            where: jest.fn(function() { return this; }),
+            orderBy: jest.fn(function() { return this; }),
+            limit: jest.fn(function() { return this; }),
+            offset: jest.fn(function() { return this; }),
+            then: jest.fn((resolve) => resolve(commentsRows))
+          };
+          return chain;
+        }
+
+        if (tableName === 'comments') {
+          return {
+            where: jest.fn(function() { return this; }),
+            count: jest.fn().mockResolvedValue([{ total: '1' }])
+          };
+        }
+
+        if (tableName === 'users' || tableName === 'photos') {
+          return {
+            select: jest.fn(function() { return this; }),
+            whereIn: jest.fn().mockRejectedValue(new Error('lookup unavailable'))
+          };
+        }
+
+        return {
+          where: jest.fn().mockReturnThis(),
+          select: jest.fn().mockResolvedValue([])
+        };
+      });
+      resilientDb.fn = { now: jest.fn(() => 'NOW()') };
+
+      const resilientApp = createTestApp(resilientDb);
+
+      const response = await request(resilientApp)
+        .get('/api/admin/comments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-csrf-token', csrfToken)
+        .set('Cookie', [`csrfToken=${csrfToken}`]);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data).toEqual([
+        expect.objectContaining({
+          id: 7,
+          username: null,
+          filename: null,
+        })
+      ]);
     });
   });
 
