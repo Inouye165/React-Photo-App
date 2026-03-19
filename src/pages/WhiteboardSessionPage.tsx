@@ -2963,7 +2963,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
               ) : null}
 
               {mobileActiveTab === 'chat' ? (
-                panelMode === 'tutor' ? (
+                boardId ? (
                   <div className="h-full min-h-0 overflow-hidden bg-white">
                     <ChatWindow roomId={boardId} mode="conversation" />
                   </div>
@@ -3363,7 +3363,7 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 className="whiteboard-side-panel"
                 width={isTutorActiveSessionFocus ? 'clamp(380px, 34vw, 520px)' : 'clamp(320px, 28vw, 440px)'}
                 activeTab={desktopSidePanelTab}
-                chatRoomId={panelMode === 'tutor' ? boardId : null}
+                chatRoomId={boardId ?? null}
                 studentName={participantDisplayName}
                 studentPresence={studentPresence}
                 studentLastSeenText={participantLastSeenText}
