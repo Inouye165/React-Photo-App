@@ -94,6 +94,21 @@ interface AdminUserSummary {
   updated_at: string | null;
 }
 
+interface AdminCommentRow {
+  id: number;
+  photo_id: number | null;
+  user_id: string | null;
+  content: string;
+  is_reviewed: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AdminCommentDetailsRow extends AdminCommentRow {
+  username: string | null;
+  filename: string | null;
+}
+
 // Email validation regex (safe pattern to prevent ReDoS)
 // Limits length and uses specific character sets to avoid catastrophic backtracking
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
@@ -178,6 +193,42 @@ function createAdminRouter({ db }: { db: any }): Router {
       if (normalized === 'false') return false;
     }
     return null;
+  }
+
+  async function attachCommentDetails(rows: AdminCommentRow[]): Promise<AdminCommentDetailsRow[]> {
+    const userIds = [...new Set(rows.map((row) => row.user_id).filter((value): value is string => typeof value === 'string' && value.length > 0))];
+    const photoIds = [...new Set(rows.map((row) => row.photo_id).filter((value): value is number => Number.isInteger(value) && value > 0))];
+
+    const usernamesById = new Map<string, string | null>();
+    const filenamesById = new Map<number, string | null>();
+
+    if (userIds.length > 0) {
+      try {
+        const users = await db('users').select('id', 'username').whereIn('id', userIds);
+        for (const user of users as Array<{ id: string; username: string | null }>) {
+          usernamesById.set(user.id, user.username ?? null);
+        }
+      } catch (error) {
+        console.warn('[admin] Comments user lookup skipped:', error);
+      }
+    }
+
+    if (photoIds.length > 0) {
+      try {
+        const photos = await db('photos').select('id', 'filename').whereIn('id', photoIds);
+        for (const photo of photos as Array<{ id: number; filename: string | null }>) {
+          filenamesById.set(photo.id, photo.filename ?? null);
+        }
+      } catch (error) {
+        console.warn('[admin] Comments photo lookup skipped:', error);
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      username: row.user_id ? usernamesById.get(row.user_id) ?? null : null,
+      filename: typeof row.photo_id === 'number' ? filenamesById.get(row.photo_id) ?? null : null,
+    }));
   }
 
   // Initialize Supabase Admin Client with Service Role Key
@@ -589,7 +640,8 @@ function createAdminRouter({ db }: { db: any }): Router {
       const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
       const offset = parseInt(req.query.offset as string, 10) || 0;
 
-      // Build query using Knex query builder with joins
+      // Query comments first, then hydrate related usernames and filenames separately.
+      // This keeps moderation available even when linked user/photo rows are missing.
       let query = db('comments as c')
         .select(
           'c.id',
@@ -598,12 +650,8 @@ function createAdminRouter({ db }: { db: any }): Router {
           'c.content',
           'c.is_reviewed',
           'c.created_at',
-          'c.updated_at',
-          'u.username',
-          'p.filename'
-        )
-        .leftJoin('users as u', 'c.user_id', 'u.id')
-        .leftJoin('photos as p', 'c.photo_id', 'p.id');
+          'c.updated_at'
+        );
 
       // Add is_reviewed filter if provided
       if (isReviewed === 'true' || isReviewed === 'false') {
@@ -612,6 +660,7 @@ function createAdminRouter({ db }: { db: any }): Router {
 
       // Add ordering and pagination
       const result = await query.orderBy('c.created_at', 'desc').limit(limit).offset(offset);
+      const data = await attachCommentDetails(result as AdminCommentRow[]);
 
       // Get total count for pagination
       let countQuery = db('comments');
@@ -623,7 +672,7 @@ function createAdminRouter({ db }: { db: any }): Router {
 
       return res.json({
         success: true,
-        data: result,
+        data,
         total,
         limit,
         offset

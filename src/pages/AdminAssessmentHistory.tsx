@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, House, Shield } from 'lucide-react'
 import { request, ApiError } from '../api/httpClient'
 import { getAuthHeadersAsync } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
@@ -64,6 +65,8 @@ export default function AdminAssessmentHistory() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = useMemo(() => user?.app_metadata?.role === 'admin', [user])
+
+  const handleBackNavigation = () => navigate(-1)
 
   const [rows, setRows] = useState<AssessmentRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -191,6 +194,22 @@ export default function AdminAssessmentHistory() {
           <div className="mx-auto max-w-5xl rounded-2xl border border-slate-700 bg-slate-800/70 p-6">
             <h1 className="mb-2 text-2xl font-semibold text-white">Admin Assessments</h1>
             <p className="text-slate-300">You do not have permission to view this page.</p>
+            <div className="mt-6 flex items-center gap-3">
+              <button
+                onClick={handleBackNavigation}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
+              <button
+                onClick={() => navigateWithTransition(navigate, '/')}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <House size={16} />
+                <span>Home</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -203,6 +222,30 @@ export default function AdminAssessmentHistory() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold text-white">Admin Assessments</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleBackNavigation}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Back"
+          >
+            <ArrowLeft size={16} />
+            <span>Back</span>
+          </button>
+          <button
+            onClick={() => navigateWithTransition(navigate, '/admin')}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Admin Dashboard"
+          >
+            <Shield size={16} />
+            <span>Admin</span>
+          </button>
+          <button
+            onClick={() => navigateWithTransition(navigate, '/')}
+            className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+            aria-label="Home"
+          >
+            <House size={16} />
+            <span>Home</span>
+          </button>
           <button
             onClick={load}
             disabled={loading}

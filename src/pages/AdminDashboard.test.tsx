@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
 let mockAuthState: any = {
   user: { app_metadata: { role: 'admin' } },
@@ -69,6 +69,72 @@ describe('AdminDashboard - Feedback tab', () => {
     const call = requestMock.mock.calls.find(Boolean)?.[0];
     expect(call.path).toBe('/api/admin/feedback');
     expect(call.method).toBe('GET');
+  });
+});
+
+describe('AdminDashboard - Exit navigation', () => {
+  beforeEach(() => {
+    requestMock.mockReset();
+    mockAuthState = { user: { app_metadata: { role: 'admin' } } };
+  });
+
+  it('renders explicit Back and Home buttons', () => {
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Home' })).toBeInTheDocument();
+  });
+
+  it('navigates home when Home is clicked', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <Routes>
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/" element={<div>Home route</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Home route')).toBeInTheDocument();
+    });
+  });
+
+  it('navigates back when Back is clicked', async () => {
+    render(
+      <MemoryRouter initialEntries={['/gallery', '/admin']} initialIndex={1}>
+        <Routes>
+          <Route path="/gallery" element={<div>Gallery route</div>} />
+          <Route path="/admin" element={<AdminDashboard />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Gallery route')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Back and Home on access denied', () => {
+    mockAuthState = { user: { app_metadata: { role: 'user' } } };
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText('Access Denied')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Home' })).toBeInTheDocument();
   });
 });
 

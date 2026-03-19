@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
-import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare, Inbox, Trash2, History } from 'lucide-react';
+import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare, Inbox, Trash2, History, ArrowLeft, House } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
 import { request } from '../api/httpClient';
 import { PREMIUM_PAGE_CONTAINER, PREMIUM_PAGE_SHELL, PREMIUM_SURFACE } from '../styles/ui';
@@ -57,8 +57,8 @@ interface SuggestionsResponse {
 
 interface AdminComment {
   id: number;
-  photo_id: number;
-  user_id: string;
+  photo_id: number | null;
+  user_id: string | null;
   content: string;
   is_reviewed: boolean;
   created_at: string;
@@ -178,6 +178,8 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('invites');
+
+  const handleBackNavigation = () => navigate(-1);
   
   // Invites tab state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -618,6 +620,24 @@ export default function AdminDashboard() {
             <p className="text-slate-300">
             You do not have permission to access the admin dashboard.
             </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={handleBackNavigation}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <ArrowLeft size={16} />
+                <span>Back</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateWithTransition(navigate, '/')}
+                className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              >
+                <House size={16} />
+                <span>Home</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -633,7 +653,25 @@ export default function AdminDashboard() {
             <h1 className="mb-2 text-3xl font-bold text-white">Admin Dashboard</h1>
             <p className="text-slate-300">Manage users and review AI-generated content</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={handleBackNavigation}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              aria-label="Back"
+            >
+              <ArrowLeft size={16} />
+              <span>Back</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateWithTransition(navigate, '/')}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400"
+              aria-label="Home"
+            >
+              <House size={16} />
+              <span>Home</span>
+            </button>
             <button
               type="button"
               onClick={() => setActiveTab('feedback')}
@@ -967,7 +1005,7 @@ export default function AdminDashboard() {
                         <div className="flex items-start justify-between mb-3">
                           <div>
                             <h3 className="font-medium text-gray-900">
-                              {comment.username || 'Anonymous'} on {comment.filename || `Photo #${comment.photo_id}`}
+                              {comment.username || 'Anonymous'} on {comment.filename || (comment.photo_id ? `Photo #${comment.photo_id}` : 'General feedback')}
                             </h3>
                             <p className="text-sm text-gray-500">
                               {new Date(comment.created_at).toLocaleDateString('en-US', {
