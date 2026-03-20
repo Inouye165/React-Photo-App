@@ -5,6 +5,7 @@ import { useChatRealtime } from './useChatRealtime'
 
 const {
   mockSelectResult,
+  orderMock,
   registerHandler,
   invokeHandler,
   emitSubscribeStatus,
@@ -47,6 +48,7 @@ const {
 
   return {
     mockSelectResult: vi.fn(),
+    orderMock: vi.fn(),
     registerHandler: register,
     invokeHandler: invoke,
     emitSubscribeStatus: emitStatus,
@@ -78,9 +80,12 @@ vi.mock('../supabaseClient', () => {
   const from = vi.fn(() => ({
     select: vi.fn(() => ({
       eq: vi.fn(() => ({
-        order: vi.fn(() => ({
+        order: vi.fn((column: string, options?: { ascending?: boolean }) => {
+          orderMock(column, options)
+          return {
           limit: vi.fn(() => mockSelectResult()),
-        })),
+          }
+        }),
       })),
     })),
   }))
@@ -112,6 +117,39 @@ describe('useChatRealtime', () => {
       ],
       error: null,
     })
+  })
+
+  it('loads the newest message window and keeps messages ascending in the UI', async () => {
+    mockSelectResult.mockResolvedValueOnce({
+      data: [
+        {
+          id: 'm4',
+          room_id: 'room-1',
+          sender_id: 'user-d',
+          content: 'latest',
+          photo_id: null,
+          created_at: '2026-03-19T19:00:03.000Z',
+        },
+        {
+          id: 'm3',
+          room_id: 'room-1',
+          sender_id: 'user-c',
+          content: 'newer',
+          photo_id: null,
+          created_at: '2026-03-19T19:00:02.000Z',
+        },
+      ],
+      error: null,
+    })
+
+    const { result } = renderHook(() => useChatRealtime('room-1', { userId: 'user-a', initialLimit: 2 }))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.messages.map((message) => message.id)).toEqual(['m3', 'm4'])
+    })
+
+    expect(orderMock).toHaveBeenCalledWith('created_at', { ascending: false })
   })
 
   it('loads initial messages and applies insert events', async () => {
@@ -162,7 +200,54 @@ describe('useChatRealtime', () => {
 
   it('polls while realtime is unhealthy and stops polling after recovery', async () => {
     vi.useFakeTimers()
-    renderHook(() => useChatRealtime('room-1', { userId: 'user-a' }))
+    const latestWindow = {
+      data: [
+        {
+          id: 'm5',
+          room_id: 'room-1',
+          sender_id: 'user-e',
+          content: 'newest',
+          photo_id: null,
+          created_at: '2026-03-19T19:00:04.000Z',
+        },
+        {
+          id: 'm4',
+          room_id: 'room-1',
+          sender_id: 'user-d',
+          content: 'latest',
+          photo_id: null,
+          created_at: '2026-03-19T19:00:03.000Z',
+        },
+      ],
+      error: null,
+    }
+
+    mockSelectResult
+      .mockResolvedValueOnce({
+        data: [
+          {
+            id: 'm4',
+            room_id: 'room-1',
+            sender_id: 'user-d',
+            content: 'latest',
+            photo_id: null,
+            created_at: '2026-03-19T19:00:03.000Z',
+          },
+          {
+            id: 'm3',
+            room_id: 'room-1',
+            sender_id: 'user-c',
+            content: 'newer',
+            photo_id: null,
+            created_at: '2026-03-19T19:00:02.000Z',
+          },
+        ],
+        error: null,
+      })
+      .mockResolvedValueOnce(latestWindow)
+      .mockResolvedValue(latestWindow)
+
+    const { result } = renderHook(() => useChatRealtime('room-1', { userId: 'user-a', initialLimit: 2 }))
 
     await act(async () => {
       await Promise.resolve()
@@ -181,6 +266,7 @@ describe('useChatRealtime', () => {
     })
 
     expect(mockSelectResult.mock.calls.length).toBeGreaterThan(callsAfterInitial)
+    expect(result.current.messages.map((message) => message.id)).toEqual(['m4', 'm5'])
 
     const callsAfterPoll = mockSelectResult.mock.calls.length
 

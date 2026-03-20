@@ -15,8 +15,10 @@ type WhiteboardPadProps = {
   boardId: string
   className?: string
   minimalChrome?: boolean
+  reconnectKey?: number
   onAccessDenied?: () => void
-  onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'offline') => void
+  onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'reconnecting' | 'offline' | 'failed') => void
+  onPossibleUnsentChangesChange?: (hasPossibleUnsentChanges: boolean) => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -33,8 +35,10 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       boardId,
       className,
       minimalChrome,
+      reconnectKey,
       onAccessDenied,
       onRealtimeStatusChange,
+      onPossibleUnsentChangesChange,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -76,11 +80,13 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             ref={canvasRef}
             boardId={boardId}
             token={token}
+            reconnectKey={reconnectKey}
             mode="pad"
             className="h-full"
             minimalChrome={minimalChrome}
             onAccessDenied={onAccessDenied}
             onRealtimeStatusChange={onRealtimeStatusChange}
+            onPossibleUnsentChangesChange={onPossibleUnsentChangesChange}
             onViewModeChange={onViewModeChange}
             onBackgroundFitModeChange={onBackgroundFitModeChange}
             onHasBackgroundChange={onHasBackgroundChange}
