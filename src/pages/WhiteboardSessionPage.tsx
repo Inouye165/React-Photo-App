@@ -61,7 +61,7 @@ import { buildTutorAnalysisDeviceCacheKey, clearTutorAnalysisDeviceCache, readTu
 import { tutorAssistDebug } from '../utils/tutorAssistDebug'
 import { formatRelativeSessionTimestampFromNow, parseSessionTimestamp } from '../utils/whiteboardSessionTimestamps'
 
-type RealtimeStatus = 'connected' | 'connecting' | 'offline'
+type RealtimeStatus = 'connected' | 'connecting' | 'reconnecting' | 'offline' | 'failed'
 type SessionState = 'idle' | 'queued' | 'live' | 'async'
 type ShapeTool = Extract<AnnotationTool, 'arrow' | 'rectangle' | 'ellipse'>
 type MobileWhiteboardTab = 'homework' | 'support' | 'chat'
@@ -422,6 +422,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [isSavingRename, setIsSavingRename] = useState(false)
   const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
+  const [realtimeReconnectKey, setRealtimeReconnectKey] = useState(0)
+  const [hasPossibleUnsentRealtimeChanges, setHasPossibleUnsentRealtimeChanges] = useState(false)
   const [inputMode, setInputMode] = useState<HomeworkInputMode>('photo')
   const [textContent, setTextContent] = useState('')
   const [formattedProblemLines, setFormattedProblemLines] = useState<FormattedProblemLine[]>([])
@@ -809,14 +811,36 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   }, [liveSessionStartedAt, liveSessionTimerLabel, requestSubmittedAgoText, sessionStartedAgoText, sessionState])
 
   const statusNotice = useMemo(() => {
+    if (realtimeStatus === 'failed') {
+      return {
+        tone: 'error' as const,
+        message: hasPossibleUnsentRealtimeChanges
+          ? 'Realtime sync stopped retrying. Changes you made while sync was down may not reach collaborators until you retry sync.'
+          : 'Realtime sync stopped retrying. If you made changes while sync was down, they may not reach collaborators until you retry sync.',
+        actionLabel: 'Retry sync',
+      }
+    }
+    if (realtimeStatus === 'reconnecting') {
+      return {
+        tone: 'info' as const,
+        message: 'Realtime sync dropped. Attempting to reconnect…',
+        actionLabel: null,
+      }
+    }
     if (realtimeStatus === 'offline') {
-      return { tone: 'error' as const, message: 'Realtime sync is offline. Changes will reconnect when the session recovers.' }
+      return { tone: 'error' as const, message: 'Realtime sync is offline.', actionLabel: null }
     }
     if (realtimeStatus === 'connecting') {
-      return { tone: 'info' as const, message: 'Connecting to collaborators…' }
+      return { tone: 'info' as const, message: 'Connecting to collaborators…', actionLabel: null }
     }
     return null
-  }, [realtimeStatus])
+  }, [hasPossibleUnsentRealtimeChanges, realtimeStatus])
+
+  const handleRetryRealtimeSync = useCallback(() => {
+    setRealtimeStatus('reconnecting')
+    setHasPossibleUnsentRealtimeChanges(false)
+    setRealtimeReconnectKey((current) => current + 1)
+  }, [])
 
   const refreshMembers = useCallback(async () => {
     if (!boardId) return
@@ -2603,7 +2627,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                 : 'border-chess-accent/30 bg-chess-accent/10 text-chess-accentSoft'
             }`}
           >
-            {statusNotice.message}
+            <div className="flex items-center justify-between gap-3">
+              <span>{statusNotice.message}</span>
+              {statusNotice.actionLabel ? (
+                <button
+                  type="button"
+                  onClick={handleRetryRealtimeSync}
+                  className="rounded-md border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-100 transition hover:bg-red-500/20"
+                >
+                  {statusNotice.actionLabel}
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -2808,9 +2843,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                           <WhiteboardPad
                             ref={whiteboardPadRef}
                             boardId={boardId}
+                            reconnectKey={realtimeReconnectKey}
                             className="m-0 h-full w-full p-0"
                             annotationMode={annotationMode}
                             onRealtimeStatusChange={handleRealtimeStatusChange}
+                            onPossibleUnsentChangesChange={setHasPossibleUnsentRealtimeChanges}
                             onHasBoardContentChange={setHasBoardContent}
                             onHasBackgroundChange={handleBackgroundChange}
                             onBackgroundImageAssetChange={handleBackgroundImageAssetChange}
@@ -3309,9 +3346,11 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
                   <WhiteboardPad
                     ref={whiteboardPadRef}
                     boardId={boardId}
+                    reconnectKey={realtimeReconnectKey}
                     className="h-full"
                     annotationMode={annotationMode}
                     onRealtimeStatusChange={handleRealtimeStatusChange}
+                    onPossibleUnsentChangesChange={setHasPossibleUnsentRealtimeChanges}
                     onViewModeChange={setBoardViewModeEnabled}
                     onHasBoardContentChange={setHasBoardContent}
                     onHasBackgroundChange={handleBackgroundChange}

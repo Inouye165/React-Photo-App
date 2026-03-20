@@ -36,6 +36,7 @@ import {
   getWhiteboardSnapshotCache,
   setWhiteboardSnapshotCache,
 } from '../../realtime/whiteboardSnapshotCache'
+import { getWhiteboardRealtimeStatusAfterDisconnect, WHITEBOARD_REALTIME_MAX_RETRIES } from '../../realtime/whiteboardRealtimeStatus'
 import { createCroppedBlob } from '../../utils/avatarCropper'
 import { compressForUpload } from '../../utils/clientImageProcessing'
 import { ApiError } from '../../api/httpClient'
@@ -701,11 +702,13 @@ function toWebpFileName(originalName: string): string {
 type ExcalidrawWhiteboardCanvasProps = {
   boardId: string
   token: string | null
+  reconnectKey?: number
   mode: 'viewer' | 'pad'
   className?: string
   minimalChrome?: boolean
   onAccessDenied?: () => void
   onRealtimeStatusChange?: (status: WhiteboardRealtimeStatus) => void
+  onPossibleUnsentChangesChange?: (hasPossibleUnsentChanges: boolean) => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -753,7 +756,7 @@ export type BackgroundInfo = {
   convertedName?: string
 }
 
-export type WhiteboardRealtimeStatus = 'connected' | 'connecting' | 'offline'
+export type WhiteboardRealtimeStatus = 'connected' | 'connecting' | 'reconnecting' | 'offline' | 'failed'
 
 export type WhiteboardCanvasHandle = {
   openBackgroundPicker: () => void
@@ -973,11 +976,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     {
       boardId,
       token,
+      reconnectKey = 0,
       mode,
       className,
       minimalChrome = false,
       onAccessDenied,
       onRealtimeStatusChange,
+      onPossibleUnsentChangesChange,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -1046,6 +1051,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundSaving, setBackgroundSaving] = useState(false)
   const onAccessDeniedRef = useRef(onAccessDenied)
   const onRealtimeStatusChangeRef = useRef(onRealtimeStatusChange)
+  const onPossibleUnsentChangesChangeRef = useRef(onPossibleUnsentChangesChange)
   const onViewModeChangeRef = useRef(onViewModeChange)
   const onBackgroundFitModeChangeRef = useRef(onBackgroundFitModeChange)
   const onHasBackgroundChangeRef = useRef(onHasBackgroundChange)
@@ -1053,6 +1059,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const onBackgroundInfoChangeRef = useRef(onBackgroundInfoChange)
   const onBackgroundImageAssetChangeRef = useRef(onBackgroundImageAssetChange)
   const onBoardFrameChangeRef = useRef(onBoardFrameChange)
+  const hasPossibleUnsentChangesRef = useRef(false)
 
   useEffect(() => {
     onAccessDeniedRef.current = onAccessDenied
@@ -1061,6 +1068,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onRealtimeStatusChangeRef.current = onRealtimeStatusChange
   }, [onRealtimeStatusChange])
+
+  useEffect(() => {
+    onPossibleUnsentChangesChangeRef.current = onPossibleUnsentChangesChange
+  }, [onPossibleUnsentChangesChange])
 
   useEffect(() => {
     onViewModeChangeRef.current = onViewModeChange
@@ -1166,7 +1177,18 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const emitRealtimeStatus = useCallback((status: WhiteboardRealtimeStatus) => {
     if (lastRealtimeStatusRef.current === status) return
     lastRealtimeStatusRef.current = status
+    if (status === 'connected' && hasPossibleUnsentChangesRef.current) {
+      hasPossibleUnsentChangesRef.current = false
+      onPossibleUnsentChangesChangeRef.current?.(false)
+    }
     onRealtimeStatusChangeRef.current?.(status)
+  }, [])
+
+  const markPossibleUnsentChanges = useCallback(() => {
+    if (lastRealtimeStatusRef.current === 'connected') return
+    if (hasPossibleUnsentChangesRef.current) return
+    hasPossibleUnsentChangesRef.current = true
+    onPossibleUnsentChangesChangeRef.current?.(true)
   }, [])
 
   useEffect(() => {
@@ -2367,6 +2389,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setHasBackground(false)
     setHasBoardContent(false)
     setBackgroundInfo(null)
+    hasPossibleUnsentChangesRef.current = false
+    onPossibleUnsentChangesChangeRef.current?.(false)
   }, [buildSceneSnapshot])
 
   const clearCanvas = useCallback(() => {
@@ -2382,6 +2406,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     let canceled = false
     let cleanupProvider: (() => void) | null = null
     const controller = new AbortController()
+    let reconnectAttempts = 0
+
+    const stopProviderReconnect = (provider: WhiteboardYjsProvider) => {
+      const liveProvider = provider.provider as typeof provider.provider & {
+        shouldConnect?: boolean
+        disconnect?: () => void
+      }
+      liveProvider.shouldConnect = false
+      liveProvider.disconnect?.()
+    }
 
     wbClientLogOnce('info', `provider-init:${boardId}`, '[WB-CLIENT] provider init', {
       boardId,
@@ -2398,7 +2432,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         wsTicketFetched: Boolean(wsToken),
       })
 
-      emitRealtimeStatus('connecting')
+      emitRealtimeStatus(reconnectKey > 0 || reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
 
       const provider = createWhiteboardYjsProvider({
         apiBaseUrl: API_BASE_URL,
@@ -2406,18 +2440,38 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         token,
         wsToken,
         onStatus: (status) => {
+          if (canceled) return
           wbClientLogOnce('info', `provider-status:${boardId}:${status}`, '[WB-CLIENT] provider status', {
             boardId,
             status,
           })
           if (status === 'connected') {
+            reconnectAttempts = 0
             wbClientLogOnce('info', `wb-rt-status:${boardId}:connected`, '[WB-RT] status connected', { boardId })
             emitRealtimeStatus('connected')
             return
           }
 
-          wbClientLogOnce('info', `wb-rt-status:${boardId}:disconnected`, '[WB-RT] status disconnected', { boardId })
-          emitRealtimeStatus('offline')
+          setIsSynced(false)
+          reconnectAttempts += 1
+          const nextStatus = getWhiteboardRealtimeStatusAfterDisconnect(reconnectAttempts)
+
+          if (nextStatus === 'failed') {
+            wbClientLogOnce('warn', `wb-rt-status:${boardId}:failed`, '[WB-RT] status failed', {
+              boardId,
+              reconnectAttempts,
+              maxRetries: WHITEBOARD_REALTIME_MAX_RETRIES,
+            })
+            stopProviderReconnect(provider)
+            emitRealtimeStatus('failed')
+            return
+          }
+
+          wbClientLogOnce('info', `wb-rt-status:${boardId}:reconnecting`, '[WB-RT] status reconnecting', {
+            boardId,
+            reconnectAttempts,
+          })
+          emitRealtimeStatus(nextStatus)
         },
       })
 
@@ -2524,7 +2578,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       controller.abort()
       cleanupProvider?.()
     }
-  }, [API_BASE_URL, applySceneFromYjs, boardId, emitRealtimeStatus, token, updateAwarenessState])
+  }, [API_BASE_URL, applySceneFromYjs, boardId, emitRealtimeStatus, reconnectKey, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {
@@ -2623,6 +2677,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       // When actively drawing, keep local ink immediate and still publish throttled updates to Yjs.
       if (isLocallyDrawingRef.current) {
         pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
+        if (nextElements.length > 0 || Object.keys(files).length > 0) {
+          markPossibleUnsentChanges()
+        }
         // Throttled publish while drawing (uses existing scheduleSceneSync logic)
         scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
         return
@@ -2653,6 +2710,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       nextElements = simplified.elements
       if (nextElements.length > 0 || Object.keys(files).length > 0) {
         lastClearedSceneRef.current = null
+        markPossibleUnsentChanges()
       }
       lastNonEmptySceneRef.current = nextElements.length > 0
       setHasBackground(nextElements.some(isBackgroundElement))
@@ -2660,7 +2718,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
       scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
     },
-    [applyPendingRemoteScene, commitPendingLocalScene, handleReset, scheduleSceneSync],
+    [applyPendingRemoteScene, commitPendingLocalScene, handleReset, markPossibleUnsentChanges, scheduleSceneSync],
   )
 
   const insertImageFile = useCallback(

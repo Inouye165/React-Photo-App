@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
@@ -514,6 +514,63 @@ describe('WhiteboardSessionPage', () => {
 
     expect(screen.getByRole('menuitem', { name: /^invite$/i })).toBeInTheDocument()
     expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+  })
+
+  it('shows failed sync messaging without implying automatic recovery and lets the user retry', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Ready for help')).toBeInTheDocument()
+      expect(whiteboardPadState.latestProps).not.toBeNull()
+    })
+
+    await act(async () => {
+      ;(whiteboardPadState.latestProps?.onRealtimeStatusChange as ((status: string) => void) | undefined)?.('failed')
+    })
+
+    expect(screen.getByText('Realtime sync stopped retrying. If you made changes while sync was down, they may not reach collaborators until you retry sync.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry sync' })).toBeInTheDocument()
+    expect(screen.queryByText('Realtime sync is offline. Changes will reconnect when the session recovers.')).not.toBeInTheDocument()
+
+    const initialReconnectKey = Number(whiteboardPadState.latestProps?.reconnectKey ?? 0)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry sync' }))
+
+    expect(screen.getByText('Realtime sync dropped. Attempting to reconnect…')).toBeInTheDocument()
+    expect(Number(whiteboardPadState.latestProps?.reconnectKey ?? 0)).toBe(initialReconnectKey + 1)
+
+    await act(async () => {
+      ;(whiteboardPadState.latestProps?.onRealtimeStatusChange as ((status: string) => void) | undefined)?.('connected')
+    })
+
+    expect(screen.queryByText('Realtime sync stopped retrying. If you made changes while sync was down, they may not reach collaborators until you retry sync.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Realtime sync dropped. Attempting to reconnect…')).not.toBeInTheDocument()
+  })
+
+  it('shows a more specific failed warning when the canvas reports possible unsent changes', async () => {
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(whiteboardPadState.latestProps).not.toBeNull()
+    })
+
+    await act(async () => {
+      ;(whiteboardPadState.latestProps?.onPossibleUnsentChangesChange as ((value: boolean) => void) | undefined)?.(true)
+      ;(whiteboardPadState.latestProps?.onRealtimeStatusChange as ((status: string) => void) | undefined)?.('failed')
+    })
+
+    expect(screen.getByText('Realtime sync stopped retrying. Changes you made while sync was down may not reach collaborators until you retry sync.')).toBeInTheDocument()
   })
 
   it('passes the optional response age to the tutor request', async () => {
