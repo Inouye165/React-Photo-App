@@ -96,7 +96,7 @@ export function useChatRealtime(
         .from('messages')
         .select('id, room_id, sender_id, content, photo_id, created_at')
         .eq('room_id', normalizedRoomId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(initialLimit)
 
       if (fetchError) throw fetchError

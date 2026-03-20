@@ -1,12 +1,13 @@
 import { test, expect, type Page, type Route } from '@playwright/test'
 import { acceptDisclaimer } from './helpers/disclaimer'
+import { mockCoreApi } from './helpers/mockCoreApi'
 
 const ROOM_ID = '44444444-4444-4444-8444-444444444444'
 const STUDENT_ID = '11111111-1111-4111-8111-111111111111'
 const TUTOR_ID = '22222222-2222-4222-8222-222222222222'
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+  'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
   'Access-Control-Allow-Credentials': 'true',
   'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-CSRF-Token',
@@ -37,7 +38,11 @@ async function fulfillJson(route: Route, body: unknown, status = 200) {
 }
 
 async function setupSharedTutoringChatPage(page: Page, user: TestUser, shared: { messages: SharedMessage[] }) {
+  await mockCoreApi(page)
+
   await page.addInitScript(({ userId }) => {
+    window.__E2E_MODE__ = true
+
     const sessionPayload = {
       access_token: 'e2e-access-token',
       token_type: 'bearer',
@@ -59,6 +64,22 @@ async function setupSharedTutoringChatPage(page: Page, user: TestUser, shared: {
     window.localStorage.setItem('sb-localhost-auth-token', value)
     window.localStorage.setItem('sb-localhost:54321-auth-token', value)
   }, { userId: user.id })
+
+  await page.route('**/api/test/e2e-verify', async (route) => {
+    if (route.request().method() === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' })
+    }
+
+    await fulfillJson(route, {
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.isTutor ? 'tutor' : 'user',
+        email: `${user.username}@example.com`,
+      },
+    })
+  })
 
   await page.route('**/csrf', async (route) => {
     if (route.request().method() === 'OPTIONS') {
@@ -145,9 +166,11 @@ async function setupSharedTutoringChatPage(page: Page, user: TestUser, shared: {
       return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
     }
 
-    const payload = (await route.request().postDataJSON().catch(() => ({} as Record<string, unknown>))) as {
-      content?: unknown
-      photoId?: unknown
+    let payload: { content?: unknown; photoId?: unknown } = {}
+    try {
+      payload = route.request().postDataJSON() as { content?: unknown; photoId?: unknown }
+    } catch {
+      payload = {}
     }
 
     const nextMessage: SharedMessage = {
@@ -265,33 +288,40 @@ test('E2E tutoring chat: student and tutor can exchange messages in the shared r
   await setupSharedTutoringChatPage(studentPage, student, shared)
   await setupSharedTutoringChatPage(tutorPage, tutor, shared)
 
+  const tutorComposer = tutorPage.locator('[data-testid="chat-composer-input"]:visible').first()
+  const tutorSendButton = tutorPage.locator('[data-testid="chat-composer-send"]:visible').first()
+  const tutorMessages = tutorPage.locator('[data-testid="chat-messages"]:visible').first()
+  const studentComposer = studentPage.locator('[data-testid="chat-composer-input"]:visible').first()
+  const studentSendButton = studentPage.locator('[data-testid="chat-composer-send"]:visible').first()
+  const studentMessages = studentPage.locator('[data-testid="chat-messages"]:visible').first()
+
   await tutorPage.goto(`/chat/${ROOM_ID}`, { waitUntil: 'networkidle' })
   await acceptDisclaimer(tutorPage)
   await expect(tutorPage.getByTestId('chat-page')).toBeVisible({ timeout: 10000 })
-  await expect(tutorPage.getByTestId('chat-composer-input')).toBeVisible({ timeout: 10000 })
+  await expect(tutorComposer).toBeVisible({ timeout: 10000 })
 
   await studentPage.goto(`/chat/${ROOM_ID}`, { waitUntil: 'networkidle' })
   await acceptDisclaimer(studentPage)
   await expect(studentPage.getByTestId('chat-page')).toBeVisible({ timeout: 10000 })
-  await expect(studentPage.getByTestId('chat-composer-input')).toBeVisible({ timeout: 10000 })
+  await expect(studentComposer).toBeVisible({ timeout: 10000 })
 
   const studentMessage = 'Can you check step 2?'
-  await studentPage.getByTestId('chat-composer-input').fill(studentMessage)
-  await studentPage.getByTestId('chat-composer-send').click()
-  await expect(studentPage.getByText(studentMessage)).toBeVisible({ timeout: 10000 })
+  await studentComposer.fill(studentMessage)
+  await studentSendButton.click()
+  await expect(studentMessages.getByText(studentMessage).first()).toBeVisible({ timeout: 10000 })
 
   await tutorPage.reload({ waitUntil: 'networkidle' })
   await acceptDisclaimer(tutorPage)
-  await expect(tutorPage.getByText(studentMessage)).toBeVisible({ timeout: 10000 })
+  await expect(tutorMessages.getByText(studentMessage).first()).toBeVisible({ timeout: 10000 })
 
   const tutorReply = 'Yes. Subtract 3 before dividing by 2.'
-  await tutorPage.getByTestId('chat-composer-input').fill(tutorReply)
-  await tutorPage.getByTestId('chat-composer-send').click()
-  await expect(tutorPage.getByText(tutorReply)).toBeVisible({ timeout: 10000 })
+  await tutorComposer.fill(tutorReply)
+  await tutorSendButton.click()
+  await expect(tutorMessages.getByText(tutorReply).first()).toBeVisible({ timeout: 10000 })
 
   await studentPage.reload({ waitUntil: 'networkidle' })
   await acceptDisclaimer(studentPage)
-  await expect(studentPage.getByText(tutorReply)).toBeVisible({ timeout: 10000 })
+  await expect(studentMessages.getByText(tutorReply).first()).toBeVisible({ timeout: 10000 })
 
   await studentContext.close()
   await tutorContext.close()

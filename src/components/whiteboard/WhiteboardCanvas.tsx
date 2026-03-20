@@ -2407,6 +2407,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     let cleanupProvider: (() => void) | null = null
     const controller = new AbortController()
     let reconnectAttempts = 0
+    let ticketRefreshAttempted = false
+    let ticketRefreshInFlight = false
 
     const stopProviderReconnect = (provider: WhiteboardYjsProvider) => {
       const liveProvider = provider.provider as typeof provider.provider & {
@@ -2417,13 +2419,25 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       liveProvider.disconnect?.()
     }
 
+    const destroyActiveProvider = () => {
+      const cleanup = cleanupProvider
+      cleanupProvider = null
+      cleanup?.()
+    }
+
+    const handleRealtimeAccessDenied = () => {
+      setIsSynced(false)
+      emitRealtimeStatus('offline')
+      onAccessDeniedRef.current?.()
+    }
+
     wbClientLogOnce('info', `provider-init:${boardId}`, '[WB-CLIENT] provider init', {
       boardId,
       apiBaseUrl: API_BASE_URL,
       tokenLen: token.length,
     })
 
-    const startProvider = (wsToken?: string) => {
+    const startProvider = (wsToken?: string, options?: { forceReconnectStatus?: boolean }) => {
       if (canceled) return
       setIsSynced(false)
 
@@ -2432,7 +2446,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         wsTicketFetched: Boolean(wsToken),
       })
 
-      emitRealtimeStatus(reconnectKey > 0 || reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
+      emitRealtimeStatus(options?.forceReconnectStatus || reconnectKey > 0 || reconnectAttempts > 0 ? 'reconnecting' : 'connecting')
 
       const provider = createWhiteboardYjsProvider({
         apiBaseUrl: API_BASE_URL,
@@ -2447,6 +2461,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           })
           if (status === 'connected') {
             reconnectAttempts = 0
+            ticketRefreshAttempted = false
             wbClientLogOnce('info', `wb-rt-status:${boardId}:connected`, '[WB-RT] status connected', { boardId })
             emitRealtimeStatus('connected')
             return
@@ -2457,6 +2472,60 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           const nextStatus = getWhiteboardRealtimeStatusAfterDisconnect(reconnectAttempts)
 
           if (nextStatus === 'failed') {
+            if (!ticketRefreshAttempted && !ticketRefreshInFlight) {
+              ticketRefreshAttempted = true
+              ticketRefreshInFlight = true
+              wbClientLogOnce('warn', `wb-rt-status:${boardId}:refresh-ticket`, '[WB-RT] refreshing ws ticket after reconnect exhaustion', {
+                boardId,
+                reconnectAttempts,
+                maxRetries: WHITEBOARD_REALTIME_MAX_RETRIES,
+              })
+              stopProviderReconnect(provider)
+              destroyActiveProvider()
+
+              void fetchWhiteboardWsToken({ boardId, token, signal: controller.signal })
+                .then((ticket) => {
+                  if (canceled) return
+                  reconnectAttempts = 0
+                  startProvider(ticket.token, { forceReconnectStatus: true })
+                })
+                .catch((error) => {
+                  const errorName = error instanceof Error ? error.name : ''
+                  const errorMessage = error instanceof Error ? error.message : String(error)
+                  const isAbort = errorName === 'AbortError' || errorMessage.toLowerCase().includes('aborted')
+                  if (isAbort || canceled) {
+                    return
+                  }
+
+                  if (error instanceof ApiError) {
+                    wbClientLogOnce('warn', `provider-refresh-ticket-error:${boardId}:${error.status ?? 'unknown'}`, '[WB-CLIENT] ws-ticket refresh failed', {
+                      boardId,
+                      status: error.status ?? 'unknown',
+                    })
+
+                    if (error.status === 401 || error.status === 403 || error.status === 404) {
+                      wbClientLogOnce('warn', `provider-refresh-access-denied:${boardId}:${error.status}`, '[WB-CLIENT] whiteboard access denied after ws-ticket refresh', {
+                        boardId,
+                        status: error.status,
+                      })
+                      handleRealtimeAccessDenied()
+                      return
+                    }
+                  } else {
+                    wbClientLogOnce('warn', `provider-refresh-ticket-error:${boardId}:unknown`, '[WB-CLIENT] ws-ticket refresh failed', {
+                      boardId,
+                      error: error instanceof Error ? error.message : String(error),
+                    })
+                  }
+
+                  emitRealtimeStatus('failed')
+                })
+                .finally(() => {
+                  ticketRefreshInFlight = false
+                })
+              return
+            }
+
             wbClientLogOnce('warn', `wb-rt-status:${boardId}:failed`, '[WB-RT] status failed', {
               boardId,
               reconnectAttempts,
@@ -2552,9 +2621,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
               boardId,
               status: error.status,
             })
-            setIsSynced(false)
-            emitRealtimeStatus('offline')
-            onAccessDeniedRef.current?.()
+            handleRealtimeAccessDenied()
             return
           }
         } else {
@@ -2576,7 +2643,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     return () => {
       canceled = true
       controller.abort()
-      cleanupProvider?.()
+      destroyActiveProvider()
     }
   }, [API_BASE_URL, applySceneFromYjs, boardId, emitRealtimeStatus, reconnectKey, token, updateAwarenessState])
 
