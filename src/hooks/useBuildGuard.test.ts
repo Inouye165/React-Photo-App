@@ -124,6 +124,23 @@ describe('build guard', () => {
     expect(reload).not.toHaveBeenCalled()
   })
 
+  it('treats storage read failures as non-throttled', async () => {
+    const { isBuildGuardThrottled } = await importBuildGuardWithAuth(null)
+
+    const storage = {
+      getItem: vi.fn(() => {
+        throw new Error('storage blocked')
+      }),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    } as unknown as Storage
+
+    expect(isBuildGuardThrottled(storage, 20_000)).toBe(false)
+  })
+
   it('ignores network errors when checking server build id', async () => {
     const { checkBuildIdOnce } = await importBuildGuardWithAuth(null)
 
@@ -138,6 +155,39 @@ describe('build guard', () => {
     })
 
     expect(result).toBe('error')
+    expect(handleMismatch).not.toHaveBeenCalled()
+  })
+
+  it('treats storage read failures as a non-mismatch first run', async () => {
+    const { checkBuildIdOnce } = await importBuildGuardWithAuth(null)
+
+    const storage = {
+      getItem: vi.fn(() => {
+        throw new Error('storage blocked')
+      }),
+      setItem: vi.fn(() => {
+        throw new Error('storage blocked')
+      }),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+      key: vi.fn(),
+      length: 0,
+    } as unknown as Storage
+
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ buildId: 'any-build', bootId: 'boot-1' }),
+    })
+    const handleMismatch = vi.fn().mockResolvedValue('reloaded')
+
+    const result = await checkBuildIdOnce({
+      buildMetaUrl: '/api/meta',
+      handleMismatch,
+      fetcher,
+      storage,
+    })
+
+    expect(result).toBe('ok')
     expect(handleMismatch).not.toHaveBeenCalled()
   })
 

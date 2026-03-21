@@ -705,6 +705,134 @@ describe('whiteboard tutor route', () => {
     expect(mockAnthropicCreate).toHaveBeenCalledTimes(1)
   })
 
+  test('does not collide cached photo analyses when inputMode is omitted', async () => {
+    mockGenerateContent
+      .mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            problem: 'Solve 2x = 10',
+            steps: [
+              { stepNumber: 1, content: '2x = 10' },
+              { stepNumber: 2, content: 'x = 5' },
+            ],
+          }),
+        },
+      })
+      .mockResolvedValueOnce({
+        response: {
+          text: () => JSON.stringify({
+            problem: 'Solve 3x = 18',
+            steps: [
+              { stepNumber: 1, content: '3x = 18' },
+              { stepNumber: 2, content: 'x = 6' },
+            ],
+          }),
+        },
+      })
+
+    mockAnthropicCreate
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              problemText: 'Solve 2x = 10',
+              finalAnswers: ['x = 5'],
+              overallSummary: 'First result.',
+              regions: [],
+              steps: [
+                {
+                  id: 'step-1',
+                  index: 0,
+                  studentText: '2x = 10',
+                  normalizedMath: '2x = 10',
+                  status: 'correct',
+                  shortLabel: 'Start with the equation',
+                  kidFriendlyExplanation: 'Great start.',
+                },
+                {
+                  id: 'step-2',
+                  index: 1,
+                  studentText: 'x = 5',
+                  normalizedMath: 'x = 5',
+                  status: 'correct',
+                  shortLabel: 'Divide both sides by 2',
+                  kidFriendlyExplanation: 'Nice job.',
+                },
+              ],
+              validatorWarnings: [],
+              canAnimate: true,
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              problemText: 'Solve 3x = 18',
+              finalAnswers: ['x = 6'],
+              overallSummary: 'Second result.',
+              regions: [],
+              steps: [
+                {
+                  id: 'step-1',
+                  index: 0,
+                  studentText: '3x = 18',
+                  normalizedMath: '3x = 18',
+                  status: 'correct',
+                  shortLabel: 'Start with the equation',
+                  kidFriendlyExplanation: 'Great start.',
+                },
+                {
+                  id: 'step-2',
+                  index: 1,
+                  studentText: 'x = 6',
+                  normalizedMath: 'x = 6',
+                  status: 'correct',
+                  shortLabel: 'Divide both sides by 3',
+                  kidFriendlyExplanation: 'Nice job.',
+                },
+              ],
+              validatorWarnings: [],
+              canAnimate: true,
+            }),
+          },
+        ],
+      })
+
+    const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
+    const app = createTestApp({ db, authMode: 'ok' })
+
+    const first = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,AAAA',
+        imageMimeType: 'image/png',
+        imageName: 'math-a.png',
+        mode: 'analysis',
+      })
+
+    const second = await request(app)
+      .post(`/api/whiteboards/${boardId}/tutor`)
+      .send({
+        imageDataUrl: 'data:image/png;base64,BBBB',
+        imageMimeType: 'image/png',
+        imageName: 'math-b.png',
+        mode: 'analysis',
+      })
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(first.body.cacheSource).toBe('fresh')
+    expect(second.body.cacheSource).toBe('fresh')
+    expect(first.body.analysisResult.problemText).toBe('Solve 2x = 10')
+    expect(second.body.analysisResult.problemText).toBe('Solve 3x = 18')
+    expect(mockGenerateContent).toHaveBeenCalledTimes(2)
+    expect(mockAnthropicCreate).toHaveBeenCalledTimes(2)
+  })
+
   test('bypasses the server cache when skipCache is true', async () => {
     const db = createMockDb({ roomMembers: [{ room_id: boardId, user_id: 'user-1' }], rooms: [{ id: boardId }], tutorCache: [] })
     const app = createTestApp({ db, authMode: 'ok' })

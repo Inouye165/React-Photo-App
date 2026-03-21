@@ -12,6 +12,7 @@ import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
 import { buildLegacyTutorPayload, parseStructuredTutorAnalysis } from '../tutor/analysisParser';
 import { buildMathFacts, type DeterministicMathFacts, type TutorAnalysisPipeline, type TutorAnalysisSource } from '../math';
+import { buildWhiteboardTutorCacheKey } from './whiteboardTutorCacheKey';
 const supabase = require('../lib/supabaseClient');
 
 const gzipAsync = promisify(gzip);
@@ -400,13 +401,6 @@ function shouldWriteWhiteboardTutorCache(body: WhiteboardTutorBody): boolean {
   return (body.mode ?? 'analysis') === 'analysis';
 }
 
-function normalizeTutorCacheMessages(messages: WhiteboardTutorMessage[] | undefined): WhiteboardTutorMessage[] {
-  return (messages ?? []).map((message) => ({
-    role: message.role,
-    content: message.content.trim(),
-  }));
-}
-
 function withTutorCacheSource<T extends WhiteboardTutorRouteResponse>(
   response: T,
   cacheSource: 'fresh' | 'server-cache',
@@ -415,24 +409,6 @@ function withTutorCacheSource<T extends WhiteboardTutorRouteResponse>(
     ...response,
     cacheSource,
   };
-}
-
-function buildWhiteboardTutorCacheKey(boardId: string, body: WhiteboardTutorBody): string {
-  const normalizedPayload = JSON.stringify({
-    version: WHITEBOARD_TUTOR_CACHE_VERSION,
-    boardId,
-    mode: body.mode ?? 'analysis',
-    modelTier: resolveTutorModelTier(body.modelTier),
-    inputMode: body.inputMode === 'text' ? 'text' : 'photo',
-    audienceAge: typeof body.audienceAge === 'number' ? body.audienceAge : null,
-    textContent: body.textContent?.trim() || null,
-    imageDataUrl: body.inputMode === 'photo' ? body.imageDataUrl?.trim() || null : null,
-    imageMimeType: body.inputMode === 'photo' ? body.imageMimeType?.trim() || null : null,
-    imageName: body.inputMode === 'photo' ? body.imageName?.trim() || null : null,
-    messages: normalizeTutorCacheMessages(body.messages),
-  });
-
-  return createHash('sha256').update(normalizedPayload).digest('hex');
 }
 
 function isMissingRelationError(error: unknown): boolean {
@@ -457,7 +433,7 @@ async function readWhiteboardTutorCache(
   if (!shouldReadWhiteboardTutorCache(body)) return null;
 
   try {
-    const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
+    const cacheKey = buildWhiteboardTutorCacheKey(boardId, body, WHITEBOARD_TUTOR_CACHE_VERSION);
     const row = await db('whiteboard_tutor_cache')
       .select('response_json')
       .where({ board_id: boardId, cache_key: cacheKey })
@@ -488,7 +464,7 @@ async function writeWhiteboardTutorCache(
 ): Promise<void> {
   if (!shouldWriteWhiteboardTutorCache(body)) return;
 
-  const cacheKey = buildWhiteboardTutorCacheKey(boardId, body);
+  const cacheKey = buildWhiteboardTutorCacheKey(boardId, body, WHITEBOARD_TUTOR_CACHE_VERSION);
   const payload = {
     board_id: boardId,
     cache_key: cacheKey,
@@ -1712,7 +1688,7 @@ async function fetchExcalidrawScene(
   }
 }
 
-module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
+function createWhiteboardRouter({ db }: { db: Knex }) {
   if (!db) throw new Error('db is required');
 
   const router = express.Router();
@@ -2776,4 +2752,6 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
   return router;
 };
+
+module.exports = createWhiteboardRouter;
 
