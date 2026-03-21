@@ -13,6 +13,14 @@ export const SERVER_BOOT_ID_STORAGE_KEY = 'serverBootId:v1'
 export type BuildGuardMismatchResult = 'reloaded' | 'throttled'
 export type BuildGuardCheckResult = 'ok' | 'reloaded' | 'throttled' | 'error'
 
+function safeStorageGetItem(storage: Storage, key: string): string | null {
+  try {
+    return storage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
 function getAccessToken(session: unknown): string | null {
   const token = (session as { access_token?: unknown } | null)?.access_token
   return typeof token === 'string' && token.length > 0 ? token : null
@@ -47,7 +55,7 @@ export function isBuildGuardThrottled(
   nowMs: number,
   throttleMs: number = BUILD_GUARD_THROTTLE_MS,
 ): boolean {
-  const raw = storage.getItem(BUILD_GUARD_STORAGE_KEY)
+  const raw = safeStorageGetItem(storage, BUILD_GUARD_STORAGE_KEY)
   const last = raw ? Number(raw) : 0
   if (!Number.isFinite(last) || last <= 0) return false
   return nowMs - last < throttleMs
@@ -124,7 +132,7 @@ export async function checkBuildIdOnce(options: {
   const meta = await fetchServerMeta(buildMetaUrl, fetcher)
   if (!meta) return 'error'
 
-  const storedBootId = storage.getItem(SERVER_BOOT_ID_STORAGE_KEY)
+  const storedBootId = safeStorageGetItem(storage, SERVER_BOOT_ID_STORAGE_KEY)
   if (!storedBootId) {
     try {
       storage.setItem(SERVER_BOOT_ID_STORAGE_KEY, meta.bootId)
@@ -164,23 +172,25 @@ export default function useBuildGuard(): void {
 
       isCheckingRef.current = true
 
-      const result = await checkBuildIdOnce({
-        buildMetaUrl,
-        fetcher: fetch,
-        storage: window.sessionStorage,
-        handleMismatch: (serverBootId) =>
-          handleBuildMismatch({
-            logout,
-            clearAuthState,
-            serverBootId,
-          }),
-      })
+      try {
+        const result = await checkBuildIdOnce({
+          buildMetaUrl,
+          fetcher: fetch,
+          storage: window.sessionStorage,
+          handleMismatch: (serverBootId) =>
+            handleBuildMismatch({
+              logout,
+              clearAuthState,
+              serverBootId,
+            }),
+        })
 
-      if (result === 'reloaded') {
-        hasReloadedRef.current = true
+        if (result === 'reloaded') {
+          hasReloadedRef.current = true
+        }
+      } finally {
+        isCheckingRef.current = false
       }
-
-      isCheckingRef.current = false
     }
 
     const handleFocus = () => {
