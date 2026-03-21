@@ -1426,6 +1426,110 @@ describe('WhiteboardSessionPage', () => {
     })
   })
 
+  it('does not reuse cached quick analysis when the corrected problem text changes', async () => {
+    mockAuthState.value = {
+      user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
+      profile: { is_tutor: true },
+    }
+    whiteboardPadState.hasBackground = true
+    whiteboardPadState.asset = {
+      dataUrl: 'data:image/png;base64,AAAA',
+      mimeType: 'image/png',
+      name: 'math.png',
+    }
+
+    const cacheKey = buildTutorAnalysisDeviceCacheKey({
+      boardId: 'board-1',
+      helpMode: 'quick',
+      inputMode: 'photo',
+      mode: 'analysis',
+      messages: [
+        {
+          role: 'user',
+          content: 'Use this corrected problem statement if the photo text is unclear or inaccurate:\n\nSolve 2x = 10',
+        },
+        {
+          role: 'user',
+          content: 'Need quick help with this problem. State what is wrong, state the correct answer, and give one short line the tutor can say right away. Keep it compact.',
+        },
+      ],
+      imageDataUrl: whiteboardPadState.asset.dataUrl,
+      imageMimeType: whiteboardPadState.asset.mimeType,
+      imageName: whiteboardPadState.asset.name,
+      textContent: 'Solve 2x = 10',
+    })
+
+    writeTutorAnalysisDeviceCache(cacheKey, sampleAnalysisResponse)
+    analyzeWhiteboardPhoto.mockResolvedValue({
+      ...sampleAnalysisResponse,
+      reply: 'Problem: Solve 3x = 18',
+      messages: [{ role: 'assistant', content: 'Problem: Solve 3x = 18' }],
+      analysisResult: {
+        ...sampleAnalysisResponse.analysisResult,
+        problemText: 'Solve 3x = 18',
+        finalAnswers: ['x = 6'],
+      },
+      sections: {
+        ...sampleAnalysisResponse.sections,
+        problem: 'Solve 3x = 18',
+      },
+      problem: 'Solve 3x = 18',
+      correctSolution: 'x = 6',
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/whiteboards/board-1']}>
+        <Routes>
+          <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tutor queue' })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open panel' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-side-panel')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Problem or question' }), {
+      target: { value: 'Solve 3x = 18' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start quick help' }))
+
+    expect(screen.getByText('Confirm request AI assistance')).toBeInTheDocument()
+    expect(screen.queryByText('Analysis problem: Solve 2x = 10')).not.toBeInTheDocument()
+    expect(analyzeWhiteboardPhoto).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm AI assistance' }))
+
+    await waitFor(() => {
+      expect(analyzeWhiteboardPhoto).toHaveBeenCalledWith(
+        'board-1',
+        expect.objectContaining({
+          inputMode: 'photo',
+          textContent: 'Solve 3x = 18',
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining('Use this corrected problem statement if the photo text is unclear or inaccurate:\n\nSolve 3x = 18'),
+            }),
+            expect.objectContaining({
+              content: expect.stringContaining('Need quick help with this problem.'),
+            }),
+          ],
+        }),
+      )
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Analysis problem: Solve 3x = 18')).toBeInTheDocument()
+    })
+  })
+
   it('sends only one analysis request when confirm is clicked twice rapidly', async () => {
     mockAuthState.value = {
       user: { id: 'user-2', app_metadata: { role: 'user', is_tutor: true } },
