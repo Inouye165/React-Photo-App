@@ -1,15 +1,15 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
 
 const ROOT = process.cwd();
 const exts = ['.js', '.jsx', '.ts', '.tsx'];
 
-function walk(dir) {
-  const res = [];
+function walk(dir: string): string[] {
+  const res: string[] = [];
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name);
     const rel = path.relative(ROOT, full).split(path.sep).join('/');
-    if (rel.startsWith('server/') || rel.includes('node_modules') || rel.startsWith('coverage/') ) continue;
+    if (rel.startsWith('server/') || rel.includes('node_modules') || rel.startsWith('coverage/')) continue;
     const stat = fs.statSync(full);
     if (stat.isDirectory()) res.push(...walk(full));
     else if (exts.includes(path.extname(name))) res.push(full);
@@ -21,8 +21,8 @@ const files = walk(ROOT);
 
 const importRe = /(?:from\s+['"]([^'"\\)]+)['"])|(?:require\(['"]([^'"\\)]+)['"]\))/g;
 
-function resolveImport(fromFile, spec) {
-  if (spec.startsWith('.') ) {
+function resolveImport(fromFile: string, spec: string): string | null {
+  if (spec.startsWith('.')) {
     const cand = path.resolve(path.dirname(fromFile), spec);
     for (const e of exts) {
       const p = cand + e;
@@ -39,8 +39,8 @@ function resolveImport(fromFile, spec) {
   return null; // ignore external packages
 }
 
-const outgoing = {};
-const incoming = {};
+const outgoing: Record<string, Set<string>> = {};
+const incoming: Record<string, Set<string>> = {};
 
 for (const f of files) {
   const rel = path.relative(ROOT, f).split(path.sep).join('/');
@@ -51,7 +51,8 @@ for (const f of files) {
 for (const f of files) {
   const rel = path.relative(ROOT, f).split(path.sep).join('/');
   const content = fs.readFileSync(f, 'utf8');
-  let m;
+  importRe.lastIndex = 0;
+  let m: RegExpExecArray | null;
   while ((m = importRe.exec(content)) !== null) {
     const spec = m[1] || m[2];
     if (!spec) continue;
@@ -70,7 +71,7 @@ const results = Object.keys(incoming).map(f => ({
   outgoing: outgoing[f] ? outgoing[f].size : 0,
 }));
 
-results.sort((a,b) => b.incoming - a.incoming || a.outgoing - b.outgoing || a.file.localeCompare(b.file));
+results.sort((a, b) => b.incoming - a.incoming || a.outgoing - b.outgoing || a.file.localeCompare(b.file));
 
 console.log('Top candidates (JS/JSX only):');
 for (const r of results.filter(r => r.file.endsWith('.js') || r.file.endsWith('.jsx')).slice(0, 30)) {
@@ -79,6 +80,6 @@ for (const r of results.filter(r => r.file.endsWith('.js') || r.file.endsWith('.
 
 // print top overall too
 console.log('\nTop overall:');
-for (const r of results.slice(0,30)) console.log(`${r.file}  incoming=${r.incoming} outgoing=${r.outgoing}`);
+for (const r of results.slice(0, 30)) console.log(`${r.file}  incoming=${r.incoming} outgoing=${r.outgoing}`);
 
 process.exit(0);
