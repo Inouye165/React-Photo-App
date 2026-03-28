@@ -1,20 +1,20 @@
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
 
 const workspace = process.cwd();
 const exts = ['.js', '.jsx', '.cjs', '.mjs'];
 
-function listFiles() {
-  const { execSync } = require('child_process');
+function listFiles(): string[] {
   const out = execSync("git ls-files '*.js' '*.jsx' '*.cjs' '*.mjs'", { encoding: 'utf8' });
-  return out.split('\n').map(s => s.trim()).filter(Boolean);
+  return out.split('\n').map((s: string) => s.trim()).filter(Boolean);
 }
 
-function isRelativeImport(p) {
+function isRelativeImport(p: string): boolean {
   return p.startsWith('./') || p.startsWith('../') || p.startsWith('/');
 }
 
-function resolveImport(fromFile, importPath) {
+function resolveImport(fromFile: string, importPath: string): string | null {
   if (!isRelativeImport(importPath)) return null;
   const base = path.dirname(fromFile);
   const candidate = path.resolve(workspace, base, importPath);
@@ -33,12 +33,12 @@ function resolveImport(fromFile, importPath) {
   return null;
 }
 
-function parseImports(filePath) {
+function parseImports(filePath: string): string[] {
   const content = fs.readFileSync(filePath, 'utf8');
-  const imports = new Set();
+  const imports = new Set<string>();
   // ES imports
   const importRe = /import\s+(?:[^'"\n]+)\s+from\s+['"]([^'"]+)['"]/g;
-  let m;
+  let m: RegExpExecArray | null;
   while ((m = importRe.exec(content))) imports.add(m[1]);
   // import('...') dynamic
   const dynRe = /import\(\s*['"]([^'"]+)['"]\s*\)/g;
@@ -49,15 +49,20 @@ function parseImports(filePath) {
   return Array.from(imports);
 }
 
-function main() {
+interface FileGraph {
+  out: Set<string>;
+  in: Set<string>;
+}
+
+function main(): void {
   const files = listFiles();
   const absFiles = files.map(f => f);
-  const graph = {};
+  const graph: Record<string, FileGraph> = {};
   for (const f of absFiles) graph[f] = { out: new Set(), in: new Set() };
 
   for (const f of absFiles) {
     const full = path.resolve(workspace, f);
-    let imports = [];
+    let imports: string[] = [];
     try { imports = parseImports(full); } catch { continue; }
     for (const imp of imports) {
       const resolved = resolveImport(f, imp);
@@ -69,10 +74,10 @@ function main() {
   }
 
   // Known entry points and files to ignore
-  const entryPoints = new Set(['server/server.ts','server/worker.js','src/main.jsx','vite.config.js']);
-  const keepPatterns = [/server\/db\/migrations\//, /server\/tests\//, /tests\//, /^dist\//, /^public\//, /^docs\//, /vitest.config.js/];
+  const entryPoints = new Set(['server/server.ts', 'server/worker.js', 'src/main.jsx', 'vite.config.ts']);
+  const keepPatterns = [/server\/db\/migrations\//, /server\/tests\//, /tests\//, /^dist\//, /^public\//, /^docs\//, /vitest.config.ts/];
 
-  const candidates = [];
+  const candidates: Array<{ file: string; incoming: number; skip: boolean }> = [];
   for (const f of Object.keys(graph)) {
     if (entryPoints.has(f)) continue;
     if (graph[f].in.size === 0) {
@@ -83,7 +88,7 @@ function main() {
   }
 
   // sort by simple heuristic: skip last
-  candidates.sort((a,b) => (a.skip === b.skip) ? a.file.localeCompare(b.file) : (a.skip?1:-1));
+  candidates.sort((a, b) => (a.skip === b.skip) ? a.file.localeCompare(b.file) : (a.skip ? 1 : -1));
 
   console.log('Dead-code scan results:');
   console.log('Format: file (incoming refs) [skip-reason-if-any]');

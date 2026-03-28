@@ -38,7 +38,7 @@
     "test:perf": "k6 run perf/smoke.js",
     "test:docker:smoke": "node scripts/docker-smoke.cjs",
     "test:stress": "node scripts/stress-test.cjs",
-    "backfill:gps": "node scripts/backfill-gps.js",
+    "backfill:gps": "tsx scripts/backfill-gps.ts",
     "test:arch": "depcruise src server --config .dependency-cruiser.cjs",
     "test:size": "npm run build && size-limit",
     "test:migrations": "node server/scripts/test-migrations-integrity.js",

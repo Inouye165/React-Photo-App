@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['src/hooks/useThumbnailQueue.test.js'],
+    include: ['src/hooks/useThumbnailQueue.test.ts'],
     environment: 'happy-dom',
     setupFiles: [],
     // Use forks pool for better memory isolation
