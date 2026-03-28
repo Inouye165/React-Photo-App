@@ -1,8 +1,8 @@
-// @ts-nocheck
+import { Request } from 'express';
 
 const { randomUUID } = require('crypto');
 
-function sanitizeRequestId(value: any) {
+function sanitizeRequestId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -16,8 +16,8 @@ function sanitizeRequestId(value: any) {
   return stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped;
 }
 
-function getOrCreateRequestId(req: any) {
-  const candidates = [
+function getOrCreateRequestId(req: Request & { requestId?: string; id?: string }): string {
+  const candidates: unknown[] = [
     req?.requestId,
     req?.id,
     req?.headers?.['x-request-id'],

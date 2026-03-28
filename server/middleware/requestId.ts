@@ -1,8 +1,8 @@
-// @ts-nocheck
+import { Request, Response, NextFunction } from 'express';
 
 const { getOrCreateRequestId } = require('../lib/requestId');
 
-function requestIdMiddleware(req, res, next) {
+function requestIdMiddleware(req: Request, res: Response, next: NextFunction) {
   const requestId = getOrCreateRequestId(req);
   try {
     res.setHeader('x-request-id', requestId);

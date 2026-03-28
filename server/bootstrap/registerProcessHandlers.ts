@@ -1,6 +1,9 @@
-// @ts-nocheck
+interface ProcessLogger {
+  error: (...args: unknown[]) => void;
+  fatal: (...args: unknown[]) => void;
+}
 
-function registerProcessHandlers({ logger }) {
+function registerProcessHandlers({ logger }: { logger: ProcessLogger }) {
   if (!logger || typeof logger.error !== 'function' || typeof logger.fatal !== 'function') {
     throw new Error('logger with error/fatal is required');
   }
@@ -29,3 +32,5 @@ function registerProcessHandlers({ logger }) {
 module.exports = {
   registerProcessHandlers,
 };
+
+export {};
