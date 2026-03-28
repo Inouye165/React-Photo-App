@@ -1,4 +1,4 @@
-// @ts-nocheck
+import { Router, Request, Response } from 'express';
 
 const express = require('express');
 
@@ -15,7 +15,7 @@ module.exports = function createHealthRouter() {
   // Health check endpoint (router-root). When mounted at '/health' the final
   // path becomes '/health'. The test-suite mounts the router at '/health',
   // so define the handler on '/'.
-  router.get('/', (req, res) => {
+  router.get('/', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),

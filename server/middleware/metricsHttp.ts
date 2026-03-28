@@ -1,8 +1,8 @@
-// @ts-nocheck
+import { Request, Response, NextFunction } from 'express';
 
 const metrics = require('../metrics');
 
-function normalizeRouteLabel(route) {
+function normalizeRouteLabel(route: string | undefined): string {
   const s = String(route || '').trim();
   if (s === '') return 'unknown';
 
@@ -22,7 +22,7 @@ function normalizeRouteLabel(route) {
   return out;
 }
 
-function deriveRouteLabel(req, res) {
+function deriveRouteLabel(req: Request, res: Response): string {
   const baseUrl = req.baseUrl || '';
   const routePath = (req.route && req.route.path) ? req.route.path : '';
 
@@ -38,7 +38,7 @@ function deriveRouteLabel(req, res) {
   return 'unknown';
 }
 
-module.exports = function metricsHttpMiddleware(req, res, next) {
+module.exports = function metricsHttpMiddleware(req: Request, res: Response, next: NextFunction) {
   const start = process.hrtime.bigint();
 
   res.on('finish', () => {
