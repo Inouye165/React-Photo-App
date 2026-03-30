@@ -1,12 +1,16 @@
 'use strict';
 
-const logger = require('../logger');
+interface Logger {
+  warn?: (message: string) => void;
+}
 
-function normalizeModelName(name) {
+const logger: Logger = require('../logger');
+
+function normalizeModelName(name: string | null | undefined): string {
   return (name || '').trim().toLowerCase();
 }
 
-const BASE_VISION_MODELS = [
+const BASE_VISION_MODELS: string[] = [
   'gpt-4o-mini',
   'gpt-4o',
   'gpt-4o-2024-05-13',
@@ -24,14 +28,14 @@ const BASE_VISION_MODELS = [
   'chatgpt-4o-latest'
 ];
 
-const KNOWN_VISION_MODELS = new Set(BASE_VISION_MODELS.map(normalizeModelName));
+const KNOWN_VISION_MODELS: Set<string> = new Set(BASE_VISION_MODELS.map(normalizeModelName));
 
-const DEFAULT_VISION_MODEL = process.env.AI_VISION_FALLBACK || 'gpt-4o-mini';
+const DEFAULT_VISION_MODEL: string = process.env.AI_VISION_FALLBACK || 'gpt-4o-mini';
 if (DEFAULT_VISION_MODEL && !KNOWN_VISION_MODELS.has(normalizeModelName(DEFAULT_VISION_MODEL))) {
   KNOWN_VISION_MODELS.add(normalizeModelName(DEFAULT_VISION_MODEL));
 }
 
-function isVisionModel(modelName) {
+function isVisionModel(modelName: string | null | undefined): boolean {
   const normalized = normalizeModelName(modelName);
   if (!normalized) return false;
   if (KNOWN_VISION_MODELS.has(normalized)) return true;
@@ -44,9 +48,9 @@ function isVisionModel(modelName) {
   return false;
 }
 
-function ensureVisionModel(modelName, fallback = DEFAULT_VISION_MODEL, context) {
+function ensureVisionModel(modelName: string | null | undefined, fallback: string = DEFAULT_VISION_MODEL, context?: string): string {
   if (isVisionModel(modelName)) {
-    return modelName;
+    return modelName!;
   }
   if (modelName) {
     const message = `[AI] Model "${modelName}"${context ? ` for ${context}` : ''} does not support vision inputs; using "${fallback}" instead.`;
@@ -57,7 +61,7 @@ function ensureVisionModel(modelName, fallback = DEFAULT_VISION_MODEL, context) 
   return fallback;
 }
 
-function getVisionAllowlist(extraNames = []) {
+function getVisionAllowlist(extraNames: string[] = []): string[] {
   const merged = new Set([...BASE_VISION_MODELS, DEFAULT_VISION_MODEL, ...extraNames.filter(Boolean)]);
   return Array.from(merged);
 }
@@ -69,3 +73,5 @@ module.exports = {
   ensureVisionModel,
   getVisionAllowlist
 };
+
+export { DEFAULT_VISION_MODEL, BASE_VISION_MODELS, isVisionModel, ensureVisionModel, getVisionAllowlist };

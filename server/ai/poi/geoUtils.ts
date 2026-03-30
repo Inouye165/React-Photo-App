@@ -1,5 +1,5 @@
-function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
-  const toRad = (value) => (value * Math.PI) / 180;
+function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (value: number): number => (value * Math.PI) / 180;
   const R = 6371000; // meters
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -13,3 +13,5 @@ function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
 module.exports = {
   haversineDistanceMeters,
 };
+
+export { haversineDistanceMeters };

@@ -186,7 +186,7 @@ function logStartupDiagnostics() {
 function logVersion() {
   let APP_VERSION = null;
   try {
-    APP_VERSION = require('../version.js').APP_VERSION;
+    APP_VERSION = require('../version').APP_VERSION;
   } catch {
     // fallback: not critical
   }

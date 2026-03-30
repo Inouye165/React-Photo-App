@@ -1,10 +1,10 @@
-const AUDIT_LOGGER_ENABLED = process.env.AI_AUDIT_LOGGER_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
+const AUDIT_LOGGER_ENABLED: boolean = process.env.AI_AUDIT_LOGGER_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
 
 if (AUDIT_LOGGER_ENABLED) {
   console.log(`[AuditLogger] Enabled (stdout)`);
 }
 
-function appendLog(content) {
+function appendLog(content: string): void {
   if (!AUDIT_LOGGER_ENABLED) return;
   try {
     // Avoid writing potentially user-controlled content to local files.
@@ -15,12 +15,12 @@ function appendLog(content) {
   }
 }
 
-function formatTimestamp() {
+function formatTimestamp(): string {
   const now = new Date();
   return `${now.toISOString()} (Local: ${now.toLocaleString()})`;
 }
 
-function sanitizeValue(value, depth = 0) {
+function sanitizeValue(value: unknown, depth: number = 0): unknown {
   if (depth > 3) return '[Max Depth Reached]';
   if (value === undefined) return 'undefined';
   if (value === null) return 'null';
@@ -43,7 +43,7 @@ function sanitizeValue(value, depth = 0) {
   if (Array.isArray(value)) {
     // If array is too long, truncate it
     if (value.length > 10) {
-      const sanitized = value.slice(0, 10).map(v => sanitizeValue(v, depth + 1));
+      const sanitized: unknown[] = value.slice(0, 10).map(v => sanitizeValue(v, depth + 1));
       sanitized.push(`... [truncated ${value.length - 10} items]`);
       return sanitized;
     }
@@ -51,10 +51,11 @@ function sanitizeValue(value, depth = 0) {
   }
 
   if (typeof value === 'object') {
-    const sanitized = {};
+    const obj = value as Record<string, unknown>;
+    const sanitized: Record<string, unknown> = {};
     
     // Skip binary/bloated metadata fields entirely
-    const skipKeys = [
+    const skipKeys: string[] = [
       'fileBuffer', 'imageBase64', 'url',
       'ProfileCMMType', 'ProfileVersion', 'ProfileClass', 'ColorSpaceData',
       'ProfileConnectionSpace', 'ProfileDateTime', 'ProfileFileSignature',
@@ -65,38 +66,38 @@ function sanitizeValue(value, depth = 0) {
       'Regions', 'RegionList', 'AppliedToDimensions', 'CreatorTool'
     ];
     
-    for (const key of Object.keys(value)) {
+    for (const key of Object.keys(obj)) {
       if (skipKeys.includes(key)) {
         sanitized[key] = '[Omitted for brevity]';
       } else if (key === 'metadata' && depth === 0) {
         // For top-level metadata, only keep GPS and essential fields
-        const meta = value[key];
+        const meta = obj[key] as Record<string, unknown> | null;
         if (meta && typeof meta === 'object') {
           sanitized[key] = {
-            date: meta.CreateDate || meta.DateTimeOriginal || meta.ModifyDate || '[Omitted]',
-            GPSLatitude: meta.GPSLatitude || meta.latitude,
-            GPSLongitude: meta.GPSLongitude || meta.longitude,
-            GPSAltitude: meta.GPSAltitude,
-            GPSImgDirection: meta.GPSImgDirection,
-            GPSDestBearing: meta.GPSDestBearing,
-            gps: meta.gps,
-            GPS: meta.GPS,
-            camera: meta.Make || meta.Model || '[Omitted]',
+            date: (meta as Record<string, unknown>).CreateDate || (meta as Record<string, unknown>).DateTimeOriginal || (meta as Record<string, unknown>).ModifyDate || '[Omitted]',
+            GPSLatitude: (meta as Record<string, unknown>).GPSLatitude || (meta as Record<string, unknown>).latitude,
+            GPSLongitude: (meta as Record<string, unknown>).GPSLongitude || (meta as Record<string, unknown>).longitude,
+            GPSAltitude: (meta as Record<string, unknown>).GPSAltitude,
+            GPSImgDirection: (meta as Record<string, unknown>).GPSImgDirection,
+            GPSDestBearing: (meta as Record<string, unknown>).GPSDestBearing,
+            gps: (meta as Record<string, unknown>).gps,
+            GPS: (meta as Record<string, unknown>).GPS,
+            camera: (meta as Record<string, unknown>).Make || (meta as Record<string, unknown>).Model || '[Omitted]',
             '...': '[Other metadata omitted for brevity]'
           };
         } else {
           sanitized[key] = meta;
         }
-      } else if (key === 'collectible_valuation' && value[key]) {
-        const val = value[key];
+      } else if (key === 'collectible_valuation' && obj[key]) {
+        const val = obj[key] as Record<string, unknown>;
         sanitized[key] = {
           currency: val.currency,
           low: val.low,
           high: val.high,
           marketDataPoints: Array.isArray(val.market_data) ? val.market_data.length : 0
         };
-      } else if (key === 'collectible' && value[key]) {
-        const c = value[key] || {};
+      } else if (key === 'collectible' && obj[key]) {
+        const c = (obj[key] || {}) as Record<string, Record<string, unknown> | null>;
         sanitized[key] = {
           identification: c.identification
             ? {
@@ -122,14 +123,14 @@ function sanitizeValue(value, depth = 0) {
                 currency: c.valuation.currency,
                 low: c.valuation.low,
                 high: c.valuation.high,
-                marketDataPoints: Array.isArray(c.valuation.market_data) ? c.valuation.market_data.length : 0,
+                marketDataPoints: Array.isArray(c.valuation.market_data) ? (c.valuation.market_data as unknown[]).length : 0,
               }
             : null,
         };
       } else if (key === 'poiCache' && depth > 0) {
         sanitized[key] = '[Omitted for brevity]';
       } else {
-        sanitized[key] = sanitizeValue(value[key], depth + 1);
+        sanitized[key] = sanitizeValue(obj[key], depth + 1);
       }
     }
     return sanitized;
@@ -138,7 +139,7 @@ function sanitizeValue(value, depth = 0) {
   return value;
 }
 
-function formatValue(value) {
+function formatValue(value: unknown): string {
   try {
     const sanitized = sanitizeValue(value);
     return JSON.stringify(sanitized, null, 2);
@@ -147,8 +148,23 @@ function formatValue(value) {
   }
 }
 
-const auditLogger = {
-  logGraphStart: (runId, initialState, runType = 'Standard') => {
+interface GraphState {
+  filename?: string;
+  [key: string]: unknown;
+}
+
+interface AuditLogger {
+  logGraphStart: (runId: string, initialState: GraphState, runType?: string) => void;
+  logGraphEnd: (runId: string, finalState: GraphState) => void;
+  logNodeStart: (runId: string, nodeName: string, input: unknown, filePath?: string) => void;
+  logNodeEnd: (runId: string, nodeName: string, output: unknown) => void;
+  logToolCall: (runId: string, toolName: string, input: unknown, output: unknown) => void;
+  logLLMUsage: (runId: string, nodeName: string, modelName: string, prompt: unknown, response: string) => void;
+  logError: (runId: string, context: string, error: Error | unknown) => void;
+}
+
+const auditLogger: AuditLogger = {
+  logGraphStart: (runId: string, initialState: GraphState, runType: string = 'Standard') => {
     const timestamp = formatTimestamp();
     const filename = initialState.filename || 'Unknown File';
     const separator = '\n' + '='.repeat(80) + '\n';
@@ -156,45 +172,45 @@ const auditLogger = {
     appendLog(content);
   },
 
-  logGraphEnd: (runId, finalState) => {
+  logGraphEnd: (runId: string, finalState: GraphState) => {
     const timestamp = formatTimestamp();
     const separator = '\n' + '='.repeat(80) + '\n';
     const content = `\n## Graph Execution Finished\n**Run ID:** ${runId}\n**Timestamp:** ${timestamp}\n\n## Final State\n\`\`\`json\n${formatValue(finalState)}\n\`\`\`\n${separator}`;
     appendLog(content);
   },
 
-  logNodeStart: (runId, nodeName, input, filePath) => {
+  logNodeStart: (runId: string, nodeName: string, input: unknown, filePath?: string) => {
     const timestamp = formatTimestamp();
     const fileInfo = filePath ? `\n**Source:** \`${filePath}\`` : '';
     const content = `\n### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}${fileInfo}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
     appendLog(content);
   },
 
-  logNodeEnd: (runId, nodeName, output) => {
+  logNodeEnd: (runId: string, nodeName: string, output: unknown) => {
     const timestamp = formatTimestamp();
     const content = `\n### Node Finished: ${nodeName}\n**Timestamp:** ${timestamp}\n\n**Output:**\n\`\`\`json\n${formatValue(output)}\n\`\`\`\n`;
     appendLog(content);
   },
 
-  logToolCall: (runId, toolName, input, output) => {
+  logToolCall: (runId: string, toolName: string, input: unknown, output: unknown) => {
     const timestamp = formatTimestamp();
     const content = `\n#### Tool Used: ${toolName}\n**Timestamp:** ${timestamp}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n\n**Output:**\n\`\`\`json\n${formatValue(output)}\n\`\`\`\n`;
     appendLog(content);
   },
   
-  logLLMUsage: (runId, nodeName, modelName, prompt, response) => {
+  logLLMUsage: (runId: string, nodeName: string, modelName: string, prompt: unknown, response: string) => {
       const timestamp = formatTimestamp();
       const content = `\n#### LLM Used in ${nodeName}\n**Timestamp:** ${timestamp}\n**Model:** ${modelName}\n\n**Prompt:**\n\`\`\`json\n${formatValue(prompt)}\n\`\`\`\n\n**Response:**\n\`\`\`\n${response}\n\`\`\`\n`;
       appendLog(content);
   },
 
-  logError: (runId, context, error) => {
+  logError: (runId: string, context: string, error: Error | unknown) => {
     const timestamp = formatTimestamp();
-    const errorMessage = error?.message || String(error);
-    const errorStack = error?.stack || 'No stack trace available';
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack || 'No stack trace available' : 'No stack trace available';
     const content = `\n## ❌ Error\n**Run ID:** ${runId}\n**Timestamp:** ${timestamp}\n**Context:** ${context}\n\n**Error Message:**\n\`\`\`\n${errorMessage}\n\`\`\`\n\n**Stack Trace:**\n\`\`\`\n${errorStack}\n\`\`\`\n`;
     appendLog(content);
   }
 };
 
-module.exports = auditLogger;
+export = auditLogger;

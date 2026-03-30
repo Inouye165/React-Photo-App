@@ -1,8 +1,8 @@
-function normalizeClassification(input) {
+function normalizeClassification(input: string): string {
   return String(input || '').trim().toLowerCase();
 }
 
-function isCollectablesClassification(classification) {
+function isCollectablesClassification(classification: string): boolean {
   const c = normalizeClassification(classification);
   // Accept common synonyms used in the project and be defensive about
   // variations. Exact equality and contains-check allow matching 'collectable'
@@ -10,7 +10,7 @@ function isCollectablesClassification(classification) {
   return c === 'collectables' || c === 'collectible' || c.includes('collect');
 }
 
-function shouldSkipGenericPoi(classification) {
+function shouldSkipGenericPoi(classification: string): boolean {
   const c = normalizeClassification(classification);
   // We skip generic POI lookups for food images (food-specific flow) and for
   // collectables where POI lookups are not meaningful.
@@ -21,3 +21,5 @@ function shouldSkipGenericPoi(classification) {
 }
 
 module.exports = { normalizeClassification, isCollectablesClassification, shouldSkipGenericPoi };
+
+export { normalizeClassification, isCollectablesClassification, shouldSkipGenericPoi };

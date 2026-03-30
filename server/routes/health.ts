@@ -7,7 +7,7 @@ module.exports = function createHealthRouter() {
 
   let appVersion;
   try {
-    appVersion = require('../version.js').APP_VERSION;
+    appVersion = require('../version').APP_VERSION;
   } catch {
     appVersion = undefined;
   }
