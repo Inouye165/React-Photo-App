@@ -309,7 +309,7 @@ function Ensure-DatabaseMigrations {
   Invoke-NpmCommand -Arguments @('--prefix', 'server', 'run', 'verify:migrations') -WorkingDirectory (Resolve-Path "$PSScriptRoot\..").Path
 
   Write-Step 'Applying pending migrations (if any)...'
-  & node server/scripts/run-migrations.js
+  & node server/dist/scripts/run-migrations.js
   if ($LASTEXITCODE -ne 0) {
     throw 'Running migrations failed.'
   }
