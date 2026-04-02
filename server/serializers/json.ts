@@ -1,5 +1,3 @@
-// @ts-nocheck
-
 /**
  * Centralized JSON-ish parsing utilities.
  * Behavior (explicit + consistent):
@@ -7,7 +5,7 @@
  * - invalid JSON string => null (never throws)
  * - already object/array => returned as-is
  */
-function safeJsonParse(value) {
+function safeJsonParse(value: unknown): unknown {
   if (value === null || value === undefined) return null;
 
   if (typeof value === 'string') {
@@ -27,19 +25,19 @@ function safeJsonParse(value) {
   return null;
 }
 
-function safeParseObject(value) {
+function safeParseObject(value: unknown): Record<string, unknown> | null {
   const parsed = safeJsonParse(value);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  return parsed;
+  return parsed as Record<string, unknown>;
 }
 
-function safeParseArray(value) {
+function safeParseArray(value: unknown): unknown[] | null {
   const parsed = safeJsonParse(value);
   if (!Array.isArray(parsed)) return null;
   return parsed;
 }
 
-function safeParseUnknown(value) {
+function safeParseUnknown(value: unknown): unknown {
   return safeJsonParse(value);
 }
 
@@ -49,3 +47,5 @@ module.exports = {
   safeParseArray,
   safeParseUnknown,
 };
+
+export {};

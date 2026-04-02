@@ -1,9 +1,44 @@
-// @ts-nocheck
-
 const { safeParseObject, safeParseUnknown } = require('./json');
 const path = require('path');
 
-function extractThumbnailBasename(storagePath) {
+interface SignUrlResult {
+  sig: string;
+  exp: number;
+}
+
+interface SigningOptions {
+  signThumbnailUrl: (hash: string, ttl?: number) => SignUrlResult;
+  ttlSeconds?: number;
+}
+
+interface PhotoRow {
+  id: string;
+  filename: string;
+  state: string;
+  derivatives_status?: string | null;
+  derivatives_error?: string | null;
+  metadata?: unknown;
+  hash?: string | null;
+  file_size?: number | null;
+  caption?: string | null;
+  description?: string | null;
+  keywords?: string | null;
+  text_style?: unknown;
+  edited_filename?: string | null;
+  storage_path?: string | null;
+  thumb_path?: string | null;
+  thumb_small_path?: string | null;
+  ai_model_history?: unknown;
+  poi_analysis?: unknown;
+  classification?: string | null;
+  collectible_value_min?: number | null;
+  collectible_value_max?: number | null;
+  collectible_currency?: string | null;
+  collectible_category?: string | null;
+  collectible_specifics?: unknown;
+}
+
+function extractThumbnailBasename(storagePath: string | null | undefined): string | null {
   if (!storagePath || typeof storagePath !== 'string') return null;
   // Disallow traversal and absolute paths.
   if (storagePath.includes('..') || storagePath.startsWith('/') || storagePath.startsWith('\\')) return null;
@@ -17,7 +52,7 @@ function extractThumbnailBasename(storagePath) {
   return base;
 }
 
-function buildSignedThumbnailDisplayUrl(storagePath, { signThumbnailUrl, ttlSeconds }) {
+function buildSignedThumbnailDisplayUrl(storagePath: string | null | undefined, { signThumbnailUrl, ttlSeconds }: SigningOptions): string | null {
   const base = extractThumbnailBasename(storagePath);
   if (!base) return null;
   if (typeof signThumbnailUrl !== 'function') return null;
@@ -29,7 +64,7 @@ function buildSignedThumbnailDisplayUrl(storagePath, { signThumbnailUrl, ttlSeco
   return `/display/thumbnails/${base}?sig=${encodeURIComponent(sig)}&exp=${exp}`;
 }
 
-async function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
+async function mapPhotoRowToListDto(row: PhotoRow, { signThumbnailUrl, ttlSeconds }: Partial<SigningOptions> = {}) {
   const metadata = safeParseObject(row.metadata) || {};
   const textStyle = safeParseObject(row.text_style);
   const aiModelHistory = row.ai_model_history ? safeParseUnknown(row.ai_model_history) : null;
@@ -76,7 +111,7 @@ async function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) 
   };
 }
 
-function mapPhotoRowToDetailDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
+function mapPhotoRowToDetailDto(row: PhotoRow, { signThumbnailUrl, ttlSeconds }: Partial<SigningOptions> = {}) {
   const metadata = safeParseObject(row.metadata) || {};
   const textStyle = safeParseObject(row.text_style);
   const aiModelHistory = row.ai_model_history ? safeParseUnknown(row.ai_model_history) : null;
@@ -102,8 +137,8 @@ function mapPhotoRowToDetailDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
   if (row.collectible_value_min != null || row.collectible_value_max != null) {
     collectible_insights = {
       estimatedValue: {
-        min: row.collectible_value_min != null ? parseFloat(row.collectible_value_min) : null,
-        max: row.collectible_value_max != null ? parseFloat(row.collectible_value_max) : null,
+        min: row.collectible_value_min != null ? parseFloat(String(row.collectible_value_min)) : null,
+        max: row.collectible_value_max != null ? parseFloat(String(row.collectible_value_max)) : null,
         currency: row.collectible_currency || 'USD'
       },
       category: row.collectible_category,
@@ -144,3 +179,5 @@ module.exports = {
   mapPhotoRowToListDto,
   mapPhotoRowToDetailDto,
 };
+
+export {};
