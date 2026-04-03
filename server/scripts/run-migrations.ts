@@ -1,42 +1,42 @@
 #!/usr/bin/env node
 /**
- * server/scripts/run-migrations.js
+ * server/scripts/run-migrations.ts
  *
  * Runs Knex migrations programmatically using the same knexfile configuration
  * the server uses. This is used by `npm start` via `prestart` so Railway can
  * keep the DB schema in sync without requiring an interactive shell.
  */
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import knexFactory, { type Knex } from 'knex';
 
-// Ensure server/.env is loaded (no-op in Railway where vars come from the platform).
-require(path.join(__dirname, '..', 'env'));
+import '../env';
 
-function resolveKnexEnv() {
-  // Knex supports arbitrary env names; our knexfile exports development/test/production.
+type KnexEnvironment = 'development' | 'test' | 'production';
+type KnexConfigMap = Record<string, Knex.Config>;
+
+function resolveKnexEnv(): KnexEnvironment {
   const nodeEnv = (process.env.NODE_ENV || 'development').trim();
   if (nodeEnv === 'production') return 'production';
   if (nodeEnv === 'test') return 'test';
   return 'development';
 }
 
-async function runMigrations() {
+async function runMigrations(): Promise<void> {
   if (process.env.SKIP_RUN_MIGRATIONS === 'true') {
     console.log('[migrations] SKIP_RUN_MIGRATIONS=true -> skipping migrations');
     return;
   }
 
-  const knex = require('knex');
   const knexfile = loadKnexfile();
-
   const env = resolveKnexEnv();
   const cfg = knexfile[env];
   if (!cfg) {
     throw new Error(`[migrations] knex config for environment "${env}" not found`);
   }
 
-  const db = knex(cfg);
+  const db = knexFactory(cfg);
   try {
     const result = await db.migrate.latest();
     const batch = result?.[0];
@@ -52,16 +52,13 @@ async function runMigrations() {
   }
 }
 
-function loadKnexfile() {
+function loadKnexfile(): KnexConfigMap {
   const rootDir = path.resolve(__dirname, '..');
-  const candidateJsPaths = [
-    path.join(rootDir, 'knexfile.js'),
-    path.join(rootDir, 'dist', 'knexfile.js')
-  ];
+  const candidateJsPaths = [path.join(rootDir, 'knexfile.js'), path.join(rootDir, 'dist', 'knexfile.js')];
 
   for (const jsPath of candidateJsPaths) {
     if (fs.existsSync(jsPath)) {
-      return require(jsPath);
+      return require(jsPath) as KnexConfigMap;
     }
   }
 
@@ -69,7 +66,7 @@ function loadKnexfile() {
   if (fs.existsSync(tsPath)) {
     try {
       require('tsx/cjs');
-      return require(tsPath);
+      return require(tsPath) as KnexConfigMap;
     } catch {
       throw new Error(
         '[migrations] knexfile.ts detected but could not be loaded. Run npm --prefix server run build or ensure tsx is installed.'
@@ -82,11 +79,14 @@ function loadKnexfile() {
 
 if (require.main === module) {
   runMigrations()
-    .then(() => process.exit(0))
-    .catch((err) => {
-      console.error('[migrations] FAILED:', err?.message || err);
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[migrations] FAILED:', message);
       process.exit(1);
     });
 }
 
-module.exports = { runMigrations };
+export { runMigrations };

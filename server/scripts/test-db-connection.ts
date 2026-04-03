@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// server/scripts/test-db-connection.js
+// server/scripts/test-db-connection.ts
 // Simple dev-only Postgres smoke test. Exits 0 on success, non-zero on failure.
-const path = require('path');
-// make sure env is loaded
-require(path.join(__dirname, '..', 'env'));
-const { Client } = require('pg');
 
-(async () => {
+import { Client } from 'pg';
+
+import '../env';
+
+async function main(): Promise<void> {
   const url = process.env.SUPABASE_DB_URL;
   if (!url) {
     console.error('[test-db] Missing SUPABASE_DB_URL in server/.env');
@@ -14,20 +14,27 @@ const { Client } = require('pg');
   }
 
   const isSslDisabled = String(process.env.DB_SSL_DISABLED || '').trim().toLowerCase() === 'true';
-  // Use ssl.rejectUnauthorized=false for common managed PG hosts (Supabase).
   const client = new Client({
     connectionString: url,
-    ssl: isSslDisabled ? false : { rejectUnauthorized: false }
+    ssl: isSslDisabled ? false : { rejectUnauthorized: false },
   });
+
   try {
     await client.connect();
-    const { rows } = await client.query('SELECT 1 AS ok;');
+    const { rows } = await client.query<{ ok: number }>('SELECT 1 AS ok;');
     console.log('[test-db] DB OK:', rows);
     process.exit(0);
-  } catch (err) {
-    console.error('[test-db] DB FAIL:', err && err.message ? err.message : err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[test-db] DB FAIL:', message);
     process.exit(2);
   } finally {
-    try { await client.end(); } catch { /* ignore */ }
+    try {
+      await client.end();
+    } catch {
+      // ignore cleanup errors
+    }
   }
-})();
+}
+
+void main();

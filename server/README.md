@@ -217,7 +217,7 @@ node server/scripts/fix-collectible-thumbnails.js --limit 100
 **Verifying SSL Configuration:**
 ```bash
 # Verify production SSL connection
-NODE_ENV=production node scripts/verify-db-ssl.js
+NODE_ENV=production npx tsx scripts/verify-db-ssl.ts
 ```
 
 **Updating the CA Certificate:**

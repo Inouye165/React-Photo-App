@@ -70,11 +70,11 @@ Expected: Frontend at http://localhost:5173/
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:
     1. First pass failed during preflight migration verification (`npm --prefix server run verify:migrations`) with `MODULE_NOT_FOUND` for `../knexfile`.
-    2. Second pass failed during migration apply (`node scripts/run-migrations.js`) with `Cannot find module '.../server/knexfile'`.
+    2. Second pass failed during migration apply (`tsx scripts/run-migrations.ts`) with `Cannot find module '.../server/knexfile'`.
     3. Third pass completed preflight checks, launched API/worker/frontend terminals, and passed the 45-second monitoring window.
   - Fixes applied:
-    1. Updated `server/scripts/check-migrations.js` to resolve knex config from `knexfile.js`, `dist/knexfile.js`, or `knexfile.ts` (with `tsx` loader fallback).
-    2. Updated `server/scripts/run-migrations.js` with the same resilient knexfile resolution logic.
+    1. Updated `server/scripts/check-migrations.ts` to resolve knex config from `knexfile.js`, `dist/knexfile.js`, or `knexfile.ts` (with `tsx` loader fallback).
+    2. Updated `server/scripts/run-migrations.ts` with the same resilient knexfile resolution logic.
   - Verification results after fixes:
     - `http://127.0.0.1:3001/health` returned HTTP `200`.
     - `http://localhost:5173/` returned HTTP `200`.
@@ -244,7 +244,7 @@ Expected: Frontend at http://localhost:5173/
     2. Local Supabase reachability/start self-heal path.
     3. Dependency install preflight (`npm install`, `npm --prefix server install` when needed).
     4. Server build preflight (`npm --prefix server run build`).
-    5. Migration verify/apply preflight (`npm --prefix server run verify:migrations`, `node server/scripts/run-migrations.js`).
+    5. Migration verify/apply preflight (`npm --prefix server run verify:migrations`, `tsx server/scripts/run-migrations.ts`).
     6. Post-start process + endpoint monitoring window.
   - Issues observed during first pass:
     1. Startup monitor produced a false positive by matching benign log text (`disabling tracing to prevent network errors`).

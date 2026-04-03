@@ -1,38 +1,60 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
-const logger = require('../../../logger'); // <-- ADDED IMPORT
+
+interface Logger {
+  info: (message: string, ...args: unknown[]) => void;
+  warn: (message: string, ...args: unknown[]) => void;
+  error: (message: string, ...args: unknown[]) => void;
+}
+
+interface SearchResult {
+  title: string;
+  link: string;
+  snippet: string;
+  displayLink?: string;
+  mime?: string;
+  source: 'google' | 'serpapi';
+}
+
+interface SearchParams {
+  query: string;
+  numResults?: number;
+  siteFilter?: string;
+}
+
+const logger: Logger = require('../../../logger'); // <-- ADDED IMPORT
 
 const MAX_RESULTS = 8;
 
-const ensureFetch = () => {
+const ensureFetch = (): typeof globalThis.fetch => {
   if (typeof globalThis.fetch === 'function') {
     return globalThis.fetch.bind(globalThis);
   }
 
-  return async (...args) => {
+  return async (...args: Parameters<typeof globalThis.fetch>): Promise<Response> => {
     const { default: fetchPolyfill } = await import('node-fetch');
-    return fetchPolyfill(...args);
+    return (fetchPolyfill as unknown as typeof globalThis.fetch)(...args);
   };
 };
 
 const fetchFn = ensureFetch();
 
-async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
+async function runGoogleSearch({ query, numResults = 4, siteFilter }: SearchParams): Promise<SearchResult[] | string> {
   logger.info('[searchTool] runGoogleSearch called', {
     query: query?.slice(0, 100),
     numResults,
     siteFilter: siteFilter || null,
   });
 
-  const trimmedQuery = (query || '').trim();
+  const trimmedQuery: string = (query || '').trim();
   if (!trimmedQuery) {
     throw new Error('Search query is required');
   }
 
-  const appliedResults = Math.max(1, Math.min(numResults, MAX_RESULTS));
+  const appliedResults: number = Math.max(1, Math.min(numResults, MAX_RESULTS));
 
-  const apiKey = process.env.GOOGLE_API_KEY;
-  const cx = process.env.GOOGLE_CSE_ID;
+  const apiKey: string | undefined = process.env.GOOGLE_API_KEY;
+  const cx: string | undefined = process.env.GOOGLE_CSE_ID;
 
   // [TEMPORARY DEBUG] Log only the last 4 chars of the API key to verify configuration
   // Remove this block once configuration is confirmed correct
@@ -51,7 +73,7 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
   // [END TEMPORARY DEBUG]
 
   if (!apiKey || !cx) {
-    const serpKey = process.env.SERPAPI_API_KEY;
+    const serpKey: string | undefined = process.env.SERPAPI_API_KEY;
     if (!serpKey) {
       throw new Error('Google Custom Search or SerpAPI credentials are not configured');
     }
@@ -67,7 +89,7 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
 
     // --- ADDED TRY/CATCH ---
     try {
-      const serpResponse = await fetchFn(`https://serpapi.com/search.json?${serpParams.toString()}`, {
+      const serpResponse: Response = await fetchFn(`https://serpapi.com/search.json?${serpParams.toString()}`, {
         method: 'GET',
         headers: { 'User-Agent': 'CollectibleAgent/1.0 (+https://github.com/Inouye165/React-Photo-App)' }
       });
@@ -77,24 +99,25 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
         throw new Error(`SerpAPI search failed: ${serpResponse.status} ${text}`);
       }
 
-      const serpJson = await serpResponse.json();
+      const serpJson: { organic_results?: Array<{ title?: string; link?: string; snippet?: string; snippet_highlighted_words?: string[] }> } = await serpResponse.json() as { organic_results?: Array<{ title?: string; link?: string; snippet?: string; snippet_highlighted_words?: string[] }> };
       const organic = Array.isArray(serpJson.organic_results) ? serpJson.organic_results : [];
 
-      return organic.slice(0, appliedResults).map((result) => ({
+      return organic.slice(0, appliedResults).map((result): SearchResult => ({
         title: result.title || '',
         link: result.link || '',
         snippet: result.snippet || result.snippet_highlighted_words?.join(' ') || '',
         source: 'serpapi'
       }));
-    } catch (error) {
-      logger.error('[SearchTool] SerpAPI call failed:', error.message);
+    } catch (error: unknown) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error('[SearchTool] SerpAPI call failed:', errMsg);
       // Return a string error message so the Agent can proceed with its internal knowledge
-      return `Search failed: ${error.message}. Proceeding with internal knowledge only.`;
+      return `Search failed: ${errMsg}. Proceeding with internal knowledge only.`;
     }
     // --- END OF TRY/CATCH ---
   }
 
-  const params = new URLSearchParams({
+  const params: URLSearchParams = new URLSearchParams({
     key: apiKey,
     cx,
     q: trimmedQuery,
@@ -106,22 +129,22 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
   // --- ADDED TRY/CATCH ---
   try {
     logger.info('[SearchTool] Calling Google Custom Search API for query:', trimmedQuery);
-    const response = await fetchFn(`https://www.googleapis.com/customsearch/v1?${params.toString()}`, {
+    const response: Response = await fetchFn(`https://www.googleapis.com/customsearch/v1?${params.toString()}`, {
       method: 'GET',
       headers: { 'User-Agent': 'CollectibleAgent/1.0 (+https://github.com/Inouye165/React-Photo-App)' }
     });
 
     if (!response.ok) {
-      const bodyText = await response.text();
+      const bodyText: string = await response.text();
       throw new Error(`Google Custom Search failed: ${response.status} ${bodyText}`);
     }
 
-    const json = await response.json();
+    const json: { items?: Array<{ title?: string; link?: string; snippet?: string; displayLink?: string; mime?: string }> } = await response.json() as { items?: Array<{ title?: string; link?: string; snippet?: string; displayLink?: string; mime?: string }> };
     const items = Array.isArray(json.items) ? json.items : [];
 
     logger.info('[SearchTool] Google Custom Search returned %d results for: %s', items.length, trimmedQuery);
     
-    const results = items.slice(0, appliedResults).map((item) => ({
+    const results: SearchResult[] = items.slice(0, appliedResults).map((item): SearchResult => ({
       title: item.title || '',
       link: item.link || '',
       snippet: item.snippet || '',
@@ -136,18 +159,19 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
     }
     
     return results;
-  } catch (error) {
-    logger.error('[SearchTool] Google Custom Search call failed:', error.message);
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    logger.error('[SearchTool] Google Custom Search call failed:', errMsg);
     // Return a string error message so the Agent can proceed with its internal knowledge
-    return `Search failed: ${error.message}. Proceeding with internal knowledge only.`;
+    return `Search failed: ${errMsg}. Proceeding with internal knowledge only.`;
   }
   // --- END OF TRY/CATCH ---
 }
 
 const googleSearchTool = tool(
-  async ({ query, numResults, siteFilter }) => {
-    const normalizedNumResults = numResults == null ? undefined : numResults;
-    const normalizedSiteFilter = siteFilter == null ? undefined : siteFilter;
+  async ({ query, numResults, siteFilter }: { query: string; numResults?: number | null; siteFilter?: string | null }) => {
+    const normalizedNumResults: number | undefined = numResults == null ? undefined : numResults;
+    const normalizedSiteFilter: string | undefined = siteFilter == null ? undefined : siteFilter;
     const results = await runGoogleSearch({ query, numResults: normalizedNumResults, siteFilter: normalizedSiteFilter });
     return JSON.stringify({
       query,
@@ -167,3 +191,5 @@ const googleSearchTool = tool(
 );
 
 module.exports = { googleSearchTool, runGoogleSearch };
+
+export { googleSearchTool, runGoogleSearch };

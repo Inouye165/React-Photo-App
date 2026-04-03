@@ -1,19 +1,32 @@
 #!/usr/bin/env node
 
-// server/scripts/find-orphaned-users.js
+// server/scripts/find-orphaned-users.ts
 //
 // Reports "orphaned" app user records: rows in public.users that no longer
 // have a corresponding user in Supabase Auth (auth.users).
 //
-// Safe mode ONLY: this script does not delete anything.
+// Safe mode ONLY: this script does not delete anything unless invoked with --fix.
 
-require('../env');
+import knexFactory from 'knex';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const knexConfig = require('../knexfile');
-const knexFactory = require('knex');
-const { createClient } = require('@supabase/supabase-js');
+import '../env';
 
-function requireEnv(name) {
+const knexConfig = require('../knexfile') as Record<string, Parameters<typeof knexFactory>[0]> & {
+  development: Parameters<typeof knexFactory>[0];
+};
+
+type PublicUserRow = {
+  id: string;
+  username: string | null;
+};
+
+type OrphanedUser = {
+  id: string;
+  username: string | null;
+};
+
+function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value || String(value).trim() === '') {
     console.error(`❌ ERROR: Missing required env var: ${name}`);
@@ -28,36 +41,38 @@ function createKnex() {
   return knexFactory(cfg);
 }
 
-function createSupabaseAdminClient() {
+function createSupabaseAdminClient(): SupabaseClient {
   const url = requireEnv('SUPABASE_URL');
   const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
   return createClient(url, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
-      persistSession: false
-    }
+      persistSession: false,
+    },
   });
 }
 
-async function listAllAuthUserIds(supabaseAdmin) {
+async function listAllAuthUserIds(supabaseAdmin: SupabaseClient): Promise<Set<string>> {
   const perPage = 1000;
   let page = 1;
-  const authUserIds = new Set();
+  const authUserIds = new Set<string>();
 
   for (;;) {
     const { data, error } = await supabaseAdmin.auth.admin.listUsers({
       page,
-      perPage
+      perPage,
     });
 
     if (error) {
       throw new Error(`Supabase listUsers failed on page ${page}: ${error.message || String(error)}`);
     }
 
-    const users = (data && data.users) || [];
+    const users = data?.users || [];
     for (const user of users) {
-      if (user && user.id) authUserIds.add(String(user.id).toLowerCase());
+      if (user?.id) {
+        authUserIds.add(String(user.id).toLowerCase());
+      }
     }
 
     if (users.length < perPage) break;
@@ -67,10 +82,10 @@ async function listAllAuthUserIds(supabaseAdmin) {
   return authUserIds;
 }
 
-async function main() {
+async function main(): Promise<void> {
   const shouldFix = process.argv.includes('--fix');
 
-  const knex = createKnex();
+  const db = createKnex();
   const supabaseAdmin = createSupabaseAdminClient();
 
   try {
@@ -81,9 +96,7 @@ async function main() {
     );
 
     console.log('📥 Fetching public users...');
-    const publicUsers = await knex('users')
-      .withSchema('public')
-      .select(['id', 'username']);
+    const publicUsers = await db<PublicUserRow>('users').withSchema('public').select(['id', 'username']);
 
     console.log(`✅ Loaded ${publicUsers.length} rows from public.users`);
 
@@ -92,16 +105,16 @@ async function main() {
     console.log(`✅ Loaded ${authUserIds.size} users from auth.users`);
 
     console.log('🧮 Comparing...');
-    const orphans = [];
+    const orphans: OrphanedUser[] = [];
 
     for (const row of publicUsers) {
-      const id = row && row.id ? String(row.id).toLowerCase() : '';
+      const id = row?.id ? String(row.id).toLowerCase() : '';
       if (!id) continue;
 
       if (!authUserIds.has(id)) {
         orphans.push({
           id: row.id,
-          username: row.username
+          username: row.username,
         });
       }
     }
@@ -118,7 +131,7 @@ async function main() {
 
     if (!shouldFix) {
       console.log('\nℹ️  Safe mode: no deletes performed.');
-      console.log('   Re-run with: node server/scripts/find-orphaned-users.js --fix');
+      console.log('   Re-run with: npx tsx server/scripts/find-orphaned-users.ts --fix');
       return;
     }
 
@@ -128,10 +141,7 @@ async function main() {
 
     for (const orphan of orphans) {
       try {
-        const affected = await knex('users')
-          .withSchema('public')
-          .where({ id: orphan.id })
-          .del();
+        const affected = await db('users').withSchema('public').where({ id: orphan.id }).del();
 
         if (Number(affected) > 0) {
           deletedCount += 1;
@@ -140,27 +150,25 @@ async function main() {
           failedCount += 1;
           console.warn(`⚠️  No row deleted for orphan: ${orphan.username} (${orphan.id})`);
         }
-      } catch (err) {
+      } catch (error) {
         failedCount += 1;
-        console.error(
-          `❌ Failed to delete orphan: ${orphan.username} (${orphan.id}) - ${err && err.message ? err.message : err}`
-        );
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`❌ Failed to delete orphan: ${orphan.username} (${orphan.id}) - ${message}`);
       }
     }
 
     if (failedCount === 0) {
       console.log(`\n✅ Cleanup complete. Removed ${deletedCount} orphaned record(s).`);
     } else {
-      console.log(
-        `\n⚠️  Cleanup complete with errors. Removed ${deletedCount} orphaned record(s); ${failedCount} failed.`
-      );
+      console.log(`\n⚠️  Cleanup complete with errors. Removed ${deletedCount} orphaned record(s); ${failedCount} failed.`);
     }
   } finally {
-    await knex.destroy();
+    await db.destroy();
   }
 }
 
-main().catch((err) => {
-  console.error('❌ Script failed:', err && err.message ? err.message : err);
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('❌ Script failed:', message);
   process.exit(1);
 });

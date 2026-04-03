@@ -1,66 +1,53 @@
 /**
- * Pre-test key validation
- * Validates that required API keys are present and functional before running tests
+ * Pre-test key validation.
+ * Validates that required API keys are present and functional before running tests.
  */
 
-require('../env');
+import '../env';
 
-function shouldTreatOpenAIValidationFailureAsWarning(error) {
+type GooglePlacesResponse = {
+  status?: string;
+  error_message?: string;
+};
+
+function shouldTreatOpenAIValidationFailureAsWarning(error: unknown): boolean {
   if (!error) return false;
 
   const message = error instanceof Error ? error.message : String(error);
   const name = error instanceof Error ? error.name : '';
   const normalized = `${name} ${message}`.toLowerCase();
 
-  return [
-    'abort',
-    'fetch failed',
-    'timed out',
-    'timeout',
-    'econnreset',
-    'enotfound',
-    'eai_again',
-    'network',
-    'socket',
-  ].some((token) => normalized.includes(token));
+  return ['abort', 'fetch failed', 'timed out', 'timeout', 'econnreset', 'enotfound', 'eai_again', 'network', 'socket']
+    .some((token) => normalized.includes(token));
 }
 
-async function validateKeys() {
-  const errors = [];
-  
-  // Required keys that must be present
-  const requiredKeys = [
-    'OPENAI_API_KEY',
-    'SUPABASE_URL',
-    'SUPABASE_ANON_KEY',
-    'JWT_SECRET'
-  ];
-  
-  // Check for missing keys
+async function validateKeys(): Promise<void> {
+  const errors: string[] = [];
+  const requiredKeys = ['OPENAI_API_KEY', 'SUPABASE_URL', 'SUPABASE_ANON_KEY', 'JWT_SECRET'];
+
   for (const key of requiredKeys) {
-    if (!process.env[key] || process.env[key].trim() === '') {
+    const value = process.env[key];
+    if (!value || value.trim() === '') {
       errors.push(`Missing required key: ${key}`);
     }
   }
-  
-  // If critical keys are missing, fail immediately
+
   if (errors.length > 0) {
     console.error('❌ Key validation failed:');
-    errors.forEach(err => console.error('  -', err));
+    errors.forEach((err) => console.error('  -', err));
     process.exit(1);
   }
-  
-  // Test OpenAI API key if present (skip validation in CI)
+
   if (process.env.OPENAI_API_KEY && !process.env.CI) {
     try {
       const response = await fetch('https://api.openai.com/v1/models', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
       });
-      
+
       if (!response.ok) {
         errors.push(`OPENAI_API_KEY is invalid (HTTP ${response.status})`);
       }
@@ -69,36 +56,37 @@ async function validateKeys() {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`⚠️  Skipping live OPENAI_API_KEY validation: ${message}`);
       } else {
-        errors.push(`Failed to validate OPENAI_API_KEY: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Failed to validate OPENAI_API_KEY: ${message}`);
       }
     }
   }
-  
-  // Test Google Maps API key if present (optional but warn if invalid, skip in CI)
+
   if ((process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) && !process.env.CI) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
     try {
       const testUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=47.6205,-122.3493&radius=500&type=park&key=${apiKey}`;
       const response = await fetch(testUrl);
-      const data = await response.json();
-      
+      const data = (await response.json()) as GooglePlacesResponse;
+
       if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-        console.warn(`⚠️  Warning: GOOGLE_MAPS_API_KEY may be invalid (status: ${data.status})`);
+        console.warn(`⚠️  Warning: GOOGLE_MAPS_API_KEY may be invalid (status: ${String(data.status)})`);
         if (data.error_message) {
           console.warn(`   ${data.error_message}`);
         }
       }
     } catch (error) {
-      console.warn(`⚠️  Warning: Failed to validate GOOGLE_MAPS_API_KEY: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`⚠️  Warning: Failed to validate GOOGLE_MAPS_API_KEY: ${message}`);
     }
   }
-  
+
   if (errors.length > 0) {
     console.error('\n❌ Key validation failed:');
-    errors.forEach(err => console.error('  -', err));
+    errors.forEach((err) => console.error('  -', err));
     process.exit(1);
   }
-  
+
   if (process.env.CI) {
     console.log('✅ All required API keys present (CI mode - skipped validation)');
   } else {
@@ -106,7 +94,8 @@ async function validateKeys() {
   }
 }
 
-validateKeys().catch(error => {
-  console.error('❌ Key validation error:', error.message);
+validateKeys().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error('❌ Key validation error:', message);
   process.exit(1);
 });

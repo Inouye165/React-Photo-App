@@ -1,8 +1,8 @@
 // Prompts for generate_metadata node
 
-const GENERATE_METADATA_SYSTEM_PROMPT = 'You are a helpful assistant for photo metadata extraction.';
+export const GENERATE_METADATA_SYSTEM_PROMPT: string = 'You are a helpful assistant for photo metadata extraction.';
 
-const GENERATE_METADATA_USER_PROMPT = `You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
+export const GENERATE_METADATA_USER_PROMPT: string = `You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
   `caption: A short, one-sentence title for the photo.\n` +
   `description: A detailed, multi-sentence paragraph describing the visual contents.\n` +
   `keywords: A comma-separated string that begins with the classification provided ({classification}) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n` +

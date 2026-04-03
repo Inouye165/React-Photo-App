@@ -1,35 +1,84 @@
 require('../../env');
-const logger = require('../../logger');
-const { haversineDistanceMeters } = require('./geoUtils');
-const auditLogger = require('../langgraph/audit_logger');
-
-const ensureFetch = () => {
-  if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
-  return async (...args) => {
-    const { default: fetchPolyfill } = await import('node-fetch');
-    return fetchPolyfill(...args);
-  };
+const logger = require('../../logger') as {
+  info: (msg: string, ...args: unknown[]) => void;
+  warn: (msg: string, ...args: unknown[]) => void;
 };
-function getFetchFn(customFetch) {
+import { haversineDistanceMeters } from './geoUtils';
+const auditLogger = require('../langgraph/audit_logger') as {
+  logToolCall: (runId: string, tool: string, input: Record<string, unknown>, output: unknown) => void;
+};
+
+type FetchFn = typeof globalThis.fetch;
+
+interface CacheEntry<T> {
+  value: T;
+  expires: number;
+}
+
+interface FoodPlace {
+  placeId: string;
+  name: string;
+  address: string | null;
+  types: string[];
+  rating: number | null;
+  userRatingsTotal: number | null;
+  lat: number | null;
+  lon: number | null;
+  distanceMeters: number | null;
+  source: 'google';
+}
+
+interface FoodPlacesOpts {
+  runId?: string;
+  fetch?: FetchFn;
+}
+
+interface PlaceResult {
+  place_id?: string;
+  name?: string;
+  types?: string[];
+  geometry?: { location?: { lat?: number; lng?: number } };
+  vicinity?: string;
+  formatted_address?: string;
+  rating?: number;
+  user_ratings_total?: number;
+  userRatingsTotal?: number;
+  business_status?: string;
+  opening_hours?: { open_now?: boolean };
+}
+
+interface PlacesApiResponse {
+  status?: string;
+  results?: PlaceResult[];
+}
+
+const ensureFetch = (): FetchFn => {
+  if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
+  return (async (...args: Parameters<FetchFn>): Promise<Response> => {
+    const { default: fetchPolyfill } = await import('node-fetch');
+    return (fetchPolyfill as unknown as FetchFn)(...args);
+  }) as FetchFn;
+};
+function getFetchFn(customFetch?: FetchFn): FetchFn {
   if (customFetch) return customFetch;
   return ensureFetch();
 }
 
-const API_KEY =
+const API_KEY: string | undefined =
   process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
-const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
+const allowDevDebug: boolean = process.env.ALLOW_DEV_DEBUG === 'true';
 if (!API_KEY) {
   logger.warn('[foodPlaces] GOOGLE_MAPS_API_KEY missing; food POI lookups will be skipped');
 }
 
 // Simple cache
-const cache = new Map();
-function cacheSet(key, value, ttlMs = 2 * 60 * 60 * 1000) {
+const cache: Map<string, CacheEntry<FoodPlace[]>> = new Map();
+function cacheSet(key: string, value: FoodPlace[], ttlMs: number = 2 * 60 * 60 * 1000): void {
   const expires = Date.now() + ttlMs;
   cache.set(key, { value, expires });
   logger.info(`[foodPlaces] 🔵 CACHE SET: key="${key}", items=${value.length}, ttl=${ttlMs}ms, expires=${new Date(expires).toISOString()}`);
 }
-function cacheGet(key) {
+function cacheGet(key: string): FoodPlace[] | null {
   const entry = cache.get(key);
   if (!entry) {
     logger.info(`[foodPlaces] 🔵 CACHE MISS: key="${key}" - not found in cache`);
@@ -43,25 +92,24 @@ function cacheGet(key) {
   logger.info(`[foodPlaces] 🔵 CACHE HIT: key="${key}", items=${entry.value.length}`);
   return entry.value;
 }
-function keyFor(lat, lon, radius) {
+function keyFor(lat: number, lon: number, radius: number): string {
   // Keep cache key stable - default radius is 50 meters (164 feet)
   const key = `${Number(lat).toFixed(4)}:${Number(lon).toFixed(4)}:${Number(radius || 50)}`;
   logger.info(`[foodPlaces] 🔵 CACHE KEY GENERATED: lat=${lat}, lon=${lon}, radius=${radius} => "${key}"`);
   return key;
 }
 
-function redactUrl(url) {
+function redactUrl(url: string): string {
   if (!API_KEY) return url;
   return url.replace(API_KEY, '****');
 }
 
 // Default radiusMeters is now 50 (164 feet)
 // Expand to a configurable maximum radius (meters) when looking for restaurants
-// Add env var FOOD_PLACES_MAX_RADIUS_METERS to allow config in CI/Prod
-const FOOD_PLACES_MAX_RADIUS_METERS = Number(process.env.FOOD_PLACES_MAX_RADIUS_METERS || 1000);
-const FOOD_PLACES_START_RADIUS_METERS = Number(process.env.FOOD_PLACES_START_RADIUS_METERS || 50);
+const FOOD_PLACES_MAX_RADIUS_METERS: number = Number(process.env.FOOD_PLACES_MAX_RADIUS_METERS || 1000);
+const FOOD_PLACES_START_RADIUS_METERS: number = Number(process.env.FOOD_PLACES_START_RADIUS_METERS || 50);
 
-async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
+async function nearbyFoodPlaces(lat: number, lon: number, radiusMeters: number = 15.24, opts: FoodPlacesOpts = {}): Promise<FoodPlace[]> {
   const runId = opts.runId || 'unknown-run-id';
   if (allowDevDebug) logger.info(`[foodPlaces] ========== STARTING nearbyFoodPlaces ==========`);
   if (allowDevDebug) logger.info(`[foodPlaces] 🔍 INPUT PARAMS: lat=${lat}, lon=${lon}, radiusMeters=${radiusMeters}`);
@@ -86,11 +134,11 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
 
   // Radii progression: start, 2x, 4x, and finally the max; de-duplicate and clamp
   const candidateRadii = [startRadius, Math.min(startRadius * 2, maxRadius), Math.min(startRadius * 4, maxRadius), maxRadius];
-  const radii = Array.from(new Set(candidateRadii.map((r) => Math.round(r))));
+  const radii: number[] = Array.from(new Set(candidateRadii.map((r) => Math.round(r))));
   
   if (allowDevDebug) logger.info(`[foodPlaces] 🔍 RADII TO TRY: ${JSON.stringify(radii)}`);
 
-  const typesToTry = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
+  const typesToTry: string[] = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
   if (allowDevDebug) logger.info(`[foodPlaces] 🔍 PLACE TYPES: ${JSON.stringify(typesToTry)}`);
 
   for (const r of radii) {
@@ -103,7 +151,7 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
       return cached;
     }
 
-    let allResults = [];
+    let allResults: PlaceResult[] = [];
 
     for (const type of typesToTry) {
       if (allowDevDebug) logger.info(`[foodPlaces] 🔍 API CALL: type="${type}", radius=${r}`);
@@ -124,48 +172,48 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
         
         if (!res.ok) {
           const text = await res.text();
-          logger.warn('[foodPlaces] ⚠️ Google Places returned error', { status: res.status, body: text?.slice?.(0, 200) });
+          logger.warn('[foodPlaces] ⚠️ Google Places returned error', { status: res.status, body: text?.slice?.(0, 200) } as unknown as string);
           auditLogger.logToolCall(runId, 'Google Nearby Places (Food)', { lat, lon, radius: r, type, status: res.status }, { error: text });
           continue;
         }
         
-        const json = await res.json();
+        const json = await res.json() as PlacesApiResponse;
         logger.info(`[foodPlaces] 📊 API RESPONSE STATUS: ${json.status}`);
         logger.info(`[foodPlaces] 📊 RESULTS COUNT: ${json.results?.length || 0}`);
         
-        const results = Array.isArray(json.results) ? json.results : [];
+        const results: PlaceResult[] = Array.isArray(json.results) ? json.results : [];
         auditLogger.logToolCall(runId, 'Google Nearby Places (Food)', { lat, lon, radius: r, type }, results);
         
         if (results.length > 0) {
           logger.info(`[foodPlaces] ✅ Found ${results.length} results for type='${type}' radius=${r}`);
           
           // Log detailed info for each result
-          results.forEach((r, idx) => {
-            const placeLat = r.geometry?.location?.lat;
-            const placeLon = r.geometry?.location?.lng;
+          results.forEach((result, idx) => {
+            const placeLat = result.geometry?.location?.lat;
+            const placeLon = result.geometry?.location?.lng;
             const distance = placeLat && placeLon ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : null;
             
             logger.info(`[foodPlaces] 📍 RESULT #${idx + 1}:`, {
-              name: r.name,
-              place_id: r.place_id,
-              types: r.types,
-              vicinity: r.vicinity,
+              name: result.name,
+              place_id: result.place_id,
+              types: result.types,
+              vicinity: result.vicinity,
               lat: placeLat,
               lon: placeLon,
               distance_meters: distance,
-              rating: r.rating,
-              user_ratings_total: r.user_ratings_total,
-              business_status: r.business_status,
-              opening_hours: r.opening_hours?.open_now,
-            });
+              rating: result.rating,
+              user_ratings_total: result.user_ratings_total,
+              business_status: result.business_status,
+              opening_hours: result.opening_hours?.open_now,
+            } as unknown as string);
           });
         } else {
           logger.info(`[foodPlaces] ⚠️ No results for type='${type}' radius=${r}`);
         }
         
         allResults = allResults.concat(results);
-      } catch (err) {
-        logger.warn('[foodPlaces] ❌ nearbyFoodPlaces exception', err && err.message ? err.message : err);
+      } catch (err: unknown) {
+        logger.warn('[foodPlaces] ❌ nearbyFoodPlaces exception', (err as Error)?.message ?? err);
         continue;
       }
     }
@@ -173,45 +221,45 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
     logger.info(`[foodPlaces] 📊 TOTAL RESULTS for radius=${r}: ${allResults.length} (before deduplication)`);
 
     if (allResults.length > 0) {
-      const unique = new Map();
+      const unique: Map<string, FoodPlace> = new Map();
       
-      for (const r of allResults) {
-        const pid = r.place_id || `${r.name}:${r.geometry?.location?.lat || ''}:${r.geometry?.location?.lng || ''}`;
+      for (const result of allResults) {
+        const pid = result.place_id || `${result.name}:${result.geometry?.location?.lat || ''}:${result.geometry?.location?.lng || ''}`;
         
         if (unique.has(pid)) {
-          logger.info(`[foodPlaces] 🔁 DUPLICATE SKIPPED: place_id=${pid}, name=${r.name}`);
+          logger.info(`[foodPlaces] 🔁 DUPLICATE SKIPPED: place_id=${pid}, name=${result.name}`);
           continue;
         }
 
-        const placeLat = r.geometry?.location?.lat;
-        const placeLon = r.geometry?.location?.lng;
+        const placeLat = result.geometry?.location?.lat;
+        const placeLon = result.geometry?.location?.lng;
         const distance = placeLat && placeLon ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : null;
 
         logger.info(`[foodPlaces] ➕ ADDING TO UNIQUE SET:`, {
           placeId: pid,
-          name: r.name,
+          name: result.name,
           lat: placeLat,
           lon: placeLon,
           distance_meters: distance,
-        });
+        } as unknown as string);
 
         unique.set(pid, {
           placeId: pid,
-          name: r.name || '',
-          address: r.vicinity || r.formatted_address || null,
-          types: r.types || [],
-          rating: typeof r.rating === 'number' ? r.rating : null,
-          userRatingsTotal: r.user_ratings_total || r.userRatingsTotal || null,
+          name: result.name || '',
+          address: result.vicinity || result.formatted_address || null,
+          types: result.types || [],
+          rating: typeof result.rating === 'number' ? result.rating : null,
+          userRatingsTotal: result.user_ratings_total || result.userRatingsTotal || null,
           lat: placeLat || null,
           lon: placeLon || null,
           distanceMeters: distance === null ? null : Number(distance),
-          source: 'google',
+          source: 'google' as const,
         });
       }
 
       logger.info(`[foodPlaces] 📊 UNIQUE PLACES AFTER DEDUP: ${unique.size}`);
 
-      const list = Array.from(unique.values()).sort((a, b) => {
+      const list: FoodPlace[] = Array.from(unique.values()).sort((a, b) => {
         const da = a.distanceMeters == null ? Number.POSITIVE_INFINITY : a.distanceMeters;
         const db = b.distanceMeters == null ? Number.POSITIVE_INFINITY : b.distanceMeters;
         return da - db;
@@ -247,3 +295,5 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
 
 
 module.exports = { nearbyFoodPlaces };
+export { nearbyFoodPlaces };
+export type { FoodPlace, FoodPlacesOpts };

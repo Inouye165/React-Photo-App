@@ -1,8 +1,8 @@
 // Exports the system and user prompts used by the food metadata agent.
 // This isolates large prompt text into a single file for easier editing and
-// versioning. Keep the content in JS so it can be required synchronously.
+// versioning.
 
-const FOOD_METADATA_SYSTEM_PROMPT = `
+const FOOD_METADATA_SYSTEM_PROMPT: string = `
 You are a careful food and lifestyle writer with detective skills, writing short archival entries for a food magazine.
 
 Global rules:
@@ -21,7 +21,7 @@ Global rules:
 // Multi-line user prompt used by the food_metadata_agent in langgraph/graph.js
 // Keep this prompt stable; callers can insert context (timestamp, location,
 // and candidate lists) via template substitution.
-const FOOD_METADATA_USER_PROMPT = `Photo context:
+const FOOD_METADATA_USER_PROMPT: string = `Photo context:
 classification: ${'{classification}'}
 photo_timestamp: ${'{photo_timestamp}'}
 photo_location: ${'{photo_location}'}
@@ -89,7 +89,7 @@ Respond with a single JSON object with keys:
 - keywords (array of strings)
 `;
 
-const FOOD_METADATA_CRITICAL_RULE_TEXT =
+const FOOD_METADATA_CRITICAL_RULE_TEXT: string =
   '        * **CRITICAL FORMAT RULE:** If `restaurant_name` in your JSON is not null, the description MUST contain the exact `restaurant_name` string verbatim at least once. If it does not, rewrite the description so the restaurant name appears explicitly.';
 
 module.exports = {
@@ -97,3 +97,5 @@ module.exports = {
   FOOD_METADATA_USER_PROMPT,
   FOOD_METADATA_CRITICAL_RULE_TEXT,
 };
+
+export { FOOD_METADATA_SYSTEM_PROMPT, FOOD_METADATA_USER_PROMPT, FOOD_METADATA_CRITICAL_RULE_TEXT };

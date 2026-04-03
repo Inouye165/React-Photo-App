@@ -1,13 +1,13 @@
-import { Router, Request, Response } from 'express';
+import type { Request, Response } from 'express';
 
-const express = require('express');
+const express = require('express') as typeof import('express');
 
 module.exports = function createHealthRouter() {
   const router = express.Router();
 
-  let appVersion;
+  let appVersion: string | undefined;
   try {
-    appVersion = require('../version.js').APP_VERSION;
+    appVersion = require('../version').APP_VERSION as string | undefined;
   } catch {
     appVersion = undefined;
   }

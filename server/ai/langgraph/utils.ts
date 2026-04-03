@@ -11,6 +11,11 @@ export interface Coordinates {
   lon: number;
 }
 
+type UsageInfo = {
+  usage: unknown;
+  model: string | null;
+};
+
 export interface LocationIntel {
   city?: string;
   region?: string;
@@ -22,9 +27,9 @@ export interface LocationIntel {
 }
 
 export interface NearbyPlace {
-  name: string;
-  category: string;
-  distanceMeters: number | null;
+  name?: string;
+  category?: string;
+  distanceMeters?: number | null;
   [key: string]: unknown;
 }
 
@@ -47,24 +52,29 @@ export interface MetadataSummary {
   };
 }
 
-/** Minimal slice of the LangGraph state that this module reads. */
 export interface GpsState {
   gpsString?: string | null;
   metadata?: Record<string, unknown> | null;
 }
 
-export function accumulateDebugUsage(debugUsage: DebugUsageEntry[] = [], entry: DebugUsageEntry = {}): DebugUsageEntry[] {
+export function accumulateDebugUsage(
+  debugUsage: DebugUsageEntry[] = [],
+  entry: DebugUsageEntry = {}
+): DebugUsageEntry[] {
   const next = Array.isArray(debugUsage) ? [...debugUsage] : [];
   next.push(entry);
   return next;
 }
 
-export function extractUsageFromResponse(response: unknown): { usage: unknown; model: string | null } {
+export function extractUsageFromResponse(response: unknown): UsageInfo {
   try {
     const r = response as Record<string, unknown> | null | undefined;
     const usage = r?.usage ?? null;
     const choices = r?.choices as Array<Record<string, unknown>> | undefined;
-    const model = (r?.model as string | null | undefined) || (choices?.[0]?.model as string | null | undefined) || null;
+    const model =
+      (r?.model as string | null | undefined) ||
+      (choices?.[0]?.model as string | null | undefined) ||
+      null;
     return { usage, model };
   } catch {
     return { usage: null, model: null };
@@ -102,8 +112,8 @@ export function dmsToDecimal(values: unknown, ref: unknown): number | null {
 }
 
 export function resolveGpsFromMetadata(meta: Record<string, unknown> = {}): Coordinates | null {
-  const gps = meta?.GPS as Record<string, unknown> | undefined;
-  const location = meta?.location as Record<string, unknown> | undefined;
+  const gps = meta.GPS as Record<string, unknown> | undefined;
+  const location = meta.location as Record<string, unknown> | undefined;
   const candidatePairs = [
     { lat: meta.latitude, lon: meta.longitude },
     { lat: meta.lat, lon: meta.lon },
@@ -127,23 +137,23 @@ export function resolveGpsFromMetadata(meta: Record<string, unknown> = {}): Coor
   return null;
 }
 
-export function parseGpsCoordinates(state: GpsState): Coordinates | null {
+export function parseGpsCoordinates(state: GpsState | null | undefined): Coordinates | null {
   return parseGpsString(state?.gpsString) || resolveGpsFromMetadata((state?.metadata ?? {}) as Record<string, unknown>);
 }
 
 export function extractHeading(meta: Record<string, unknown> = {}): number | null {
-  const gps = meta?.GPS as Record<string, unknown> | undefined;
-  const gpsInfo = meta?.GPSInfo as Record<string, unknown> | undefined;
-  const candidates = [
+  const gps = meta.GPS as Record<string, unknown> | undefined;
+  const gpsInfo = meta.GPSInfo as Record<string, unknown> | undefined;
+  const candidates: unknown[] = [
     meta.heading,
     meta.Heading,
     meta.direction,
     meta.Direction,
     meta.facingDirection,
     meta.compassHeading,
-    meta?.GPSImgDirection,
-    meta?.GPSDirection,
-    meta?.GPSDestBearing,
+    meta.GPSImgDirection,
+    meta.GPSDirection,
+    meta.GPSDestBearing,
     gps?.GPSImgDirection,
     gpsInfo?.GPSImgDirection,
   ];
@@ -155,9 +165,9 @@ export function extractHeading(meta: Record<string, unknown> = {}): number | nul
 }
 
 export function extractAltitude(meta: Record<string, unknown> = {}): number | null {
-  const gps = meta?.GPS as Record<string, unknown> | undefined;
-  const gpsInfo = meta?.GPSInfo as Record<string, unknown> | undefined;
-  const candidates = [
+  const gps = meta.GPS as Record<string, unknown> | undefined;
+  const gpsInfo = meta.GPSInfo as Record<string, unknown> | undefined;
+  const candidates: unknown[] = [
     meta.altitude,
     meta.Altitude,
     meta.GPSAltitude,
@@ -175,7 +185,7 @@ export function extractTimestamp(meta: Record<string, unknown> = {}): string | n
   const gpsDate = typeof meta.GPSDateStamp === 'string' ? meta.GPSDateStamp.trim() : null;
   let gpsTime: string | null = null;
   if (Array.isArray(meta.GPSTimeStamp)) {
-    gpsTime = (meta.GPSTimeStamp as unknown[]).map((part) => String(part).padStart(2, '0')).join(':');
+    gpsTime = meta.GPSTimeStamp.map((part) => String(part).padStart(2, '0')).join(':');
   } else if (typeof meta.GPSTimeStamp === 'string') {
     gpsTime = meta.GPSTimeStamp.trim();
   }
@@ -183,7 +193,7 @@ export function extractTimestamp(meta: Record<string, unknown> = {}): string | n
     return `${gpsDate} ${gpsTime}`;
   }
 
-  const candidates = [
+  const candidates: unknown[] = [
     meta.captureTimestamp,
     meta.captureTime,
     meta.DateTimeOriginal,
@@ -202,7 +212,7 @@ export function extractTimestamp(meta: Record<string, unknown> = {}): string | n
 export function headingToCardinal(degrees: number | null | undefined): string | null {
   if (degrees == null || !Number.isFinite(degrees)) return null;
   const normalized = ((degrees % 360) + 360) % 360;
-  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const directions: string[] = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
   const index = Math.round(normalized / 22.5) % directions.length;
   return directions[index];
 }
@@ -225,7 +235,9 @@ export function sanitizeIntelField(value: unknown): string | null {
   return text.length ? text : null;
 }
 
-export function postProcessLocationIntel(intel: LocationIntel | null | undefined): LocationIntel | null | undefined {
+export function postProcessLocationIntel(
+  intel: LocationIntel | null | undefined
+): LocationIntel | null | undefined {
   if (!intel || typeof intel !== 'object') return intel;
   const result: LocationIntel = { ...intel };
 
@@ -251,7 +263,7 @@ export function postProcessLocationIntel(intel: LocationIntel | null | undefined
 
 export function selectBestNearby(nearby: NearbyPlace[] = [], intel: LocationIntel = {}): NearbyPlace | null {
   if (!Array.isArray(nearby)) return null;
-  const priority = ['landmark', 'attraction', 'park', 'trail', 'mountain', 'river'];
+  const priority: string[] = ['landmark', 'attraction', 'park', 'trail', 'mountain', 'river'];
   for (const category of priority) {
     const found = nearby.find((place) => (place?.category || '').toLowerCase() === category);
     if (found) return found;
@@ -266,10 +278,13 @@ export function selectBestNearby(nearby: NearbyPlace[] = [], intel: LocationInte
   return null;
 }
 
-export function enrichMetadataWithPoi(parsed: ParsedMetadata | null, poiAnalysis: unknown): ParsedMetadata | null {
+export function enrichMetadataWithPoi(
+  parsed: ParsedMetadata | null | undefined,
+  poiAnalysis: unknown
+): ParsedMetadata | null | undefined {
   if (!parsed || !poiAnalysis) return parsed;
-  const a = poiAnalysis as Record<string, unknown>;
-  const intel = (a.locationIntel ?? poiAnalysis) as LocationIntel;
+  const analysis = poiAnalysis as Record<string, unknown>;
+  const intel = (analysis.locationIntel ?? poiAnalysis) as LocationIntel;
   if (!intel) return parsed;
 
   const fields: Array<{ key: keyof LocationIntel; label: string }> = [
@@ -294,9 +309,7 @@ export function enrichMetadataWithPoi(parsed: ParsedMetadata | null, poiAnalysis
 
   if (descriptionExtras.length) {
     const detail = `Location Intelligence: ${descriptionExtras.join(' | ')}`;
-    parsed.description = parsed.description
-      ? `${parsed.description}\n\n${detail}`
-      : detail;
+    parsed.description = parsed.description ? `${parsed.description}\n\n${detail}` : detail;
   }
 
   if (keywordExtras.length) {
@@ -321,9 +334,16 @@ export function metadataPayloadWithDirection(state: GpsState): Record<string, un
 
 export function summarizeMetadataForPrompt(meta: Record<string, unknown> = {}): MetadataSummary {
   return {
-    date: (meta.DateTimeOriginal as string | null | undefined) || (meta.dateTime as string | null | undefined) || null,
-    gps: meta?.latitude && meta?.longitude ? `${meta.latitude},${meta.longitude}` : null,
-    camera: (meta.cameraModel as string | null | undefined) || (meta.Make as string | null | undefined) || (meta.Model as string | null | undefined) || null,
+    date:
+      (meta.DateTimeOriginal as string | null | undefined) ||
+      (meta.dateTime as string | null | undefined) ||
+      null,
+    gps: meta.latitude && meta.longitude ? `${meta.latitude},${meta.longitude}` : null,
+    camera:
+      (meta.cameraModel as string | null | undefined) ||
+      (meta.Make as string | null | undefined) ||
+      (meta.Model as string | null | undefined) ||
+      null,
     heading: extractHeading(meta),
     altitude_meters: extractAltitude(meta),
     exposure: {
@@ -337,8 +357,8 @@ export function summarizeMetadataForPrompt(meta: Record<string, unknown> = {}): 
 export function ensureRestaurantInDescription(
   description: string | null | undefined,
   restaurantName: string | null | undefined,
-  photoLocation: string | null | undefined,
-  photoTimestamp: string | null | undefined
+  photoLocation?: string | null,
+  photoTimestamp?: string | null
 ): string {
   const desc = (description || '').trim();
   const name = (restaurantName || '').trim();
@@ -355,3 +375,25 @@ export function ensureRestaurantInDescription(
   }
   return `A dish enjoyed at ${name}${locationSuffix}${timeSuffix}.`;
 }
+
+module.exports = {
+  accumulateDebugUsage,
+  extractUsageFromResponse,
+  parseGpsString,
+  parseNumber,
+  dmsToDecimal,
+  resolveGpsFromMetadata,
+  extractHeading,
+  extractAltitude,
+  extractTimestamp,
+  headingToCardinal,
+  buildLocationIntelDefaults,
+  sanitizeIntelField,
+  postProcessLocationIntel,
+  selectBestNearby,
+  enrichMetadataWithPoi,
+  metadataPayloadWithDirection,
+  summarizeMetadataForPrompt,
+  ensureRestaurantInDescription,
+  parseGpsCoordinates,
+};

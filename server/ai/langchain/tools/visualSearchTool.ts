@@ -1,25 +1,37 @@
-const axios = require('axios');
-const crypto = require('crypto');
+import axios, { AxiosError } from 'axios';
+import crypto from 'crypto';
+
 const supabase = require('../../../lib/supabaseClient');
+
+interface VisualMatch {
+  title: string;
+  link: string;
+  thumbnail: string;
+  source: string;
+}
+
+interface SerpApiVisualMatch {
+  title?: string;
+  link?: string;
+  thumbnail?: string;
+  source?: string;
+}
 
 /**
  * Performs Google Lens visual search using SerpApi.
  * Returns top 5 visual matches for grounding LLM identification in web data.
- * 
+ *
  * STRATEGY:
  * 1. Upload base64 image to Supabase Storage (temp file)
  * 2. Generate signed URL
  * 3. Call SerpApi with the URL (GET request)
  * 4. Cleanup temp file
- * 
+ *
  * This avoids 414 URI Too Long errors (GET with base64) and 404 errors (POST not supported).
- * 
- * @param {string} imageBase64 Base64-encoded image without data URI prefix
- * @returns {Promise<Array<{title: string, link: string, thumbnail: string, source: string}>>} Visual matches (empty array on error)
  */
-async function performVisualSearch(imageBase64) {
-  const apiKey = process.env.SERPAPI_API_KEY;
-  
+async function performVisualSearch(imageBase64: string): Promise<VisualMatch[]> {
+  const apiKey: string | undefined = process.env.SERPAPI_API_KEY;
+
   if (!apiKey) {
     console.warn('[VisualSearch] SERPAPI_API_KEY not configured; skipping visual search');
     return [];
@@ -30,19 +42,19 @@ async function performVisualSearch(imageBase64) {
     return [];
   }
 
-  let tempPath = null;
+  let tempPath: string | null = null;
 
   try {
     // 1. Prepare image buffer
     // Handle both raw base64 and data URI
     const match = imageBase64.match(/^data:(image\/[a-z]+);base64,/);
-    const contentType = match ? match[1] : 'image/jpeg';
-    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-    const buffer = Buffer.from(cleanBase64, 'base64');
-    
+    const contentType: string = match ? match[1] : 'image/jpeg';
+    const cleanBase64: string = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    const buffer: Buffer = Buffer.from(cleanBase64, 'base64');
+
     // 2. Upload to Supabase Storage (temp file)
     // Use 'photos' bucket as it's guaranteed to exist. Use a 'temp' folder.
-    const randomId = crypto.randomBytes(16).toString('hex');
+    const randomId: string = crypto.randomBytes(16).toString('hex');
     const filename = `visual-search-${randomId}.jpg`;
     tempPath = `temp/${filename}`;
 
@@ -68,7 +80,7 @@ async function performVisualSearch(imageBase64) {
       throw new Error(`Signed URL generation failed: ${signError?.message}`);
     }
 
-    const imageUrl = signedData.signedUrl;
+    const imageUrl: string = signedData.signedUrl;
     console.log(`[VisualSearch] Generated signed URL for SerpApi`);
 
     // 4. Call SerpApi with the URL (GET request)
@@ -81,13 +93,13 @@ async function performVisualSearch(imageBase64) {
       timeout: 30000,
     });
 
-    const matches = response.data?.visual_matches || [];
-    
+    const matches: SerpApiVisualMatch[] = response.data?.visual_matches || [];
+
     // Filter and normalize top 5 results
-    const visualMatches = matches
+    const visualMatches: VisualMatch[] = matches
       .slice(0, 5)
-      .filter(m => m.title && m.link)
-      .map(m => ({
+      .filter((m): m is SerpApiVisualMatch & { title: string; link: string } => Boolean(m.title && m.link))
+      .map((m) => ({
         title: m.title,
         link: m.link,
         thumbnail: m.thumbnail || '',
@@ -97,11 +109,11 @@ async function performVisualSearch(imageBase64) {
     console.log(`[VisualSearch] Found ${visualMatches.length} visual matches`);
     return visualMatches;
 
-  } catch (error) {
+  } catch (error: unknown) {
     // Log error but return empty array so graph can proceed with LLM-only fallback
     console.error('[VisualSearch] API error:', error instanceof Error ? error.message : error);
-    if (axios.isAxiosError(error) && error.response) {
-      console.error('[VisualSearch] SerpApi Response:', error.response.status, error.response.data);
+    if (axios.isAxiosError(error) && (error as AxiosError).response) {
+      console.error('[VisualSearch] SerpApi Response:', (error as AxiosError).response!.status, (error as AxiosError).response!.data);
     }
     return [];
   } finally {
@@ -110,11 +122,13 @@ async function performVisualSearch(imageBase64) {
       try {
         await supabase.storage.from('photos').remove([tempPath]);
         console.log(`[VisualSearch] Cleaned up temp file ${tempPath}`);
-      } catch (cleanupError) {
-        console.warn(`[VisualSearch] Failed to cleanup temp file: ${cleanupError.message}`);
+      } catch (cleanupError: unknown) {
+        console.warn(`[VisualSearch] Failed to cleanup temp file: ${(cleanupError as Error).message}`);
       }
     }
   }
 }
 
 module.exports = { performVisualSearch };
+export { performVisualSearch };
+export type { VisualMatch };

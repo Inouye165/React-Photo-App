@@ -1,47 +1,77 @@
-// server/ai/poi/googlePlaces.ts
-// Google Places API integration with TTL caching, rate limiting,
-// REQUEST_DENIED backoff, parallel type queries, and deduplication by place_id.
-
 require('../../env');
-const logger = require('../../logger');
-const { haversineDistanceMeters } = require('./geoUtils') as {
-  haversineDistanceMeters: (lat1: number, lon1: number, lat2: number, lon2: number) => number;
+
+const logger = require('../../logger') as {
+  info: (msg: string, ...args: unknown[]) => void;
+  warn: (msg: string, ...args: unknown[]) => void;
 };
+import { haversineDistanceMeters } from './geoUtils';
+
 type AuditLogger = {
   logToolCall(runId: string, toolName: string, input: unknown, output: unknown): void;
 };
-const al = require('../langgraph/audit_logger') as AuditLogger;
 
-export interface POI {
-  id: string;
-  name: string;
-  category: string;
-  lat?: number | null;
-  lon?: number | null;
-  distanceMeters?: number;
-  address: string | null;
-  source: 'google';
-  confidence: 'high' | 'medium' | 'low';
+const auditLogger = require('../langgraph/audit_logger') as AuditLogger;
+
+type FetchFn = typeof fetch;
+
+interface CacheEntry<T> {
+  value: T;
+  expires: number;
 }
 
 export interface ReverseGeocodeResult {
   address: string | null;
 }
 
-export interface NearbyOpts {
-  runId?: string;
-  fetch?: typeof fetch;
+export interface POI {
+  id: string;
+  name: string;
+  category: string;
+  lat: number | undefined;
+  lon: number | undefined;
+  distanceMeters: number | undefined;
+  address: string | null;
+  source: 'google';
+  confidence: 'high' | 'medium' | 'low';
 }
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+export interface NearbyPlacesOpts {
+  runId?: string;
+  fetch?: FetchFn;
+}
 
-const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
-const STATUS_WARN_THROTTLE_MS =
-  Number(process.env.GOOGLE_PLACES_STATUS_WARN_MS) || 5 * 60 * 1000;
-const REQUEST_DENIED_BACKOFF_MS =
-  Number(process.env.GOOGLE_PLACES_DENIED_BACKOFF_MS) || 10 * 60 * 1000;
+interface PlaceResult {
+  place_id?: string;
+  name?: string;
+  types?: string[];
+  geometry?: { location?: { lat?: number; lng?: number } };
+  vicinity?: string;
+  formatted_address?: string;
+}
 
-const statusHistory = new Map<string, number>();
+interface PlacesApiResponse {
+  status?: string;
+  error_message?: string;
+  results?: PlaceResult[];
+}
+
+function ensureFetch(): FetchFn {
+  if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis) as FetchFn;
+  return (async (...args: Parameters<FetchFn>): Promise<Response> => {
+    const { default: fetchPolyfill } = await import('node-fetch');
+    return (fetchPolyfill as unknown as FetchFn)(...args);
+  }) as FetchFn;
+}
+
+function getFetchFn(customFetch?: FetchFn): FetchFn {
+  if (customFetch) return customFetch;
+  return ensureFetch();
+}
+
+const allowDevDebug: boolean = process.env.ALLOW_DEV_DEBUG === 'true';
+const STATUS_WARN_THROTTLE_MS: number = Number(process.env.GOOGLE_PLACES_STATUS_WARN_MS) || 5 * 60 * 1000;
+const REQUEST_DENIED_BACKOFF_MS: number = Number(process.env.GOOGLE_PLACES_DENIED_BACKOFF_MS) || 10 * 60 * 1000;
+const statusHistory: Map<string, number> = new Map();
 let requestDeniedUntil = 0;
 let lastBackoffNotice = 0;
 
@@ -54,38 +84,14 @@ if (!API_KEY) {
   logger.warn('[POI] GOOGLE_MAPS_API_KEY missing; skipping POI lookups');
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-type FetchFn = typeof fetch;
-
-function ensureFetch(): FetchFn {
-  if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis) as FetchFn;
-  return (async (...args: Parameters<FetchFn>) => {
-    const { default: fetchPolyfill } = await import('node-fetch' as string) as { default: FetchFn };
-    return fetchPolyfill(...args);
-  }) as FetchFn;
-}
-
-function getFetchFn(customFetch?: FetchFn): FetchFn {
-  if (customFetch) return customFetch;
-  return ensureFetch();
-}
-
 function redactUrl(url: string): string {
   if (!API_KEY) return url;
   return url.replace(API_KEY, '****');
 }
 
-// ── In-memory TTL cache ───────────────────────────────────────────────────────
+const cache: Map<string, CacheEntry<unknown>> = new Map();
 
-interface CacheEntry<T> {
-  value: T;
-  expires: number;
-}
-
-const cache = new Map<string, CacheEntry<unknown>>();
-
-function cacheSet<T>(key: string, value: T, ttlMs = 24 * 60 * 60 * 1000): void {
+function cacheSet<T>(key: string, value: T, ttlMs: number = 24 * 60 * 60 * 1000): void {
   cache.set(key, { value, expires: Date.now() + ttlMs });
 }
 
@@ -115,62 +121,64 @@ function normalizeCategory(types: string[] = []): string {
   return t0 || 'unknown';
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 export async function reverseGeocode(
   lat: number,
   lon: number,
-  opts: NearbyOpts = {}
+  opts: NearbyPlacesOpts = {}
 ): Promise<ReverseGeocodeResult> {
   const runId = opts.runId || 'unknown-run-id';
   if (!API_KEY && !opts.fetch) {
-    al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'skipped (no key)' }, null);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'skipped (no key)' }, null);
     return { address: null };
   }
+
   const cacheKey = `regeocode:${toKey(lat, lon, 0)}`;
   const cached = cacheGet<ReverseGeocodeResult>(cacheKey);
   if (cached) {
-    al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'cached' }, cached);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'cached' }, cached);
     return cached;
   }
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
   const fetchFn = getFetchFn(opts.fetch);
+
   try {
-    al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, url: redactUrl(url) }, 'Fetching...');
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, url: redactUrl(url) }, 'Fetching...');
     const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const text = await res.text();
       logger.warn('[POI] reverseGeocode failed', { status: res.status, body: text });
-      al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: res.status }, { error: text });
+      auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: res.status }, { error: text });
       return { address: null };
     }
+
     const json = (await res.json()) as { results?: Array<{ formatted_address?: string }> };
     const addr = Array.isArray(json.results) && json.results[0] ? json.results[0].formatted_address ?? null : null;
     const out: ReverseGeocodeResult = { address: addr };
     cacheSet(cacheKey, out);
-    al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, out);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, out);
     return out;
-  } catch (err) {
-    const e = err as Error;
-    logger.warn('[POI] reverseGeocode exception', e?.message ?? err);
-    al.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, { error: e?.message ?? String(err) });
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.warn('[POI] reverseGeocode exception', error?.message ?? err);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, { error: error?.message ?? String(err) });
     return { address: null };
   }
 }
 
-// 200 feet ≈ 61 meters
+// 200 feet ~= 61 meters
 export async function nearbyPlaces(
   lat: number,
   lon: number,
-  radius = 61,
-  opts: NearbyOpts = {}
+  radius: number = 61,
+  opts: NearbyPlacesOpts = {}
 ): Promise<POI[]> {
   const runId = opts.runId || 'unknown-run-id';
   if (!API_KEY && !opts.fetch) {
-    al.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (no key)' }, null);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (no key)' }, null);
     return [];
   }
+
   if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
     if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
       console.warn(
@@ -178,14 +186,14 @@ export async function nearbyPlaces(
       );
       lastBackoffNotice = Date.now();
     }
-    al.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (backoff)' }, null);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (backoff)' }, null);
     return [];
   }
 
   const cacheKey = toKey(lat, lon, radius);
   const cached = cacheGet<POI[]>(cacheKey);
   if (cached) {
-    al.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'cached' }, cached);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'cached' }, cached);
     return cached;
   }
 
@@ -198,23 +206,8 @@ export async function nearbyPlaces(
     console.log('[infer_poi] lat/lon:', lat, lon);
   }
 
-  interface GooglePlaceResult {
-    place_id?: string;
-    name?: string;
-    types?: string[];
-    vicinity?: string;
-    formatted_address?: string;
-    geometry?: { location?: { lat?: number; lng?: number } };
-  }
-
-  interface GooglePlacesResponse {
-    status?: string;
-    error_message?: string;
-    results?: GooglePlaceResult[];
-  }
-
   try {
-    const requests = types.map(async (type): Promise<GooglePlaceResult[]> => {
+    const requests = types.map(async (type): Promise<PlaceResult[]> => {
       const params = new URLSearchParams({
         location: `${lat},${lon}`,
         radius: String(radius),
@@ -227,7 +220,7 @@ export async function nearbyPlaces(
         if (allowDevDebug) {
           console.log(`[infer_poi] Fetching type: ${type}, url (redacted):`, redactUrl(url));
         }
-        al.logToolCall(
+        auditLogger.logToolCall(
           runId,
           `Google Nearby Places (${type})`,
           { lat, lon, radius, url: redactUrl(url) },
@@ -241,11 +234,11 @@ export async function nearbyPlaces(
           if (allowDevDebug) {
             console.error(`[infer_poi] Google Places error for ${type}:`, `HTTP ${res.status}`);
           }
-          al.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius, status: res.status }, { error: txt });
+          auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius, status: res.status }, { error: txt });
           return [];
         }
 
-        const json = (await res.json()) as GooglePlacesResponse;
+        const json = (await res.json()) as PlacesApiResponse;
         const status = json?.status || 'OK';
         const statusIsOk = status === 'OK' || status === 'ZERO_RESULTS';
 
@@ -254,10 +247,10 @@ export async function nearbyPlaces(
           if (status === 'REQUEST_DENIED') {
             requestDeniedUntil = Date.now() + REQUEST_DENIED_BACKOFF_MS;
           }
-          const key = `${status}:${errorMessage || ''}`;
-          const lastLogged = statusHistory.get(key) || 0;
+          const historyKey = `${status}:${errorMessage || ''}`;
+          const lastLogged = statusHistory.get(historyKey) || 0;
           if (!lastLogged || Date.now() - lastLogged >= STATUS_WARN_THROTTLE_MS) {
-            statusHistory.set(key, Date.now());
+            statusHistory.set(historyKey, Date.now());
             const suffix = errorMessage ? ` (${errorMessage})` : '';
             logger.warn(`[POI] Google Places API status ${status}${suffix} for type ${type}`);
             if (status === 'REQUEST_DENIED') {
@@ -267,55 +260,49 @@ export async function nearbyPlaces(
             }
           }
           if (allowDevDebug) {
-            console.error(
-              `[infer_poi] Google Places status error for ${type}:`,
-              status,
-              errorMessage || ''
-            );
+            console.error(`[infer_poi] Google Places status error for ${type}:`, status, errorMessage || '');
           }
           return [];
         }
 
-        const results = Array.isArray(json.results) ? json.results : [];
-        al.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { count: results.length });
+        const results: PlaceResult[] = Array.isArray(json.results) ? json.results : [];
+        auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { count: results.length });
         return results;
-      } catch (err) {
-        const e = err as Error;
-        logger.warn(`[POI] nearbyPlaces exception for type ${type}`, e?.message ?? err);
+      } catch (err: unknown) {
+        const error = err as Error;
+        logger.warn(`[POI] nearbyPlaces exception for type ${type}`, error?.message ?? err);
         if (allowDevDebug) {
-          console.error(`[infer_poi] Google Places error for ${type}:`, e?.message ?? err);
+          console.error(`[infer_poi] Google Places error for ${type}:`, error?.message ?? err);
         }
-        al.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { error: e?.message ?? String(err) });
+        auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { error: error?.message ?? String(err) });
         return [];
       }
     });
 
     const settledResults = await Promise.allSettled(requests);
+    const allResults: PlaceResult[] = settledResults
+      .filter((result): result is PromiseFulfilledResult<PlaceResult[]> => result.status === 'fulfilled')
+      .flatMap((result) => result.value);
 
-    const allResults = settledResults
-      .filter((r): r is PromiseFulfilledResult<GooglePlaceResult[]> => r.status === 'fulfilled')
-      .flatMap((r) => r.value);
-
-    const deduplicatedMap = new Map<string, GooglePlaceResult>();
-    for (const r of allResults) {
-      const placeId = r.place_id;
+    const deduplicatedMap: Map<string, PlaceResult> = new Map();
+    for (const result of allResults) {
+      const placeId = result.place_id;
       if (placeId && !deduplicatedMap.has(placeId)) {
-        deduplicatedMap.set(placeId, r);
+        deduplicatedMap.set(placeId, result);
       }
     }
 
-    const uniqueResults = Array.from(deduplicatedMap.values());
-
-    const pois: POI[] = uniqueResults.map((r) => {
-      const placeLat = r.geometry?.location?.lat ?? undefined;
-      const placeLon = r.geometry?.location?.lng ?? undefined;
+    const uniqueResults: PlaceResult[] = Array.from(deduplicatedMap.values());
+    const pois: POI[] = uniqueResults.map((result) => {
+      const placeLat = result.geometry?.location?.lat;
+      const placeLon = result.geometry?.location?.lng;
       const distance =
         placeLat != null && placeLon != null
           ? haversineDistanceMeters(lat, lon, placeLat, placeLon)
           : undefined;
 
-      let category = normalizeCategory(r.types ?? []);
-      const name = r.name || '';
+      let category = normalizeCategory(result.types ?? []);
+      const name = result.name || '';
       if (
         category !== 'trail' &&
         /trail|trailhead|canal|aqueduct|greenway|walkway|path/i.test(name)
@@ -323,8 +310,7 @@ export async function nearbyPlaces(
         category = 'trail';
       }
 
-      const address = (r.vicinity ?? r.formatted_address) || null;
-
+      const address = (result.vicinity ?? result.formatted_address) || null;
       let confidence: POI['confidence'] = 'low';
       if (distance !== undefined) {
         if (distance <= 120) confidence = 'high';
@@ -332,11 +318,11 @@ export async function nearbyPlaces(
       }
 
       return {
-        id: r.place_id || `${placeLat}:${placeLon}:${name}`,
+        id: result.place_id || `${placeLat}:${placeLon}:${name}`,
         name,
         category,
-        lat: placeLat ?? null,
-        lon: placeLon ?? null,
+        lat: placeLat,
+        lon: placeLon,
         distanceMeters: distance,
         address,
         source: 'google',
@@ -345,15 +331,17 @@ export async function nearbyPlaces(
     });
 
     cacheSet(cacheKey, pois);
-    al.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, totalResults: pois.length }, pois);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, totalResults: pois.length }, pois);
     return pois;
-  } catch (err) {
-    const e = err as Error;
-    logger.warn('[POI] nearbyPlaces exception', e?.message ?? err);
+  } catch (err: unknown) {
+    const error = err as Error;
+    logger.warn('[POI] nearbyPlaces exception', error?.message ?? err);
     if (allowDevDebug) {
-      console.error('[infer_poi] Google Places error:', e?.message ?? err);
+      console.error('[infer_poi] Google Places error:', error?.message ?? err);
     }
-    al.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius }, { error: e?.message ?? String(err) });
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius }, { error: error?.message ?? String(err) });
     return [];
   }
 }
+
+module.exports = { reverseGeocode, nearbyPlaces };
