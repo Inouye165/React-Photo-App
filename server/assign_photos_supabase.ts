@@ -1,7 +1,9 @@
-require('./env');
-const { createClient } = require('@supabase/supabase-js');
-const knexConfig = require('./knexfile');
-const knex = require('knex')(knexConfig.development);
+import './env';
+import knexFactory, { type Knex } from 'knex';
+import { createClient, type User } from '@supabase/supabase-js';
+
+const knexConfig = require('./knexfile') as Record<string, Knex.Config>;
+const knex = knexFactory(knexConfig.development);
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -19,42 +21,42 @@ const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   }
 });
 
-async function assignPhotos() {
+type CountRow = {
+  count: string | number;
+};
+
+async function assignPhotos(): Promise<void> {
   try {
     console.log(`Looking for Supabase user with email: ${TARGET_EMAIL}...`);
-    
-    // List users to find the one with the email
-    // admin.listUsers() is the way to go
-    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
-    
+
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers();
+
     if (error) {
       throw error;
     }
 
-    const user = users.find(u => u.email === TARGET_EMAIL);
+    const user = data.users.find((candidate: User) => candidate.email === TARGET_EMAIL);
 
-    if (!user) {
+    if (!user?.email) {
       console.error(`User ${TARGET_EMAIL} not found in Supabase Auth!`);
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     console.log(`Found Supabase user: ${user.email} (UUID: ${user.id})`);
 
-    // Count photos before update
-    const totalPhotos = await knex('photos').count('* as count').first();
-    console.log(`Total photos in database: ${totalPhotos.count}`);
+    const totalPhotos = await knex<CountRow>('photos').count<{ count: string | number }>('* as count').first();
+    console.log(`Total photos in database: ${totalPhotos?.count ?? 0}`);
 
-    // Update all photos to belong to this user
-    const updated = await knex('photos')
-      .update({ user_id: user.id });
+    const updated = await knex('photos').update({ user_id: user.id });
 
     console.log(`Successfully assigned ${updated} photos to ${TARGET_EMAIL} (UUID: ${user.id})`);
-
   } catch (error) {
     console.error('Error assigning photos:', error);
+    process.exitCode = 1;
   } finally {
     await knex.destroy();
   }
 }
 
-assignPhotos();
+void assignPhotos();
