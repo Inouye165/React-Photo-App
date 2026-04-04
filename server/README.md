@@ -325,12 +325,12 @@ export SUPABASE_URL="https://your-project.supabase.co"
 export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 
 # Run the script with the user's UUID
-node server/scripts/set-admin-role.js <user-uuid>
+npx tsx server/scripts/set-admin-role.ts <user-uuid>
 ```
 
 **Example:**
 ```bash
-node server/scripts/set-admin-role.js 550e8400-e29b-41d4-a716-446655440000
+npx tsx server/scripts/set-admin-role.ts 550e8400-e29b-41d4-a716-446655440000
 ```
 
 **Output:**
