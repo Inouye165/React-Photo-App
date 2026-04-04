@@ -36,3 +36,5 @@ describe('route_after_location Router Logic', () => {
     expect(result).toBe('generate_metadata');
   });
 });
+
+export {};

@@ -1,6 +1,3 @@
-// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\__tests__\food_location_agent.test.js
-// Verify the default threshold is applied when the graph loads
-// Force the default threshold for this test suite and reload modules
 process.env.FOOD_POI_MATCH_SCORE_THRESHOLD = '2';
 jest.resetModules();
 const { __testing } = require('../graph');
@@ -10,17 +7,16 @@ jest.setTimeout(10000);
 
 describe('food_location_agent', () => {
   it('prefers cuisine keyword match over nearest by distance', async () => {
-    const state = {
+    const state: any = {
       filename: 'IMG_TEST.HEIC',
       metadata: { latitude: 37.0, longitude: -122.0 },
       classification: 'food',
-      keywords: ['seafood','crab'],
+      keywords: ['seafood', 'crab'],
       description: 'A crab boil in a bag',
       poiAnalysis: {},
       modelOverrides: {},
     };
 
-    // Fake nearbyFoodPlaces to return multiple candidates
     const stubbedNearby = [
       {
         placeId: 'p1',
@@ -39,15 +35,15 @@ describe('food_location_agent', () => {
         lat: 37.0001,
         lon: -122.0001,
         distanceMeters: 10,
-      }
+      },
     ];
 
-    // Inject fake nearbyFoodPlaces via override
-  state.__overrideNearby = stubbedNearby;
-  const result = await food_location_agent(state);
-  // The location agent should return candidates only and leave best-candidate selection unset.
-  expect(result.nearby_food_places).toBeTruthy();
-  expect(result.nearby_food_places.length).toBe(2);
-  expect(result.best_restaurant_candidate).toBeNull();
+    state.__overrideNearby = stubbedNearby;
+    const result = await food_location_agent(state);
+    expect(result.nearby_food_places).toBeTruthy();
+    expect(result.nearby_food_places.length).toBe(2);
+    expect(result.best_restaurant_candidate).toBeNull();
   });
 });
+
+export {};

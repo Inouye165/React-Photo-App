@@ -4,7 +4,6 @@ const { graphChannels } = require('../state');
 console.log('START constant:', START);
 console.log('graphChannels keys:', Object.keys(graphChannels));
 
-// Mock the nodes to verify state flow without making API calls
 const identify_collectible = async (state) => {
   console.log('Mock identify_collectible called');
   return {
@@ -71,13 +70,13 @@ const describe_collectible = async (state) => {
         review: state.collectible?.review ?? null,
         valuation: state.collectible?.valuation ?? null,
       },
-    }
+    },
   };
 };
 
 const classify_image = async (_state) => {
-    console.log('Mock classify_image called');
-    return { classification: 'collectables' };
+  console.log('Mock classify_image called');
+  return { classification: 'collectables' };
 };
 
 describe('LangGraph State Flow - Collectibles', () => {
@@ -88,14 +87,12 @@ describe('LangGraph State Flow - Collectibles', () => {
       channels: graphChannels,
     });
 
-    // Add nodes
     workflow.addNode('classify_image', classify_image);
     workflow.addNode('identify_collectible', identify_collectible);
     workflow.addNode('confirm_collectible', confirm_collectible);
     workflow.addNode('valuate_collectible', valuate_collectible);
     workflow.addNode('describe_collectible', describe_collectible);
-    
-    // Define flow
+
     workflow.addEdge(START, 'classify_image');
     workflow.addEdge('classify_image', 'identify_collectible');
     workflow.addEdge('identify_collectible', 'confirm_collectible');
@@ -116,37 +113,28 @@ describe('LangGraph State Flow - Collectibles', () => {
       collectible: {},
     };
 
-    // Test the nodes directly (like collectible_flow.test.js) to verify state flow
-    // The StateGraph invoke() returns deltas, so we test node chaining directly
-    
-    // Step 1: classify_image
     const afterClassify = await classify_image(initialState);
     expect(afterClassify.classification).toBe('collectables');
-    
-    // Step 2: identify_collectible - merge state
+
     const stateForIdentify = { ...initialState, ...afterClassify };
     const afterIdentify = await identify_collectible(stateForIdentify);
     expect(afterIdentify.collectible?.identification?.id).toBe('Test Item #1');
     expect(afterIdentify.collectible?.identification?.confidence).toBe(0.99);
     expect(afterIdentify.collectible?.identification?.category).toBe('Comics');
 
-    // Step 3: confirm_collectible - merge state
     const stateForConfirm = { ...stateForIdentify, ...afterIdentify };
     const afterConfirm = await confirm_collectible(stateForConfirm);
     expect(afterConfirm.collectible?.review?.status).toBe('confirmed');
-    
-    // Step 4: valuate_collectible - merge state
+
     const stateForValuate = { ...stateForConfirm, ...afterConfirm };
     const afterValuate = await valuate_collectible(stateForValuate);
     expect(afterValuate.collectible?.valuation).toBeDefined();
     expect(afterValuate.collectible?.valuation?.low).toBe(100);
     expect(afterValuate.collectible?.valuation?.high).toBe(200);
-    
-    // Step 5: describe_collectible - merge state
+
     const stateForDescribe = { ...stateForValuate, ...afterValuate };
     const afterDescribe = await describe_collectible(stateForDescribe);
-    
-    // Verify final result contains all expected fields
+
     expect(afterDescribe.finalResult).toBeDefined();
     expect(afterDescribe.finalResult.collectibleInsights?.identification?.id).toBe('Test Item #1');
     expect(afterDescribe.finalResult.collectibleInsights?.identification?.confidence).toBe(0.99);
@@ -190,3 +178,5 @@ describe('LangGraph State Flow - Collectibles', () => {
     expect(afterConfirm.collectible?.review?.status).toBe('pending');
   });
 });
+
+export {};
