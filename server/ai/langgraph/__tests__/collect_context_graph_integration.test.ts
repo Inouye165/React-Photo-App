@@ -26,9 +26,10 @@ describe('Collect context integration (no LangGraph dependency)', () => {
 
     expect(reverseGeocode).toHaveBeenCalled();
     expect(nearbyFoodPlaces).toHaveBeenCalled();
-    // For food, we intentionally skip generic POI and OSM trails to reduce cost/noise.
     expect(nearbyPlaces).not.toHaveBeenCalled();
     expect(nearbyTrailsFromOSM).not.toHaveBeenCalled();
     expect(out.nearbyFood.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+export {};

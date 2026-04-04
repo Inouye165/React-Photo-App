@@ -44,3 +44,5 @@ describe('collectContext', () => {
     expect(out.osmTrails).toEqual([]);
   });
 });
+
+export {};

@@ -14,3 +14,5 @@ describe('classification_helpers', () => {
     expect(shouldSkipGenericPoi('collectables')).toBe(true);
   });
 });
+
+export {};
