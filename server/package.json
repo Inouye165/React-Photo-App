@@ -122,18 +122,18 @@
   "jest": {
     "testEnvironment": "node",
     "setupFiles": [
-      "<rootDir>/tests/test-env-ci.js"
+      "<rootDir>/tests/test-env-ci.ts"
     ],
     "setupFilesAfterEnv": [
-      "<rootDir>/tests/setup.js"
+      "<rootDir>/tests/setup.ts"
     ],
     "testPathIgnorePatterns": [
       "<rootDir>/node_modules/",
       "<rootDir>/working/"
     ],
     "moduleNameMapper": {
-      "^p-retry$": "<rootDir>/tests/__mocks__/p-retry.js",
-      "^is-network-error$": "<rootDir>/tests/__mocks__/is-network-error.js"
+      "^p-retry$": "<rootDir>/tests/__mocks__/p-retry.ts",
+      "^is-network-error$": "<rootDir>/tests/__mocks__/is-network-error.ts"
     },
     "transform": {
       "^.+\\.[jt]sx?$": "babel-jest"
@@ -142,7 +142,7 @@
       "node_modules/(?!(@langchain|@langchain/langgraph|p-queue|p-timeout)/)"
     ],
     "collectCoverageFrom": [
-      "**/*.js",
+      "**/*.{js,ts}",
       "!node_modules/**",
       "!coverage/**",
       "!tests/**",
