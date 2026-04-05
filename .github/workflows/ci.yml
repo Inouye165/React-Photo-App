@@ -30,7 +30,7 @@ jobs:
         run: npm install --include=optional sharp
         working-directory: server
       - name: Run CSP test in production mode
-        run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
+        run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.ts -i
 
   ci:
     runs-on: ubuntu-latest
