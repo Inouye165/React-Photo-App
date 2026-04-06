@@ -30,7 +30,8 @@ const path = require('path');
 const fs = require('fs');
 
 describe('Process Lifecycle - Uncaught Exception Handling', () => {
-  const helperScript = path.join(__dirname, 'helpers', 'throw-uncaught.js');
+  const helperScript = path.join(__dirname, 'helpers', 'throw-uncaught.ts');
+  const tsxCli = path.join(__dirname, '..', '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
   
   beforeAll(() => {
     // Verify the test helper script exists
@@ -42,7 +43,7 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
   test('uncaught exception should cause process to exit with code 1', () => {
     // Spawn a child process that will throw an uncaught exception
     // This isolates the test from the Jest process
-    const result = spawnSync('node', [helperScript], {
+    const result = spawnSync(process.execPath, [tsxCli, helperScript], {
       timeout: 5000, // 5 second timeout to prevent hanging
       encoding: 'utf-8',
       env: {
@@ -69,7 +70,7 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
   });
 
   test('error should be logged to stderr before exit', () => {
-    const result = spawnSync('node', [helperScript], {
+    const result = spawnSync(process.execPath, [tsxCli, helperScript], {
       timeout: 5000,
       encoding: 'utf-8',
       env: {
@@ -97,7 +98,7 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
   test('process should exit quickly without hanging', () => {
     const startTime = Date.now();
     
-    const result = spawnSync('node', [helperScript], {
+    const result = spawnSync(process.execPath, [tsxCli, helperScript], {
       timeout: 5000, // 5 second timeout
       encoding: 'utf-8',
       env: {
